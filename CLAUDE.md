@@ -44,7 +44,11 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 ```
 
 ## Commands (create these in Phase 0; keep this list current)
-- `make dev` — start db, api, worker, web
+- `make setup` — install backend (uv) and frontend (npm) deps and the pre-commit hooks
+- `make dev` — start db, api, worker, web (db in Docker; api/worker/web native via honcho; ADR 0001)
+- `make seed` — load cited reference data from `data/reference/` (idempotent)
+- `make basemap` — one-time local Protomaps extract into `data/basemap/` (gitignored, ~1.1 GB at z13)
+- `make db-down` / `make db-reset` — stop PostGIS / destroy and recreate its volume (asks first)
 - `make db-migrate` — `uv run alembic upgrade head`
 - `make test` — backend + frontend tests
 - `make lint` — ruff, mypy, eslint, prettier --check

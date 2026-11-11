@@ -1,0 +1,52 @@
+@import 'tailwindcss';
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* CAPCO marking color for UNCLASSIFIED banners */
+  --color-unclass: #007a33;
+
+  --color-ink-950: #0b0f14;
+  --color-ink-900: #11171f;
+  --color-ink-800: #18202b;
+  --color-ink-700: #243041;
+  --color-ink-500: #5b6b80;
+  --color-ink-300: #a7b3c2;
+  --color-ink-100: #e6ebf1;
+
+  --color-aoi-mx: #f59e0b;
+  --color-aoi-us: #38bdf8;
+  --color-poe: #f43f5e;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink-950);
+  color: var(--color-ink-100);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* MapLibre popup in the dashboard's dark palette */
+.osint-popup .maplibregl-popup-content {
+  background: var(--color-ink-800);
+  color: var(--color-ink-100);
+  border: 1px solid var(--color-ink-700);
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.4);
+}
+.osint-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--color-ink-800);
+}
+.osint-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--color-ink-800);
+}

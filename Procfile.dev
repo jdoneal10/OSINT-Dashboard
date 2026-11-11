@@ -1,0 +1,3 @@
+api: cd backend && uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
+worker: cd backend && uv run python -m app.worker
+web: cd frontend && npm run dev

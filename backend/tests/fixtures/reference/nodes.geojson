@@ -1,0 +1,93 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -109.5,
+          31.0
+        ]
+      },
+      "properties": {
+        "slug": "poe-test",
+        "name": "Test Port",
+        "node_type": "poe",
+        "code": "9999",
+        "country_iso3": "USA",
+        "sources": [
+          {
+            "title": "Synthetic test fixture",
+            "publisher": "cartel-osint tests",
+            "url": "https://example.org/test-fixture",
+            "accessed": "2026-11-11"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -110,
+              31
+            ],
+            [
+              -109,
+              31
+            ],
+            [
+              -109,
+              32
+            ],
+            [
+              -110,
+              32
+            ],
+            [
+              -110,
+              31
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "slug": "sector-test",
+        "name": "Test Sector",
+        "node_type": "usbp_sector",
+        "code": "TST",
+        "country_iso3": "USA",
+        "sources": [
+          {
+            "title": "Synthetic test fixture",
+            "publisher": "cartel-osint tests",
+            "url": "https://example.org/test-fixture",
+            "accessed": "2026-11-11"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "slug": "sector-nogeom",
+        "name": "Test Sector Without Geometry",
+        "node_type": "usbp_sector",
+        "country_iso3": "USA",
+        "sources": [
+          {
+            "title": "Synthetic test fixture",
+            "publisher": "cartel-osint tests",
+            "url": "https://example.org/test-fixture",
+            "accessed": "2026-11-11"
+          }
+        ]
+      }
+    }
+  ]
+}

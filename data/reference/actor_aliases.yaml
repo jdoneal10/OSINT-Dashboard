@@ -1,0 +1,81 @@
+# Canonical TCO records and aliases. ORGANIZATIONS ONLY (CLAUDE.md hard rule 3).
+# Every entry cites a public source (hard rule 2). Names and aliases are as printed in
+# the cited source; matching is accent- and case-insensitive (app/reference/normalize.py).
+#
+# Seed: Department of State FTO designations, Public Notice 12672, 90 FR 10030
+# (FR Doc. 2025-02873, published 2025-02-20). Later designations get added only after
+# they are checked against the Federal Register.
+
+version: 1
+actors:
+  - slug: cartel-de-sinaloa
+    canonical_name: Cartel de Sinaloa
+    actor_type: tco
+    country_iso3: MEX
+    description: Designated Foreign Terrorist Organization (2025-02-20).
+    aliases:
+      - {alias: Sinaloa Cartel, language: en}
+      - {alias: Mexican Federation, language: en}
+      - {alias: Guadalajara Cartel, language: en}
+    sources: &fto_2025
+      - title: "Foreign Terrorist Organization Designations (Public Notice 12672), 90 FR 10030"
+        publisher: U.S. Department of State, via the Federal Register
+        url: https://www.govinfo.gov/content/pkg/FR-2025-02-20/html/2025-02873.htm
+        accessed: 2026-11-11
+
+  - slug: cjng
+    canonical_name: Cartel de Jalisco Nueva Generacion
+    actor_type: tco
+    country_iso3: MEX
+    description: Designated Foreign Terrorist Organization (2025-02-20).
+    aliases:
+      - {alias: CJNG}
+      - {alias: New Generation Cartel of Jalisco, language: en}
+      - {alias: Jalisco New Generation Cartel, language: en}
+    sources: *fto_2025
+
+  - slug: carteles-unidos
+    canonical_name: Carteles Unidos
+    actor_type: tco
+    country_iso3: MEX
+    description: Designated Foreign Terrorist Organization (2025-02-20).
+    aliases:
+      - {alias: United Cartels, language: en}
+      - {alias: Tepalcatepec Cartel, language: en}
+      - {alias: Cartel de Tepalcatepec, language: es}
+      - {alias: The Grandfather Cartel, language: en}
+      - {alias: Cartel del Abuelo, language: es}
+      - {alias: Cartel de Los Reyes, language: es}
+    sources: *fto_2025
+
+  - slug: cartel-del-noreste
+    canonical_name: Cartel del Noreste
+    actor_type: tco
+    country_iso3: MEX
+    description: Designated Foreign Terrorist Organization (2025-02-20).
+    aliases:
+      - {alias: CDN}
+      - {alias: Northeast Cartel, language: en}
+      - {alias: Los Zetas, language: es}
+    sources: *fto_2025
+
+  - slug: cartel-del-golfo
+    canonical_name: Cartel del Golfo
+    actor_type: tco
+    country_iso3: MEX
+    description: Designated Foreign Terrorist Organization (2025-02-20).
+    aliases:
+      - {alias: CDG}
+      - {alias: Gulf Cartel, language: en}
+      # Organization alias exactly as printed in the designation notice.
+      - {alias: Osiel Cardenas-Guillen Organization, language: en}
+    sources: *fto_2025
+
+  - slug: la-nueva-familia-michoacana
+    canonical_name: La Nueva Familia Michoacana
+    actor_type: tco
+    country_iso3: MEX
+    description: Designated Foreign Terrorist Organization (2025-02-20).
+    aliases:
+      - {alias: LNFM}
+    sources: *fto_2025
