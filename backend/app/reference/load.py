@@ -169,12 +169,15 @@ def _load_areas(session: Session, collections: list[AreaCollection]) -> int:
 def _load_nodes(session: Session, collection: NodeCollection) -> int:
     for feature in collection.features:
         p = feature.properties
-        geom = _to_shape(feature.geometry, p.slug)
-        if feature.geometry.type == "Point":
-            point, area = geom, None
-        else:
-            area = _as_multipolygon(geom, p.slug)
-            point = area.representative_point()
+        point: BaseGeometry | None = None
+        area: MultiPolygon | None = None
+        if feature.geometry is not None:
+            geom = _to_shape(feature.geometry, p.slug)
+            if feature.geometry.type == "Point":
+                point = geom
+            else:
+                area = _as_multipolygon(geom, p.slug)
+                point = area.representative_point()
         values = {
             "slug": p.slug,
             "name": p.name,
@@ -182,7 +185,7 @@ def _load_nodes(session: Session, collection: NodeCollection) -> int:
             "code": p.code,
             "country_iso3": p.country_iso3,
             "admin1_code": p.admin1_code,
-            "point": _ewkt(point),
+            "point": _ewkt(point) if point is not None else None,
             "area": _ewkt(area) if area is not None else None,
             "properties": p.attributes,
             "sources": [c.model_dump(mode="json") for c in p.sources],

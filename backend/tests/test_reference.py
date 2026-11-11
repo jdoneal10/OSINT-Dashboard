@@ -29,7 +29,7 @@ def test_load_is_idempotent(session: Session, ref_fixture_dir: Path) -> None:
     first = _load(session, ref_fixture_dir)
     second = _load(session, ref_fixture_dir)
     assert first == second
-    assert first == {"reference_areas": 2, "nodes": 2, "actors": 2, "actor_aliases": 4}
+    assert first == {"reference_areas": 2, "nodes": 3, "actors": 2, "actor_aliases": 4}
 
 
 def test_parent_and_canonical_alias(session: Session, ref_fixture_dir: Path) -> None:
@@ -121,6 +121,10 @@ def test_aoi_and_nodes_endpoints(
     lon, lat = sector["properties"]["label_point"]
     assert -110 < lon < -109
     assert 31 < lat < 32
+
+    no_geom = by_id["sector-nogeom"]
+    assert no_geom["geometry"] is None
+    assert no_geom["properties"]["label_point"] is None
 
     only_poe = client.get("/reference/nodes", params={"node_type": "poe"}).json()
     assert [f["id"] for f in only_poe["features"]] == ["poe-test"]

@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises:
-Create Date: 2026-11-11 13:24:28.910667
+Create Date: 2026-11-11 13:32:17.254525
 
 """
 
@@ -181,9 +181,8 @@ def upgrade() -> None:
                 spatial_index=False,
                 from_text="ST_GeogFromText",
                 name="geography",
-                nullable=False,
             ),
-            nullable=False,
+            nullable=True,
         ),
         sa.Column(
             "area",

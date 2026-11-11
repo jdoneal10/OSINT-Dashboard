@@ -92,7 +92,7 @@ class NodeProperties(BaseModel):
 
 class NodeFeature(BaseModel):
     type: Literal["Feature"]
-    geometry: Geometry
+    geometry: Geometry | None  # null when no public geometry exists (ADR 0002)
     properties: NodeProperties
 
 

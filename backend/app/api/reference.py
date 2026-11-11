@@ -22,7 +22,7 @@ _PRECISION = 5  # ~1 m; plenty for reference layers and keeps payloads small
 class Feature(BaseModel):
     type: Literal["Feature"] = "Feature"
     id: str
-    geometry: dict[str, Any]
+    geometry: dict[str, Any] | None
     properties: dict[str, Any]
 
 
@@ -71,7 +71,8 @@ def nodes(
     session: Annotated[Session, Depends(get_session)],
     node_type: Annotated[list[str] | None, Query()] = None,
 ) -> FeatureCollection:
-    """Corridor nodes. Area nodes (e.g. USBP sectors) return their polygon plus a label point."""
+    """Corridor nodes. Area nodes return their polygon plus a label point; nodes with no
+    public geometry (USBP sectors, ADR 0002) return ``geometry: null``."""
     stmt = select(
         Node,
         _geojson(func.coalesce(Node.area, Node.point)),
@@ -85,7 +86,7 @@ def nodes(
         features=[
             Feature(
                 id=node.slug,
-                geometry=json.loads(geom),
+                geometry=json.loads(geom) if geom is not None else None,
                 properties={
                     "slug": node.slug,
                     "name": node.name,
@@ -93,7 +94,9 @@ def nodes(
                     "code": node.code,
                     "country_iso3": node.country_iso3,
                     "admin1_code": node.admin1_code,
-                    "label_point": [round(x, _PRECISION), round(y, _PRECISION)],
+                    "label_point": (
+                        [round(x, _PRECISION), round(y, _PRECISION)] if x is not None else None
+                    ),
                     "attributes": node.properties,
                     "sources": node.sources,
                 },

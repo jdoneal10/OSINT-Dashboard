@@ -209,7 +209,10 @@ EDGE_MODES = ("land", "maritime", "air", "rail")
 
 
 class Node(TimestampMixin, Base):
-    """Corridor-graph node. ``point`` is the representative point; ``area`` is optional."""
+    """Corridor-graph node. ``point`` is the representative point; ``area`` is optional.
+
+    Both may be NULL for nodes with no public geometry (e.g. USBP sectors, ADR 0002).
+    """
 
     __tablename__ = "nodes"
     __table_args__ = (
@@ -225,7 +228,7 @@ class Node(TimestampMixin, Base):
     code: Mapped[str | None] = mapped_column(String(32))
     country_iso3: Mapped[str | None] = mapped_column(String(3))
     admin1_code: Mapped[str | None] = mapped_column(String(16))
-    point: Mapped[WKBElement] = mapped_column(POINT())
+    point: Mapped[WKBElement | None] = mapped_column(POINT())
     area: Mapped[WKBElement | None] = mapped_column(MULTIPOLYGON())
     properties: Mapped[dict[str, Any]] = mapped_column(default=dict)
     sources: Mapped[Citations] = mapped_column(default=list)
