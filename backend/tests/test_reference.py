@@ -112,6 +112,11 @@ def test_aoi_and_nodes_endpoints(
     assert {f["id"] for f in aoi["features"]} == {"mx-test-a", "us-test-b"}
     assert all(f["geometry"]["type"] == "MultiPolygon" for f in aoi["features"])
     assert all(f["properties"]["sources"] for f in aoi["features"])
+    lon, lat = next(f for f in aoi["features"] if f["id"] == "mx-test-a")["properties"][
+        "label_point"
+    ]
+    assert -110 < lon < -109
+    assert 30 < lat < 31
 
     nodes = client.get("/reference/nodes").json()
     by_id = {f["id"]: f for f in nodes["features"]}

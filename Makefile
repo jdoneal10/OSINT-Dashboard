@@ -24,7 +24,7 @@ setup: ## Install backend/frontend deps and pre-commit hooks
 	pre-commit install
 
 dev: db-up db-migrate ## Start db, api, worker and web
-	$(BACKEND) $(UV) honcho start -d .. -f ../Procfile.dev
+	uv run --project backend honcho start -f Procfile.dev
 
 db-up: ## Start PostGIS and wait until healthy
 	docker compose up -d --wait db

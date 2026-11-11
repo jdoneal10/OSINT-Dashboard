@@ -40,9 +40,11 @@ def aoi(
     session: Annotated[Session, Depends(get_session)],
     phase: Annotated[int, Query(ge=1, le=5)] = 1,
 ) -> FeatureCollection:
-    """Area-of-interest polygons for the given phase (and earlier phases)."""
+    """Area-of-interest polygons for the given phase (and earlier phases), each with a
+    ``label_point`` (one per area, so multi-part states get a single label)."""
+    label = func.ST_PointOnSurface(cast(ReferenceArea.geom, Geometry))
     rows = session.execute(
-        select(ReferenceArea, _geojson(ReferenceArea.geom))
+        select(ReferenceArea, _geojson(ReferenceArea.geom), func.ST_X(label), func.ST_Y(label))
         .where(ReferenceArea.phase <= phase)
         .order_by(ReferenceArea.country_iso3, ReferenceArea.name)
     ).all()
@@ -58,10 +60,11 @@ def aoi(
                     "country_iso3": area.country_iso3,
                     "admin1_code": area.admin1_code,
                     "phase": area.phase,
+                    "label_point": [round(x, _PRECISION), round(y, _PRECISION)],
                     "sources": area.sources,
                 },
             )
-            for area, geom in rows
+            for area, geom, x, y in rows
         ]
     )
 
