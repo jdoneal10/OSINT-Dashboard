@@ -1,0 +1,25 @@
+# Only the database runs in containers; api, worker and web run natively (ADR 0001).
+name: cartel-osint
+
+services:
+  db:
+    # Multi-arch build of the docker-postgis images (native arm64); see ADR 0001.
+    image: imresamu/postgis:16-3.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: osint
+      POSTGRES_PASSWORD: osint # local-only dev credential; port is bound to loopback
+      POSTGRES_DB: osint
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osint -d osint"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
