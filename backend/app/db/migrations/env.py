@@ -18,12 +18,16 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# PostGIS-owned objects that must never appear in autogenerate diffs.
-_POSTGIS_TABLES = {"spatial_ref_sys"}
+_OUR_TABLES = set(target_metadata.tables)
 
 
 def _include_object(obj, name, type_, reflected, compare_to):  # type: ignore[no-untyped-def]
-    if type_ == "table" and name in _POSTGIS_TABLES:
+    # Ignore anything in the database that this schema doesn't own. The PostGIS image
+    # installs extension tables (spatial_ref_sys, tiger geocoder, topology) into the
+    # default database, and autogenerate must never propose dropping them.
+    if type_ == "table" and reflected and compare_to is None and name not in _OUR_TABLES:
+        return False
+    if type_ == "index" and reflected and obj.table.name not in _OUR_TABLES:
         return False
     return alembic_helpers.include_object(obj, name, type_, reflected, compare_to)
 
