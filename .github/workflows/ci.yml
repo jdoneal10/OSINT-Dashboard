@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        # Same multi-arch PostGIS image as docker-compose.yml (ADR 0001).
+        image: imresamu/postgis:16-3.5
+        env:
+          POSTGRES_USER: osint
+          POSTGRES_PASSWORD: osint
+          POSTGRES_DB: osint_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U osint -d osint_test"
+          --health-interval 3s --health-timeout 3s --health-retries 30
+    env:
+      OSINT_ENV: ci
+      OSINT_DATABASE_URL: postgresql+psycopg://osint:osint@localhost:5432/osint_test
+      OSINT_TEST_DATABASE_URL: postgresql+psycopg://osint:osint@localhost:5432/osint_test
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --locked
+      - name: ruff
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: mypy (strict)
+        run: uv run mypy
+      - name: migrations
+        run: uv run alembic upgrade head && uv run alembic check
+      - name: load reference data (twice, must be idempotent)
+        run: uv run python -m app.reference.load && uv run python -m app.reference.load
+      - name: pytest
+        run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks (full history)
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            | tar -xz gitleaks
+          ./gitleaks git --redact --no-banner .
