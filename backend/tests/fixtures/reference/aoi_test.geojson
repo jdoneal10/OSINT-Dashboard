@@ -1,0 +1,15 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {"type": "Polygon", "coordinates": [[[-110, 30], [-109, 30], [-109, 31], [-110, 31], [-110, 30]]]},
+      "properties": {"slug": "mx-test-a", "name": "Test State A", "area_type": "admin1", "country_iso3": "MEX", "admin1_code": "MX-TA", "phase": 1, "sources": [{"title": "Synthetic test fixture", "publisher": "cartel-osint tests", "url": "https://example.org/test-fixture", "accessed": "2026-11-11"}]}
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "MultiPolygon", "coordinates": [[[[-110, 31], [-109, 31], [-109, 32], [-110, 32], [-110, 31]]]]},
+      "properties": {"slug": "us-test-b", "name": "Test State B", "area_type": "admin1", "country_iso3": "USA", "admin1_code": "US-TB", "phase": 1, "sources": [{"title": "Synthetic test fixture", "publisher": "cartel-osint tests", "url": "https://example.org/test-fixture", "accessed": "2026-11-11"}]}
+    }
+  ]
+}

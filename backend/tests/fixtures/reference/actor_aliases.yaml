@@ -1,0 +1,17 @@
+version: 1
+actors:
+  - slug: test-cartel
+    canonical_name: Cártel de Prueba
+    actor_type: tco
+    country_iso3: MEX
+    aliases:
+      - CDP
+      - {alias: "Test Cartel", language: en}
+    sources:
+      - {title: Synthetic test fixture, publisher: cartel-osint tests, url: "https://example.org/test-fixture", accessed: 2026-11-11}
+  - slug: test-faction
+    canonical_name: Facción de Prueba
+    actor_type: faction
+    parent: test-cartel
+    sources:
+      - {title: Synthetic test fixture, publisher: cartel-osint tests, url: "https://example.org/test-fixture", accessed: 2026-11-11}
