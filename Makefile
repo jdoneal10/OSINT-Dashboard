@@ -14,6 +14,7 @@ FILE    ?=
 ALL     ?=
 DELETED ?=
 REPROCESS ?=
+FEED ?=
 
 .PHONY: help setup dev db-up db-down db-reset db-migrate seed reference-inegi basemap \
         test test-backend test-frontend lint lint-backend lint-frontend fmt ingest
@@ -81,4 +82,4 @@ fmt: ## Auto-format backend and frontend
 
 ingest: ## Run one ingester: make ingest SOURCE=acled SINCE=2026-01-01 (see app/ingest/__main__.py)
 	$(BACKEND) $(UV) python -m app.ingest $(SOURCE) $(if $(SINCE),--since $(SINCE),) \
-		$(if $(FILE),--file "$(CURDIR)/$(FILE)",) $(if $(ALL),--all,) $(if $(DELETED),--deleted,) $(if $(REPROCESS),--reprocess,)
+		$(if $(FILE),--file "$(CURDIR)/$(FILE)",) $(if $(ALL),--all,) $(if $(DELETED),--deleted,) $(if $(REPROCESS),--reprocess,) $(if $(FEED),--feed $(FEED),)

@@ -41,6 +41,7 @@ feeds:
     language: en
     discovery: listing
     url: https://www.cbp.gov/newsroom/media-releases/all
+    link_pattern: ^/newsroom/(local|national)-media-release/[a-z0-9-]+$
     text: full
     reliability: A
     status: active

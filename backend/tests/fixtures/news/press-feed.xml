@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Test Press Office</title><link>https://press.example.org</link>
+<item><title>Synthetic indictment announced</title><link>https://press.example.org/pr/synthetic-indictment</link><pubDate>Mon, 09 Nov 2026 10:00:00 -0500</pubDate><description>&lt;p&gt;A synthetic teaser.&lt;/p&gt;</description></item>
+<item><title>Blocked by robots</title><link>https://press.example.org/private/blocked</link><pubDate>Mon, 09 Nov 2026 11:00:00 -0500</pubDate><description>Teaser for a robots-blocked page.</description></item>
+</channel></rss>

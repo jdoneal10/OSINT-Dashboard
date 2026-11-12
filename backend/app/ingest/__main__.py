@@ -17,7 +17,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.ingest import acled, cbp
+from app.ingest import acled, cbp, news
 
 
 def _cbp(args: argparse.Namespace) -> int:
@@ -34,7 +34,15 @@ def _acled(args: argparse.Namespace) -> int:
     return acled.run_events(since=args.since)
 
 
-INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {"cbp": _cbp, "acled": _acled}
+def _news(args: argparse.Namespace) -> int:
+    return news.run_news(args.feed or None)
+
+
+INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {
+    "cbp": _cbp,
+    "acled": _acled,
+    "news": _news,
+}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--snapshot-date", type=dt.date.fromisoformat, help="override (cbp --file)")
     parser.add_argument("--all", action="store_true", help="every allowed file series (cbp)")
     parser.add_argument("--deleted", action="store_true", help="deleted-events pull (acled)")
+    parser.add_argument("--feed", action="append", help="news feed slug (repeatable)")
     parser.add_argument(
         "--reprocess", action="store_true", help="re-apply raw pages on disk (acled)"
     )

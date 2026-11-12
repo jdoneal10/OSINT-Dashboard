@@ -1,0 +1,4 @@
+{"articles": [
+ {"url": "https://www.gd.example.org/nacional/sintetico-1", "title": "Nota sintética uno", "seendate": "20261110T120000Z", "domain": "gd.example.org", "language": "Spanish", "sourcecountry": "Mexico"},
+ {"url": "https://gd.example.org.evil.example/fake", "title": "Lookalike domain", "seendate": "20261110T120000Z", "domain": "gd.example.org.evil.example", "language": "Spanish", "sourcecountry": "Mexico"}
+]}
