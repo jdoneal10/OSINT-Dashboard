@@ -13,8 +13,9 @@ SINCE   ?=
 FILE    ?=
 ALL     ?=
 DELETED ?=
+REPROCESS ?=
 
-.PHONY: help setup dev db-up db-down db-reset db-migrate seed basemap \
+.PHONY: help setup dev db-up db-down db-reset db-migrate seed reference-inegi basemap \
         test test-backend test-frontend lint lint-backend lint-frontend fmt ingest
 
 help: ## List targets
@@ -46,6 +47,10 @@ db-migrate: ## Apply Alembic migrations
 seed: ## Load cited reference data from data/reference (idempotent)
 	$(BACKEND) $(UV) python -m app.reference.load
 
+reference-inegi: ## Download (resumable, ~45 min) and load INEGI municipalities + gazetteer
+	$(BACKEND) $(UV) python -m app.reference.inegi download
+	$(BACKEND) $(UV) python -m app.reference.inegi load
+
 basemap: ## One-time: extract the local Protomaps basemap for the AOI
 	./scripts/basemap.sh
 
@@ -76,4 +81,4 @@ fmt: ## Auto-format backend and frontend
 
 ingest: ## Run one ingester: make ingest SOURCE=acled SINCE=2026-01-01 (see app/ingest/__main__.py)
 	$(BACKEND) $(UV) python -m app.ingest $(SOURCE) $(if $(SINCE),--since $(SINCE),) \
-		$(if $(FILE),--file "$(CURDIR)/$(FILE)",) $(if $(ALL),--all,) $(if $(DELETED),--deleted,)
+		$(if $(FILE),--file "$(CURDIR)/$(FILE)",) $(if $(ALL),--all,) $(if $(DELETED),--deleted,) $(if $(REPROCESS),--reprocess,)

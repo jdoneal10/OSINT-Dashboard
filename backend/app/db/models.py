@@ -98,11 +98,22 @@ class Source(TimestampMixin, Base):
 # --------------------------------------------------------------------------- documents
 
 
+PIPELINE_STATUSES = ("new", "filtered_out", "relevant", "extracted", "quarantined", "skipped")
+
+
 class Document(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
-    """A retrieved article, report or release. LLM columns describe the translation step."""
+    """A retrieved article, report or release. LLM columns describe the translation step.
+
+    ``pipeline_status`` moves new -> filtered_out | relevant -> extracted | quarantined
+    (``skipped`` = not processable, e.g. empty text). ACLED never appears here (ADR 0003).
+    """
 
     __tablename__ = "documents"
-    __table_args__ = (*provenance_table_args("documents"),)
+    __table_args__ = (
+        *provenance_table_args("documents"),
+        _check_in("pipeline_status", PIPELINE_STATUSES, "pipeline_status"),
+        Index("ix_documents_pipeline_status", "pipeline_status"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str | None] = mapped_column(Text)
@@ -112,6 +123,14 @@ class Document(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     translated_text: Mapped[str | None] = mapped_column(Text)
     raw_path: Mapped[str | None] = mapped_column(Text)
     content_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    canonical_url: Mapped[str | None] = mapped_column(Text, index=True)
+    summary: Mapped[str | None] = mapped_column(Text)  # feed teaser or LLM English summary
+    text_policy: Mapped[str] = mapped_column(String(16), default="full")  # full | summary
+    pipeline_status: Mapped[str] = mapped_column(String(16), default="new")
+    relevance_score: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    relevance_model: Mapped[str | None] = mapped_column(String(64))
+    # Near-duplicate of another document (syndication / reposts); counted once for corroboration.
+    duplicate_of_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"))
 
 
 # --------------------------------------------------------------------------- actors
@@ -180,6 +199,7 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     # Source-specific fields kept verbatim (e.g. ACLED actor strings, inter codes, tags) so
     # derived steps such as actor normalization can be re-run without re-fetching.
     attributes: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    cluster_id: Mapped[int | None] = mapped_column(ForeignKey("event_clusters.id"), index=True)
 
 
 # actor1..assoc_actor2 mirror ACLED's dyad exactly (no perpetrator/target semantics);
@@ -282,6 +302,7 @@ class ReferenceArea(TimestampMixin, Base):
     area_type: Mapped[str] = mapped_column(String(32))
     country_iso3: Mapped[str] = mapped_column(String(3))
     admin1_code: Mapped[str | None] = mapped_column(String(16))
+    admin2_code: Mapped[str | None] = mapped_column(String(16), index=True)  # INEGI cvegeo
     phase: Mapped[int] = mapped_column(SmallInteger)
     geom: Mapped[WKBElement] = mapped_column(MULTIPOLYGON())
     sources: Mapped[Citations] = mapped_column(default=list)
@@ -500,3 +521,160 @@ class IngestRun(Base):
     raw_path: Mapped[str | None] = mapped_column(Text)
     params: Mapped[dict[str, Any]] = mapped_column(default=dict)
     error: Mapped[str | None] = mapped_column(Text)
+
+
+# --------------------------------------------------------------------------- Phase 2 pipeline
+
+
+class EventCluster(TimestampMixin, Base):
+    """Events that describe the same incident across documents (corroboration group)."""
+
+    __tablename__ = "event_clusters"
+    __table_args__ = (
+        CheckConstraint("credibility IS NULL OR credibility BETWEEN 1 AND 6", "cred"),
+        CheckConstraint("reliability IS NULL OR reliability IN ('A','B','C','D','E','F')", "rel"),
+        _gist("event_clusters", "centroid"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    first_date: Mapped[dt.date] = mapped_column(Date, index=True)
+    last_date: Mapped[dt.date] = mapped_column(Date)
+    event_type: Mapped[str] = mapped_column(String(64))
+    centroid: Mapped[WKBElement | None] = mapped_column(POINT())
+    admin1_code: Mapped[str | None] = mapped_column(String(16))
+    n_events: Mapped[int] = mapped_column(Integer, default=0)
+    n_documents: Mapped[int] = mapped_column(Integer, default=0)
+    n_independent_sources: Mapped[int] = mapped_column(Integer, default=0)
+    # Admiralty: best source reliability among members + information credibility 1..6.
+    reliability: Mapped[str | None] = mapped_column(String(1))
+    credibility: Mapped[int | None] = mapped_column(SmallInteger)
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    conflicts: Mapped[dict[str, Any]] = mapped_column(default=dict)  # field -> distinct values
+
+
+class ClusterAssessment(LLMDerivedMixin, TimestampMixin, Base):
+    """Analytic judgment on a cluster (Sonnet). ICD 203 language; every claim cites records."""
+
+    __tablename__ = "cluster_assessments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cluster_id: Mapped[int] = mapped_column(
+        ForeignKey("event_clusters.id", ondelete="CASCADE"), index=True
+    )
+    judgment: Mapped[str] = mapped_column(Text)
+    likelihood: Mapped[str | None] = mapped_column(String(32))  # ICD 203 expression
+    analytic_confidence: Mapped[str | None] = mapped_column(String(16))  # low|moderate|high
+    resolved: Mapped[dict[str, Any]] = mapped_column(default=dict)  # field -> resolved value
+    cited_document_ids: Mapped[list[int]] = mapped_column(default=list)
+    cited_event_ids: Mapped[list[int]] = mapped_column(default=list)
+
+
+QUARANTINE_STAGES = ("filter", "extract", "analyze")
+
+
+class LLMQuarantine(TimestampMixin, Base):
+    """Model output that failed validation twice, or was refused. Never reaches core tables."""
+
+    __tablename__ = "llm_quarantine"
+    __table_args__ = (_check_in("stage", QUARANTINE_STAGES, "stage"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    stage: Mapped[str] = mapped_column(String(16))
+    document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    cluster_id: Mapped[int | None] = mapped_column(
+        ForeignKey("event_clusters.id", ondelete="CASCADE")
+    )
+    model: Mapped[str] = mapped_column(String(64))
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    reason: Mapped[str] = mapped_column(String(32))  # validation | refusal | max_tokens | error
+    error: Mapped[str | None] = mapped_column(Text)
+    raw_output: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(SmallInteger, default=1)
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class CrimeIncidence(TimestampMixin, Base):
+    """SESNSP municipal crime incidence. Methodology 2015-2025 and 2026+ are not comparable."""
+
+    __tablename__ = "crime_incidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_id",
+            "methodology",
+            "admin2_code",
+            "month",
+            "crime_key",
+            "snapshot_date",
+            name="uq_crime_incidence_snapshot",
+        ),
+        Index("ix_crime_incidence_month", "month"),
+        Index("ix_crime_incidence_admin2", "admin2_code"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    retrieved_at: Mapped[dt.datetime]
+    snapshot_date: Mapped[dt.date] = mapped_column(Date)
+    methodology: Mapped[str] = mapped_column(String(16))  # "2015-2025" | "2026"
+    month: Mapped[dt.date] = mapped_column(Date)
+    admin1_code: Mapped[str] = mapped_column(String(16))
+    admin2_code: Mapped[str] = mapped_column(String(16))  # INEGI cvegeo (5 digits)
+    crime_type: Mapped[str] = mapped_column(String(128))
+    crime_subtype: Mapped[str | None] = mapped_column(String(128))
+    modality: Mapped[str | None] = mapped_column(String(128))
+    crime_key: Mapped[str] = mapped_column(String(400))  # canonical type|subtype|modality
+    value: Mapped[int] = mapped_column(Integer)
+
+
+LABEL_VERDICTS = ("correct", "incorrect", "partial")
+
+
+class Label(TimestampMixin, Base):
+    """Owner's hand label on one extracted record (precision evaluation, ADR 0004)."""
+
+    __tablename__ = "labels"
+    __table_args__ = (
+        UniqueConstraint("target_table", "target_id", "field", name="uq_labels_target"),
+        _check_in("verdict", LABEL_VERDICTS, "verdict"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    target_table: Mapped[str] = mapped_column(String(32))  # events | seizures | actor_events
+    target_id: Mapped[int] = mapped_column(BigInteger)
+    field: Mapped[str] = mapped_column(String(64), default="")  # "" = whole record
+    verdict: Mapped[str] = mapped_column(String(16))
+    note: Mapped[str | None] = mapped_column(Text)
+    prompt_version: Mapped[str | None] = mapped_column(String(32))  # version being judged
+
+
+PLACE_TYPES = ("state", "municipality", "locality")
+
+
+class Place(Base):
+    """Local gazetteer (INEGI) for geocoding without external services."""
+
+    __tablename__ = "places"
+    __table_args__ = (
+        UniqueConstraint("source", "code", name="uq_places_source_code"),
+        _check_in("place_type", PLACE_TYPES, "place_type"),
+        _gist("places", "point"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(16), default="inegi")
+    code: Mapped[str] = mapped_column(String(16))  # INEGI cvegeo
+    place_type: Mapped[str] = mapped_column(String(16), index=True)
+    name: Mapped[str] = mapped_column(String(256))
+    name_normalized: Mapped[str] = mapped_column(String(256), index=True)
+    country_iso3: Mapped[str] = mapped_column(String(3), default="MEX")
+    admin1_code: Mapped[str] = mapped_column(String(16), index=True)
+    admin2_code: Mapped[str | None] = mapped_column(String(16), index=True)
+    point: Mapped[WKBElement | None] = mapped_column(POINT())
+    population: Mapped[int | None] = mapped_column(Integer)
+    urban: Mapped[bool | None] = mapped_column(Boolean)

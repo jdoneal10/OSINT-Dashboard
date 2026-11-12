@@ -212,11 +212,11 @@ def link_events(session: Session, event_ids: Iterable[int], index: ActorIndex | 
         for role, (field, inter_field) in _ROLE_FIELDS.items():
             for raw in split_actors(attrs.get(field)):
                 links.add((index.resolve(raw, attrs.get(inter_field)), event_id, role))
-    if links:
+    rows = [{"actor_id": a, "event_id": e, "role": r} for a, e, r in sorted(links)]
+    # 3 bind parameters per row; stay well under Postgres's 65,535 limit.
+    for start in range(0, len(rows), 10_000):
         session.execute(
-            insert(actor_events)
-            .values([{"actor_id": a, "event_id": e, "role": r} for a, e, r in links])
-            .on_conflict_do_nothing()
+            insert(actor_events).values(rows[start : start + 10_000]).on_conflict_do_nothing()
         )
     return len(links)
 

@@ -29,6 +29,8 @@ def _cbp(args: argparse.Namespace) -> int:
 def _acled(args: argparse.Namespace) -> int:
     if args.deleted:
         return acled.run_deleted()
+    if args.reprocess:
+        return acled.run_reprocess()
     return acled.run_events(since=args.since)
 
 
@@ -43,6 +45,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--snapshot-date", type=dt.date.fromisoformat, help="override (cbp --file)")
     parser.add_argument("--all", action="store_true", help="every allowed file series (cbp)")
     parser.add_argument("--deleted", action="store_true", help="deleted-events pull (acled)")
+    parser.add_argument(
+        "--reprocess", action="store_true", help="re-apply raw pages on disk (acled)"
+    )
     args = parser.parse_args(argv)
 
     if not args.source:

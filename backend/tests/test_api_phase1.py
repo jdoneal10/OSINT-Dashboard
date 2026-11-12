@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.models import Actor
 from app.ingest import acled, cbp
 from tests.acled_fake import FakeAcled, fake_credentials
@@ -20,6 +21,7 @@ CBP_FIX = Path(__file__).parent / "fixtures" / "cbp"
 def loaded(seeded: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Session:
     """Reference data + synthetic ACLED events + CBP fixtures (drugs in two snapshots)."""
     fake_credentials(monkeypatch)
+    monkeypatch.setattr(get_settings(), "acled_aoi_phase", 1)  # tests written for Phase 1
     with FakeAcled().client() as http:
         acled.run_events(dt.date(2018, 1, 1), until=dt.date(2026, 11, 1), http=http)
     cbp.run_local(CBP_FIX / "encounters-aor.csv", snapshot=dt.date(2026, 10, 15))
