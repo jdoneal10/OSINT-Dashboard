@@ -11,6 +11,10 @@ Precision: 1 locality, 2 municipality, 3 state (label point). A municipality's p
 seat (cabecera, INEGI locality 0001, e.g. Culiacán Rosales), not the polygon centre, which
 in large municipalities can be tens of kilometres from the city. A place mention equal to
 the municipality's name ("Culiacán") resolves to the seat at locality precision.
+U.S. mentions resolve only within the four border states in ``reference_areas``: a place or
+city naming a cited port of entry (``nodes``, node_type ``poe``) takes that node's point at
+precision 2 and its ``node_id``; otherwise the state label point at precision 3. Other
+countries and U.S. states are outside the AOI and stay unresolved.
 Unresolved -> ``None`` (the event keeps its text but has no point).
 """
 
@@ -22,10 +26,12 @@ from geoalchemy2 import Geometry
 from sqlalchemy import Select, cast, func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Place, ReferenceArea
+from app.db.models import Node, Place, ReferenceArea
 from app.reference.inegi_load import place_key
 
 MEXICO = {"mexico", "méxico", "mx", "mex"}
+USA = {"united states", "united states of america", "usa", "us", "u s", "u s a",
+       "estados unidos", "eeuu", "ee uu"}  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -34,8 +40,10 @@ class GeoResult:
     lat: float
     admin1_code: str
     admin2_code: str | None
-    precision: int  # 1 locality, 2 municipality, 3 state
+    precision: int  # 1 locality, 2 municipality / port of entry, 3 state
     matched: str
+    country_iso3: str = "MEX"
+    node_id: int | None = None
 
     @property
     def ewkt(self) -> str:
@@ -157,8 +165,10 @@ def geocode(
     state: str | None,
     country: str | None = "Mexico",
 ) -> GeoResult | None:
+    if country and place_key(country) in USA:
+        return _geocode_us(session, place=place, municipality=municipality, state=state)
     if country and place_key(country) not in MEXICO:
-        return None  # gazetteer covers Mexico; other countries stay unresolved for now
+        return None  # outside the AOI gazetteers
     st = resolve_state(session, state)
     admin1 = st[0] if st else None
     mun = _find_municipality(session, municipality, admin1)
@@ -176,4 +186,44 @@ def geocode(
         return _municipality_result(mun, xy, place)
     if admin1 and (xy := _state_point(session, admin1)):
         return GeoResult(xy[0], xy[1], admin1, None, 3, st[1] if st else admin1)
+    return None
+
+
+def _geocode_us(
+    session: Session, *, place: str | None, municipality: str | None, state: str | None
+) -> GeoResult | None:
+    key = place_key(state or "")
+    if not key:
+        return None
+    area = next(
+        (
+            (name, code)
+            for name, code in session.execute(
+                select(ReferenceArea.name, ReferenceArea.admin1_code).where(
+                    ReferenceArea.country_iso3 == "USA", ReferenceArea.area_type == "admin1"
+                )
+            )
+            if code and (place_key(name) == key or code.removeprefix("US-").lower() == key)
+        ),
+        None,
+    )
+    if area is None:
+        return None  # not a border state: outside the AOI
+    name, code = area
+    mentions = [place_key(m) for m in (municipality, place) if m]
+    ports = session.execute(
+        select(
+            Node.id,
+            Node.name,
+            func.ST_X(cast(Node.point, Geometry)),
+            func.ST_Y(cast(Node.point, Geometry)),
+        ).where(Node.node_type == "poe", Node.admin1_code == code, Node.point.is_not(None))
+    ).all()
+    # Longest name first so "Calexico East" wins over "Calexico".
+    for node_id, node_name, x, y in sorted(ports, key=lambda r: -len(r[1])):
+        nk = place_key(node_name)
+        if any(m == nk or f" {nk} " in f" {m} " for m in mentions):
+            return GeoResult(float(x), float(y), code, None, 2, node_name, "USA", node_id)
+    if xy := _state_point(session, code):
+        return GeoResult(xy[0], xy[1], code, None, 3, name, "USA")
     return None

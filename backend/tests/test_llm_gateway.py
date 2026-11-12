@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -273,3 +273,18 @@ def test_client_pins_official_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gw, "require_secret", lambda _name: SecretStr("sk-test-not-real"))
     client = gw.Gateway().client
     assert str(client.base_url).rstrip("/") == "https://api.anthropic.com"
+
+
+def test_strict_schema_moves_unsupported_constraints_to_description() -> None:
+    class C(BaseModel):
+        n: int | None = Field(ge=0)
+        items: list[str] = Field(max_length=10, description="Things")
+        ids: list[int] = Field(min_length=1)
+
+    schema = strict_schema(C)
+    text = str(schema)
+    for banned in ("minimum", "maxItems", "maxLength", "exclusiveMinimum"):
+        assert banned not in text
+    assert schema["properties"]["items"]["description"] == "Things (at most items: 10)"
+    assert schema["properties"]["ids"]["minItems"] == 1
+    assert ">= 0" in str(schema["properties"]["n"])

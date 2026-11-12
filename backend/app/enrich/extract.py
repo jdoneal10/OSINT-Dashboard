@@ -246,7 +246,7 @@ def store_extraction(
             description=e.description,
             fatalities=e.fatalities,
             geom=func.ST_GeogFromText(geo.ewkt) if geo else None,
-            country_iso3="MEX" if geo else None,
+            country_iso3=geo.country_iso3 if geo else None,
             admin1_code=geo.admin1_code if geo else None,
             admin2_code=geo.admin2_code if geo else None,
             admin1_name=e.location.state,
@@ -289,7 +289,8 @@ def store_extraction(
             quantity=Decimal(str(s.quantity)) if s.quantity is not None else None,
             unit=s.unit,
             seizing_agency=s.seizing_agency,
-            country_iso3="MEX" if geo else None,
+            node_id=geo.node_id if geo else None,
+            country_iso3=geo.country_iso3 if geo else None,
             admin1_code=geo.admin1_code if geo else None,
             **llm,
         )

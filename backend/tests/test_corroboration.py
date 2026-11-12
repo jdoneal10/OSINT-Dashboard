@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -107,6 +107,21 @@ def test_clustering_counts_independent_sources_and_conflicts(seeded: Session) ->
     assert cluster.reliability == "A"
     assert cluster.conflicts["fatalities"] == [3, 4]
     assert (cluster.first_date, cluster.last_date) == (dt.date(2026, 11, 10), dt.date(2026, 11, 11))
+
+
+def test_reextraction_prunes_and_invalidates_clusters(seeded: Session) -> None:
+    cid, docs = _conflicted_cluster(seeded)
+    seeded.add(ClusterAssessment(cluster_id=cid, judgment="old", cited_document_ids=docs))
+    seeded.commit()
+    # Re-extraction of one document deletes its event: the cluster shrinks, assessment drops.
+    seeded.execute(delete(Event).where(Event.source_key == "b:e0"))
+    dedupe.cluster_events(seeded)
+    assert seeded.get_one(EventCluster, cid).n_events == 1
+    assert seeded.scalar(select(func.count()).select_from(ClusterAssessment)) == 0
+    # ...and when the last event goes, the cluster goes.
+    seeded.execute(delete(Event).where(Event.source_key == "a:e0"))
+    dedupe.cluster_events(seeded)
+    assert seeded.get(EventCluster, cid) is None
 
 
 @pytest.mark.parametrize(

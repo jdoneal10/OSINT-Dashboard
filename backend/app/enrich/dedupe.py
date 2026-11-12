@@ -18,10 +18,17 @@ import logging
 import re
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
-from app.db.models import Document, Event, EventCluster, Source, event_documents
+from app.db.models import (
+    ClusterAssessment,
+    Document,
+    Event,
+    EventCluster,
+    Source,
+    event_documents,
+)
 
 log = logging.getLogger(__name__)
 
@@ -154,8 +161,32 @@ def refresh_cluster(session: Session, cluster: EventCluster) -> None:
     cluster.admin1_code = admin1.pop() if len(admin1) == 1 else None
 
 
+def prune_clusters(session: Session) -> int:
+    """Repair clusters whose members changed outside clustering (re-extraction deletes events).
+
+    Empty clusters are deleted (their assessments cascade); clusters that lost members are
+    refreshed and their assessments dropped so the analysis re-runs on the current reports.
+    """
+    actual = select(func.count()).where(Event.cluster_id == EventCluster.id).scalar_subquery()
+    stale = list(session.scalars(select(EventCluster).where(EventCluster.n_events != actual)))
+    for cluster in stale:
+        if session.scalar(select(func.count()).where(Event.cluster_id == cluster.id)):
+            session.execute(
+                delete(ClusterAssessment).where(ClusterAssessment.cluster_id == cluster.id)
+            )
+            refresh_cluster(session, cluster)
+        else:
+            session.delete(cluster)
+    session.flush()
+    return len(stale)
+
+
 def cluster_events(session: Session) -> dict[str, int]:
-    """Assign unclustered document-derived events to clusters."""
+    """Assign unclustered document-derived events to clusters.
+
+    A cluster that gains members loses its assessment, so the analysis re-runs with them.
+    """
+    pruned = prune_clusters(session)
     acled = session.scalar(select(Source.id).where(Source.slug == "acled"))
     has_doc = select(event_documents.c.event_id).where(event_documents.c.event_id == Event.id)
     events = list(
@@ -187,10 +218,13 @@ def cluster_events(session: Session) -> dict[str, int]:
             counts["new"] += 1
         else:
             counts["joined"] += 1
+            session.execute(
+                delete(ClusterAssessment).where(ClusterAssessment.cluster_id == cluster.id)
+            )
         ev.cluster_id = cluster.id
         session.flush()
         touched.add(cluster.id)
     for cid in touched:
         refresh_cluster(session, session.get_one(EventCluster, cid))
-    log.info("clustering: %s (%d clusters touched)", counts, len(touched))
+    log.info("clustering: %s (%d touched, %d pruned)", counts, len(touched), pruned)
     return counts

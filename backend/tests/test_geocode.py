@@ -63,8 +63,31 @@ def test_state_precision_and_unresolved(gazetteer: Session) -> None:
     assert (r.precision, r.admin1_code) == (3, "MX-SON")
     assert geocode(gazetteer, place="Valentina", municipality=None, state=None) is None
     assert (
-        geocode(
-            gazetteer, place="El Paso", municipality=None, state="Texas", country="United States"
-        )
+        geocode(gazetteer, place="Bogotá", municipality=None, state=None, country="Colombia")
         is None
     )
+
+
+@pytest.mark.parametrize(
+    ("place", "municipality", "state", "expected"),
+    [
+        ("DeConcini Crossing, Port of Nogales", "Nogales", "Arizona", ("Nogales", 2, "US-AZ")),
+        ("Juarez Lincoln Bridge", "Laredo", "Texas", ("Laredo", 2, "US-TX")),
+        ("Calexico East port of entry", None, "California", ("Calexico East", 2, "US-CA")),
+        ("San Clemente checkpoint", None, "California", ("California", 3, "US-CA")),
+        (None, None, "TX", ("Texas", 3, "US-TX")),
+        (None, None, "South Carolina", None),  # not a border state
+    ],
+)
+def test_us_border_states_and_ports(
+    seeded: Session,
+    place: str | None,
+    municipality: str | None,
+    state: str,
+    expected: tuple[str, int, str] | None,
+) -> None:
+    r = geocode(seeded, place=place, municipality=municipality, state=state, country="USA")
+    assert ((r.matched, r.precision, r.admin1_code) if r else None) == expected
+    if r is not None:
+        assert r.country_iso3 == "USA"
+        assert (r.node_id is not None) == (r.precision == 2)
