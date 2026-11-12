@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     llm_monthly_budget_usd: float = 75.0
     llm_budget_alert_fraction: float = 0.8
 
+    # Local relevance filter (Ollama on loopback only; ADR 0004).
+    ollama_url: str = "http://127.0.0.1:11434"
+    relevance_model: str = "qwen3:4b"
+    # Low on purpose (recall over precision); tuned on the labeled set in Step 6.
+    relevance_threshold: float = 0.3
+
     worker_heartbeat_minutes: int = 5
     scheduled_ingest: bool = True
     # ACLED coverage: 1 = six Mexican border states (Phase 1), 2 = all of Mexico (Phase 2).
