@@ -107,3 +107,31 @@ def nodes(
             for node, geom, x, y in rows
         ]
     )
+
+
+class AdjacencyOut(BaseModel):
+    sector: str
+    name: str
+    adjacent_admin1: list[str]
+    field_office: str | None
+    method: str | None
+    sources: list[dict[str, Any]]
+
+
+@router.get("/adjacency", response_model=list[AdjacencyOut])
+def adjacency(session: Annotated[Session, Depends(get_session)]) -> list[AdjacencyOut]:
+    """USBP sector -> adjacent Mexican states and paired OFO field office (analyst-derived)."""
+    rows = session.scalars(
+        select(Node).where(Node.node_type == "usbp_sector").order_by(Node.name)
+    ).all()
+    return [
+        AdjacencyOut(
+            sector=n.slug,
+            name=n.name,
+            adjacent_admin1=n.properties.get("adjacent_admin1", []),
+            field_office=n.properties.get("field_office"),
+            method=n.properties.get("adjacency_method"),
+            sources=n.properties.get("adjacency_sources", []),
+        )
+        for n in rows
+    ]
