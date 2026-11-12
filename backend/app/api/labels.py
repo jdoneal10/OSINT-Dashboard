@@ -50,13 +50,18 @@ class LabelIn(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
 
 
-def _prompt_version(session: Session, body: LabelIn) -> str | None:
-    """Validate the target belongs to the document; return the judged prompt version."""
+def _judged(session: Session, body: LabelIn) -> tuple[str | None, str | None]:
+    """Validate the target belongs to the document.
+
+    Returns (prompt version judged, relevance decision judged); the decision is set only for
+    document relevance labels and is frozen with the label.
+    """
     if body.target_table == "documents":
         doc = session.get(Document, body.target_id)
         if doc is None or doc.id != body.document_id:
             raise HTTPException(422, "target document does not match document_id")
-        return doc.prompt_version or doc.relevance_model
+        decision = "relevant" if doc.pipeline_status == "extracted" else "not_relevant"
+        return doc.prompt_version or doc.relevance_model, decision
     model: type[Event] | type[Seizure]
     if body.target_table == "events":
         model, link, col = Event, event_documents, event_documents.c.event_id
@@ -70,7 +75,7 @@ def _prompt_version(session: Session, body: LabelIn) -> str | None:
     version: str | None = session.scalar(
         select(model.prompt_version).where(model.id == body.target_id)
     )
-    return version
+    return version, None
 
 
 @router.get("", response_model=list[LabelOut])
@@ -84,8 +89,8 @@ def list_labels(session: DB, document_id: int | None = None) -> list[LabelOut]:
 @router.put("", response_model=LabelOut)
 def put_label(body: LabelIn, session: DB) -> LabelOut:
     """Create or replace the label for (target_table, target_id, field)."""
-    version = _prompt_version(session, body)
-    values = body.model_dump() | {"prompt_version": version}
+    version, decision = _judged(session, body)
+    values = body.model_dump() | {"prompt_version": version, "judged_decision": decision}
     ins = insert(Label).values(**values)
     stmt = ins.on_conflict_do_update(
         constraint="uq_labels_target",
@@ -93,6 +98,7 @@ def put_label(body: LabelIn, session: DB) -> LabelOut:
             "verdict": ins.excluded.verdict,
             "note": ins.excluded.note,
             "prompt_version": ins.excluded.prompt_version,
+            "judged_decision": ins.excluded.judged_decision,
             "document_id": ins.excluded.document_id,
             "updated_at": func.now(),
         },

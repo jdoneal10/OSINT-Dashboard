@@ -262,6 +262,8 @@ export interface LabelRecord {
   verdict: Verdict
   note: string | null
   prompt_version: string | null
+  /** Relevance labels: the pipeline decision judged, frozen at labeling time. */
+  judged_decision: 'relevant' | 'not_relevant' | null
   updated_at: string
 }
 

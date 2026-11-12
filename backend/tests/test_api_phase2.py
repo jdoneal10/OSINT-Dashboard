@@ -288,6 +288,8 @@ def test_label_queue_is_stratified_and_tracks_progress(
     doc = news["doc_filtered"]
     relevance = {"document_id": doc, "target_table": "documents", "target_id": doc}
     client.put("/labels", json=relevance | {"field": "relevant", "verdict": "correct"})
+    stored = client.get("/labels", params={"document_id": doc}).json()
+    assert stored[0]["judged_decision"] == "not_relevant"  # frozen at labeling time
     q = client.get("/labels/queue", params={"size": 10, "filtered_share": 0.5}).json()
     item = next(i for i in q["items"] if i["document_id"] == doc)
     assert (item["relevance_labeled"], item["n_records"], item["done"]) == (True, 0, True)

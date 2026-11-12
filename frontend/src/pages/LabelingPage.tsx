@@ -89,6 +89,7 @@ function Workbench({ doc }: { doc: DocumentDetail }) {
             <LabelControl
               key={`e${ev.id}-${recordLabel(doc, 'events', ev.id)?.updated_at ?? ''}`}
               table="events"
+              outsideAoi={!ev.in_aoi}
               current={recordLabel(doc, 'events', ev.id)}
               busy={busy}
               onSave={(c) => void saveRecord('events', ev.id, c)}
@@ -103,6 +104,7 @@ function Workbench({ doc }: { doc: DocumentDetail }) {
             <LabelControl
               key={`s${s.id}-${recordLabel(doc, 'seizures', s.id)?.updated_at ?? ''}`}
               table="seizures"
+              outsideAoi={!s.in_aoi}
               current={recordLabel(doc, 'seizures', s.id)}
               busy={busy}
               onSave={(c) => void saveRecord('seizures', s.id, c)}

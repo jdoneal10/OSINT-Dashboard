@@ -656,6 +656,9 @@ class Label(TimestampMixin, Base):
     verdict: Mapped[str] = mapped_column(String(16))
     note: Mapped[str | None] = mapped_column(Text)
     prompt_version: Mapped[str | None] = mapped_column(String(32))  # version being judged
+    # documents/"relevant" labels: the pipeline decision judged ("relevant" | "not_relevant"),
+    # frozen at labeling time so later re-filtering cannot flip the label's meaning.
+    judged_decision: Mapped[str | None] = mapped_column(String(16))
 
 
 PLACE_TYPES = ("state", "municipality", "locality")

@@ -13,10 +13,14 @@ Definitions
   at least 100 labeled documents. Wilson 95% intervals are reported because samples are small.
 - **Field errors**: fields named in "partly wrong" labels, including ``person_named``
   (hard rule 3 / ADR 0005).
+- **Scope**: ``out_of_aoi`` marks a correctly extracted record that lies outside the area of
+  interest (no direct link to the U.S.-Mexico border). It is a priority judgment, not an
+  extraction error: such a record counts as correct, and scope is reported separately.
 - **Relevance**: a ``documents``/``relevant`` label says whether the pipeline's decision
-  (extracted = relevant, else not) was right; from it each labeled document gets a true
-  relevance. **Filter recall** = truly relevant documents the local filter passed
-  (score >= threshold) / truly relevant documents.
+  (extracted = relevant, else not) was right. The decision is frozen on the label
+  (``judged_decision``), so re-filtering later does not change the label's meaning; from it
+  each labeled document gets a true relevance. **Filter recall** = truly relevant documents
+  the local filter passed (score >= threshold) / truly relevant documents.
 - **Weighting**: the labeling queue oversamples documents the pipeline rejected, so recall
   and pass rates are weighted by stratum (passed / rejected by the local filter): each
   labeled document stands for (stratum size in the corpus) / (labeled in the stratum).
@@ -51,6 +55,7 @@ TARGET_PRECISION = 0.85
 TARGET_DOCUMENTS = 100
 SWEEP = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
 RECORD_TABLES = ("events", "seizures")
+SCOPE_FIELDS = frozenset({"out_of_aoi"})  # priority judgments, not extraction errors
 
 
 def wilson(successes: float, n: float, z: float = 1.96) -> tuple[float, float]:
@@ -98,6 +103,7 @@ class RecordReport:
     overall: Precision
     field_errors: Counter[str]
     person_named: int
+    out_of_aoi: int  # records outside the area of interest (scope, not error)
     documents: int  # documents with at least one record label
     wrong_records: list[tuple[str, int]]
 
@@ -118,18 +124,25 @@ def record_precision(session: Session, prompt_version: str) -> RecordReport:
         key = (lab.target_table, lab.target_id)
         if key not in latest or lab.updated_at > latest[key].updated_at:
             latest[key] = lab
+    out_of_aoi = 0
     for (table, target), lab in sorted(latest.items()):
-        by_table[table].add(lab.verdict)
-        overall.add(lab.verdict)
-        if lab.verdict == "partial":
-            fields.update(f for f in lab.field.split(",") if f)
-        if lab.verdict != "correct":
+        named = {f for f in lab.field.split(",") if f}
+        errors = named - SCOPE_FIELDS
+        out_of_aoi += bool(named & SCOPE_FIELDS)
+        # "Partly wrong" only for scope reasons is a correct extraction.
+        verdict = "correct" if lab.verdict == "partial" and not errors else lab.verdict
+        by_table[table].add(verdict)
+        overall.add(verdict)
+        if verdict == "partial":
+            fields.update(errors)
+        if verdict != "correct":
             wrong.append((table, target))
     return RecordReport(
         by_table=by_table,
         overall=overall,
         field_errors=fields,
         person_named=fields["person_named"],
+        out_of_aoi=out_of_aoi,
         documents=len({lab.document_id for lab in latest.values()}),
         wrong_records=wrong,
     )
@@ -161,7 +174,13 @@ class FilterMetrics:
 def judged_documents(session: Session, threshold: float) -> list[JudgedDocument]:
     """Documents with a relevance label, with stratum weights (passed / rejected filter)."""
     rows = session.execute(
-        select(Document.id, Document.pipeline_status, Document.relevance_score, Label.verdict)
+        select(
+            Document.id,
+            Document.pipeline_status,
+            Document.relevance_score,
+            Label.verdict,
+            Label.judged_decision,
+        )
         .join(Label, Label.document_id == Document.id)
         .where(
             Label.target_table == "documents",
@@ -170,8 +189,9 @@ def judged_documents(session: Session, threshold: float) -> list[JudgedDocument]
         )
     ).all()
     docs = []
-    for doc_id, status, score, verdict in rows:
-        pipeline_relevant = status == "extracted"
+    for doc_id, status, score, verdict, judged in rows:
+        # The decision the owner judged, frozen on the label (current status for old labels).
+        pipeline_relevant = judged == "relevant" if judged else status == "extracted"
         truly = pipeline_relevant if verdict == "correct" else not pipeline_relevant
         docs.append(
             JudgedDocument(
@@ -300,6 +320,9 @@ def render(
         "",
         f"**Hard rule 3 (ADR 0005):** {rec.person_named} record(s) named a person other than "
         "a reported criminal-group leader.",
+        "",
+        f"**Scope:** {rec.out_of_aoi} labeled record(s) lie outside the area of interest "
+        "(correct extractions, low priority; hidden from the feed and map by default).",
         "",
         "## Relevance filter",
         "",

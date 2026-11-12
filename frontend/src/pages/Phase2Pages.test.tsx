@@ -215,6 +215,26 @@ describe('Labeling', () => {
     })
   })
 
+  it('pre-ticks and saves the outside-AOI scope flag for records outside the AOI', async () => {
+    const outside = { ...detail, events: [{ ...event, in_aoi: false }] }
+    const fetchMock = renderAt('/labeling/7', {
+      '/labels/queue': { size: 0, done: 0, items: [] },
+      '/documents/7': outside,
+      '/labels': { id: 2 },
+    })
+    const bench = await screen.findByRole('region', { name: 'Labeling workbench' })
+    expect(await within(bench).findByRole('checkbox', { name: /Outside AOI/ })).toBeChecked()
+    fireEvent.click(within(bench).getByRole('button', { name: 'Correct' }))
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')
+      expect(JSON.parse(String(put?.[1]?.body))).toMatchObject({
+        target_table: 'events',
+        verdict: 'correct',
+        field: 'out_of_aoi',
+      })
+    })
+  })
+
   it('requires naming the wrong fields before saving a partial verdict', async () => {
     renderAt('/labeling/7', { '/labels/queue': { size: 0, done: 0, items: [] } })
     const bench = await screen.findByRole('region', { name: 'Labeling workbench' })

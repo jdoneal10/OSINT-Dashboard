@@ -119,6 +119,7 @@ class LabelOut(BaseModel):
     verdict: str
     note: str | None
     prompt_version: str | None
+    judged_decision: str | None
     updated_at: dt.datetime
 
 
@@ -294,6 +295,7 @@ def label_out(lab: Label) -> LabelOut:
         verdict=lab.verdict,
         note=lab.note,
         prompt_version=lab.prompt_version,
+        judged_decision=lab.judged_decision,
         updated_at=lab.updated_at,
     )
 

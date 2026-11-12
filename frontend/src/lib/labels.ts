@@ -17,9 +17,19 @@ export const RECORD_FIELDS: Record<'events' | 'seizures', string[]> = {
   seizures: ['substance', 'quantity', 'date', 'agency', 'location'],
 }
 
+/** Scope flag: correct extraction, but outside the area of interest (low priority). */
+export const OUT_OF_AOI = 'out_of_aoi'
+
+/** Field string for a label: wrong fields plus the scope flag, sorted, comma-separated. */
+export function labelField(errors: string[], outsideAoi: boolean): string {
+  return [...errors.filter((f) => f !== OUT_OF_AOI), ...(outsideAoi ? [OUT_OF_AOI] : [])]
+    .sort()
+    .join(',')
+}
+
 export interface LabelChange {
   verdict: Verdict
-  /** Comma-separated wrong fields for a partial verdict; "" for the whole record. */
+  /** Comma-separated wrong fields (partial) plus out_of_aoi; "" for the whole record. */
   field: string
   note: string | null
 }

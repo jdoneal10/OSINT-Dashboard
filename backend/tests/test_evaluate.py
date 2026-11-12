@@ -64,7 +64,7 @@ def test_wilson_interval() -> None:
 def test_record_precision_strict_lenient_fields_and_versions(seeded: Session, source: int) -> None:
     d1 = _doc(seeded, source, "a", "extracted", "0.9")
     d2 = _doc(seeded, source, "b", "extracted", "0.8")
-    e1, e2, e3, e4 = (_event(seeded, source, d1, f"a:e{i}") for i in range(4))
+    e1, e2, e3, e4, e5 = (_event(seeded, source, d1, f"a:e{i}") for i in range(5))
     sz = Seizure(source_id=source, source_key="b:s0", retrieved_at=NOW,
                  seizure_date=NOW.date(), substance="fentanyl", prompt_version=V)  # fmt: skip
     seeded.add(sz)
@@ -74,12 +74,14 @@ def test_record_precision_strict_lenient_fields_and_versions(seeded: Session, so
     _label(seeded, d1, "events", e3, "incorrect")
     _label(seeded, d2, "seizures", sz.id, "correct")
     _label(seeded, d1, "events", e4, "incorrect", version="extract-v1")  # other prompt: ignored
+    _label(seeded, d1, "events", e5, "partial", "out_of_aoi")  # scope only: counts as correct
     seeded.commit()
 
     rec = evaluate.record_precision(seeded, V)
-    assert (rec.overall.n, rec.overall.correct, rec.overall.partial) == (4, 2, 1)
-    assert rec.overall.strict == 0.5
-    assert rec.overall.lenient == 0.75
+    assert (rec.overall.n, rec.overall.correct, rec.overall.partial) == (5, 3, 1)
+    assert rec.overall.strict == 0.6
+    assert rec.overall.lenient == 0.8
+    assert rec.out_of_aoi == 1
     assert rec.by_table["seizures"].strict == 1.0
     assert rec.field_errors == {"fatalities": 1, "person_named": 1}
     assert rec.person_named == 1
@@ -109,6 +111,26 @@ def test_filter_recall_is_weighted_by_stratum(seeded: Session, source: int) -> N
     assert m.pass_rate == pytest.approx(8 / 12)
     sweep = dict((t, r) for t, r, _ in m.sweep)
     assert sweep[0.1] == pytest.approx(1.0)  # the miss scored 0.1
+
+
+def test_relevance_label_keeps_the_decision_it_judged(seeded: Session, source: int) -> None:
+    doc = _doc(seeded, source, "x", "filtered_out", "0.1")
+    seeded.add(
+        Label(
+            document_id=doc,
+            target_table="documents",
+            target_id=doc,
+            field="relevant",
+            verdict="incorrect",
+            judged_decision="not_relevant",
+        )
+    )
+    seeded.commit()
+    # Later re-filtering passes the document; the label still means "this was relevant".
+    seeded.get_one(Document, doc).pipeline_status = "extracted"
+    seeded.commit()
+    (judged,) = evaluate.judged_documents(seeded, 0.3)
+    assert judged.truly_relevant is True
 
 
 class FakeScorer:
