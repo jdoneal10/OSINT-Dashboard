@@ -63,6 +63,24 @@ sources:
         url: https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.XML
         accessed: 2026-11-11
 
+  - slug: sesnsp
+    name: SESNSP — Incidencia delictiva municipal (Fuero común)
+    source_type: dataset
+    # B: official administrative counts of reported crimes; under-reporting and reporting
+    # practice vary by state, so not A. Methodology changed in 2026 (separate series).
+    reliability: B
+    homepage_url: https://www.gob.mx/sesnsp/acciones-y-programas/datos-abiertos-de-incidencia-delictiva
+    redistribution_allowed: true
+    license_notes: >-
+      Mexican government open data; no licence stated on the download page. Files are on
+      SharePoint, which refuses automated downloads (HTTP 403), so they are downloaded by the
+      owner and imported locally. Only TCO-relevant crime types are stored.
+    sources:
+      - title: Datos abiertos de incidencia delictiva
+        publisher: Secretariado Ejecutivo del Sistema Nacional de Seguridad Pública (SESNSP)
+        url: https://www.gob.mx/sesnsp/acciones-y-programas/datos-abiertos-de-incidencia-delictiva
+        accessed: 2026-11-11
+
   - slug: natural-earth
     name: Natural Earth
     source_type: reference
