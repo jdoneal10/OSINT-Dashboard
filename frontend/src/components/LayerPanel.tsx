@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { AreaProps, NodeProps, ReferenceCollection } from '../api/types'
 import type { LayerVisibility } from './map/OperationalMap'
 
@@ -7,9 +8,11 @@ interface Props {
   basemap: boolean | null
   visibility: LayerVisibility
   onToggle: (key: keyof LayerVisibility) => void
+  /** Rendered as the first section (event filters). */
+  children?: ReactNode
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="border-ink-700 border-b px-4 py-3">
       <h2 className="text-ink-500 mb-2 text-[10px] font-semibold tracking-[0.16em] uppercase">
@@ -44,14 +47,21 @@ function Toggle(props: {
   )
 }
 
-export default function LayerPanel({ aoi, nodes, basemap, visibility, onToggle }: Props) {
+export default function LayerPanel({ aoi, nodes, basemap, visibility, onToggle, children }: Props) {
   const states = aoi?.features ?? []
   const poes = nodes?.features.filter((f) => f.properties.node_type === 'poe') ?? []
   const sectors = nodes?.features.filter((f) => f.properties.node_type === 'usbp_sector') ?? []
 
   return (
-    <aside className="border-ink-700 bg-ink-900 flex w-72 shrink-0 flex-col overflow-y-auto border-r">
+    <aside className="border-ink-700 bg-ink-900 flex w-80 shrink-0 flex-col overflow-y-auto border-r">
+      {children && <Section title="Violence events · ACLED">{children}</Section>}
       <Section title="Layers · Phase 1 AOI">
+        <Toggle
+          label="Violence events"
+          swatch="#f43f5e"
+          on={visibility.events}
+          onChange={() => onToggle('events')}
+        />
         <Toggle
           label="Border states"
           swatch="linear-gradient(90deg,#f59e0b 50%,#38bdf8 50%)"
@@ -113,6 +123,7 @@ export default function LayerPanel({ aoi, nodes, basemap, visibility, onToggle }
 
       <Section title="Sources">
         <ul className="text-ink-500 space-y-1 text-xs">
+          <li>Events: ACLED (Armed Conflict Location &amp; Event Data)</li>
           <li>Boundaries: Natural Earth 1:10m (public domain)</li>
           <li>Ports of entry: BTS Border Crossing Entry Data</li>
           <li>Sectors: CBP public sector pages</li>

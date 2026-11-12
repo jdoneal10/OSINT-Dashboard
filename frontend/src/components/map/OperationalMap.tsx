@@ -2,20 +2,40 @@ import * as maplibregl from 'maplibre-gl'
 import type { ExpressionSpecification, GeoJSONSource, LngLatBoundsLike } from 'maplibre-gl'
 import { Protocol } from 'pmtiles'
 import { useEffect, useRef, useState } from 'react'
-import type { AreaProps, Citation, NodeProps, ReferenceCollection } from '../../api/types'
+import type {
+  AreaProps,
+  Citation,
+  EventPoints,
+  NodeProps,
+  ReferenceCollection,
+} from '../../api/types'
+import { EVENT_TYPE_COLORS, OTHER_EVENT_COLOR } from './eventColors'
 import { basemapStyle, fallbackStyle } from './basemap'
 
 export interface LayerVisibility {
   aoi: boolean
   poe: boolean
+  events: boolean
 }
+
+export type EventMode = 'heat' | 'points'
 
 interface Props {
   aoi?: ReferenceCollection<AreaProps>
   nodes?: ReferenceCollection<NodeProps>
+  events?: EventPoints
+  eventMode: EventMode
   basemap: boolean
   visibility: LayerVisibility
+  onEventClick?: (id: number) => void
 }
+
+const EVENT_COLOR: ExpressionSpecification = [
+  'match',
+  ['get', 't'],
+  ...Object.entries(EVENT_TYPE_COLORS).flat(),
+  OTHER_EVENT_COLOR,
+] as unknown as ExpressionSpecification
 
 let protocolRegistered = false
 function ensurePmtilesProtocol() {
@@ -65,6 +85,58 @@ function boundsOf(fc: ReferenceCollection<AreaProps>): LngLatBoundsLike | null {
   return b.isEmpty() ? null : b
 }
 
+function addEventLayers(map: maplibregl.Map) {
+  map.addSource('events', { type: 'geojson', data: EMPTY })
+  map.addLayer({
+    id: 'events-heat',
+    type: 'heatmap',
+    source: 'events',
+    maxzoom: 12,
+    paint: {
+      // Weight by fatalities (log-ish) so lethal events stand out, but every event counts.
+      'heatmap-weight': ['interpolate', ['linear'], ['get', 'f'], 0, 0.4, 5, 1],
+      'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 4, 0.6, 10, 2],
+      'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 4, 6, 10, 22],
+      'heatmap-opacity': 0.85,
+      'heatmap-color': [
+        'interpolate',
+        ['linear'],
+        ['heatmap-density'],
+        0,
+        'rgba(0,0,0,0)',
+        0.2,
+        '#4c1d95',
+        0.45,
+        '#be123c',
+        0.7,
+        '#f97316',
+        1,
+        '#fde68a',
+      ],
+    },
+  })
+  map.addLayer({
+    id: 'events-points',
+    type: 'circle',
+    source: 'events',
+    paint: {
+      'circle-color': EVENT_COLOR,
+      'circle-radius': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        4,
+        ['+', 2, ['min', ['get', 'f'], 6]],
+        10,
+        ['+', 5, ['min', ['*', ['get', 'f'], 1.5], 12]],
+      ],
+      'circle-opacity': 0.8,
+      'circle-stroke-color': '#0b0f14',
+      'circle-stroke-width': 0.8,
+    },
+  })
+}
+
 function addOverlays(map: maplibregl.Map) {
   map.addSource('aoi', { type: 'geojson', data: EMPTY, attribution: 'Boundaries: Natural Earth' })
   map.addSource('poe', { type: 'geojson', data: EMPTY, attribution: 'Ports: BTS / CBP' })
@@ -88,6 +160,7 @@ function addOverlays(map: maplibregl.Map) {
     source: 'aoi',
     paint: { 'line-color': byCountry, 'line-width': 1.4, 'line-opacity': 0.9 },
   })
+  addEventLayers(map)
   // One label point per state. Only drawn without the basemap, which labels states itself.
   map.addSource('aoi-labels', { type: 'geojson', data: EMPTY })
   map.addLayer({
@@ -161,11 +234,23 @@ function addOverlays(map: maplibregl.Map) {
   map.on('mouseleave', 'poe-hit', () => (map.getCanvas().style.cursor = ''))
 }
 
-export default function OperationalMap({ aoi, nodes, basemap, visibility }: Props) {
+export default function OperationalMap({
+  aoi,
+  nodes,
+  events,
+  eventMode,
+  basemap,
+  visibility,
+  onEventClick,
+}: Props) {
   const container = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const [ready, setReady] = useState(false)
   const fitted = useRef(false)
+  const clickRef = useRef(onEventClick)
+  useEffect(() => {
+    clickRef.current = onEventClick
+  }, [onEventClick])
 
   useEffect(() => {
     if (!container.current) return
@@ -186,6 +271,12 @@ export default function OperationalMap({ aoi, nodes, basemap, visibility }: Prop
     map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left')
     map.on('load', () => {
       addOverlays(map)
+      map.on('click', 'events-points', (e) => {
+        const id = e.features?.[0]?.properties?.id
+        if (typeof id === 'number') clickRef.current?.(id)
+      })
+      map.on('mouseenter', 'events-points', () => (map.getCanvas().style.cursor = 'pointer'))
+      map.on('mouseleave', 'events-points', () => (map.getCanvas().style.cursor = ''))
       setReady(true)
     })
     mapRef.current = map
@@ -221,7 +312,17 @@ export default function OperationalMap({ aoi, nodes, basemap, visibility }: Prop
       ids.forEach((id) => map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'))
     set(['aoi-fill', 'aoi-line', 'aoi-label'], visibility.aoi)
     set(['poe-circle', 'poe-hit', 'poe-label'], visibility.poe)
-  }, [ready, visibility])
+    set(['events-heat'], visibility.events && eventMode === 'heat')
+    set(['events-points'], visibility.events && eventMode === 'points')
+  }, [ready, visibility, eventMode])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
+    ;(map.getSource('events') as GeoJSONSource).setData(
+      (events as unknown as GeoJSON.FeatureCollection | undefined) ?? EMPTY,
+    )
+  }, [ready, events])
 
   return (
     <div ref={container} className="h-full w-full" aria-label="Operational map" role="region" />

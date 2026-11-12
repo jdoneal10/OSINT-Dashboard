@@ -285,6 +285,36 @@ def timeseries(session: DB, filters: Filters) -> list[MonthCount]:
     ]
 
 
+class EventsMeta(BaseModel):
+    total: int
+    min_date: dt.date | None
+    max_date: dt.date | None
+    accessed: dt.datetime | None  # latest retrieval; ACLED attribution requires the access date
+    sources: list[str]
+
+
+@router.get("/meta", response_model=EventsMeta)
+def events_meta(session: DB) -> EventsMeta:
+    total, lo, hi, accessed = session.execute(
+        select(
+            func.count(),
+            func.min(Event.event_date),
+            func.max(Event.event_date),
+            func.max(Event.retrieved_at),
+        )
+    ).one()
+    slugs = session.scalars(
+        select(Source.slug).where(Source.id.in_(select(Event.source_id).distinct()))
+    ).all()
+    return EventsMeta(
+        total=total,
+        min_date=lo,
+        max_date=hi,
+        accessed=accessed,
+        sources=sorted(slugs),
+    )
+
+
 @router.get("/{event_id}", response_model=EventOut)
 def get_event(event_id: int, session: DB) -> EventOut:
     row = session.execute(_event_select().where(Event.id == event_id)).one_or_none()

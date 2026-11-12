@@ -166,3 +166,12 @@ def test_reference_adjacency(client: TestClient) -> None:
     assert tucson["adjacent_admin1"] == ["MX-SON"]
     assert tucson["field_office"] == "ofo-tucson"
     assert tucson["method"].startswith("Analyst-derived")
+
+
+def test_events_meta(client: TestClient, loaded: Session) -> None:
+    meta = client.get("/events/meta").json()
+    assert meta["total"] == 4
+    assert meta["sources"] == ["acled"]
+    assert meta["min_date"] <= meta["max_date"]
+    accessed = dt.datetime.fromisoformat(meta["accessed"])
+    assert abs((dt.datetime.now(dt.UTC) - accessed).total_seconds()) < 300
