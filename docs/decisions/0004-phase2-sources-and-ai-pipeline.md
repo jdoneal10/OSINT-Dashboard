@@ -41,6 +41,7 @@ Source terms and robots.txt files were checked on 2026-11-11. Model facts come f
 ### 4. AI pipeline
 | Stage | Engine | Notes |
 |---|---|---|
+| Batch | Message Batches API | **Added 2026-11-12.** An extraction backlog of at least 25 documents (a backfill, or `make reextract` after a prompt change) is submitted as one batch at 50% price. Each request passes the same guards. Results are validated like real-time responses; a failed result gets one real-time retry, then quarantine. Sonnet stays real-time: batches cannot use the refusal fallback. |
 | Relevance filter | Ollama on `127.0.0.1:11434` | A small instruct model, chosen by recall on the labeled set; the threshold is tuned for high recall. No API spend. **2026-11-11:** `gemma3:4b` at 0.2. On 33 labeled documents (14 relevant) it passed every relevant one, against about 69% weighted recall for `qwen3:4b`. It passes about 89% of documents, so Haiku's relevance check does most of the filtering, at under $0.001 per document. |
 | Translation and extraction | `claude-haiku-5-5` | $0.10 / $0.50 per MTok for prompts up to 100K. Structured output via `messages.parse` / `output_config.format` with pydantic schemas. Effort `low`, raised only if the precision eval shows a gain. |
 | Analysis (corroboration, conflict resolution) | `claude-sonnet-5-5` | $2 / $10 per MTok, cache reads $0.10. Only for conflicting or high-significance clusters. ICD 203 language, citing record ids. Uses the server-side refusal fallback (`fallbacks: "default"`). |

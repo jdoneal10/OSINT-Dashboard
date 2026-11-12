@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     # gateway then refuses any ACLED-derived input again (EULA s.7.1).
     acled_llm_consent: bool = True
 
+    # Extraction backlogs at or above this size go through the Message Batches API (50%).
+    llm_batch_threshold: int = 25
+    llm_batch_max_requests: int = 2000
+
     worker_heartbeat_minutes: int = 5
     scheduled_ingest: bool = True
     # ACLED coverage: 1 = six Mexican border states (Phase 1), 2 = all of Mexico (Phase 2).

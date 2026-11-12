@@ -72,6 +72,55 @@ class Provenance:
 
 
 @dataclass
+class Assessed[T: BaseModel]:
+    """One response checked against the output schema."""
+
+    status: str  # ok | invalid | refusal | max_tokens
+    reason: str  # quarantine reason if not ok
+    error: str | None
+    raw: str | None
+    parsed: T | None
+
+
+def assess[T: BaseModel](resp: Any, output_model: type[T]) -> Assessed[T]:
+    """Classify a Messages API response and validate its JSON against ``output_model``."""
+    stop = getattr(resp, "stop_reason", None)
+    raw = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), None)
+    if stop == "refusal":
+        details = getattr(resp, "stop_details", None)
+        return Assessed(
+            "refusal", "refusal", f"refusal: {getattr(details, 'category', None)}", raw, None
+        )
+    if stop == "max_tokens":
+        return Assessed("max_tokens", "max_tokens", "output truncated", raw, None)
+    try:
+        parsed = output_model.model_validate_json(raw or "")
+    except ValidationError as exc:
+        return Assessed("invalid", "validation", str(exc), raw, None)
+    return Assessed("ok", "", None, raw, parsed)
+
+
+def request_params(
+    *, model: str, system: str, user: str, output_model: type[BaseModel], max_tokens: int,
+    effort: str | None,
+) -> dict[str, Any]:  # fmt: skip
+    """Messages API parameters shared by real-time calls and batch requests."""
+    output_config: dict[str, Any] = {
+        "format": {"type": "json_schema", "schema": strict_schema(output_model)}
+    }
+    if effort:
+        output_config["effort"] = effort
+    return {
+        "model": model,
+        "max_tokens": max_tokens,
+        # Stable instruction block first, cached (ADR 0004); per-document text after it.
+        "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+        "messages": [{"role": "user", "content": user}],
+        "output_config": output_config,
+    }
+
+
+@dataclass
 class LLMResult[T: BaseModel]:
     ok: bool
     parsed: T | None
@@ -205,10 +254,11 @@ class Gateway:
             )
         return self.client.messages.create(**kwargs)
 
-    def _record(
+    def record(
         self, session: Session, *, stage: str, model: str, prompt_version: str, resp: Any,
-        status: str,
+        status: str, batch: bool = False,
     ) -> LLMUsage:  # fmt: skip
+        """Ledger row for one API response (batch results are billed at 50%)."""
         usage = resp.usage
         served = getattr(resp, "model", model) or model
         price_model = served if served in PRICES else model
@@ -222,13 +272,14 @@ class Gateway:
             output_tokens=usage.output_tokens or 0,
             cache_write_tokens=cache_write,
             cache_read_tokens=cache_read,
-            batch=False,
+            batch=batch,
             cost_usd=cost_usd(
                 price_model,
                 input_tokens=usage.input_tokens or 0,
                 output_tokens=usage.output_tokens or 0,
                 cache_write_tokens=cache_write,
                 cache_read_tokens=cache_read,
+                batch=batch,
             ),
             status=status,
             request_id=getattr(resp, "_request_id", None),
@@ -237,7 +288,7 @@ class Gateway:
         session.flush()
         return row
 
-    def _quarantine(
+    def quarantine(
         self, session: Session, *, stage: str, model: str, prompt_version: str,
         prov: Provenance, reason: str, error: str | None, raw: str | None, attempts: int,
     ) -> int:  # fmt: skip
@@ -268,52 +319,39 @@ class Gateway:
         provenance: Provenance,
         max_tokens: int = 8000,
         effort: str | None = None,
+        attempts: int = 2,
+        prior_attempts: int = 0,
     ) -> LLMResult[T]:
-        """One validated structured call. Guards run first; nothing is sent if they fail."""
+        """One validated structured call. Guards run first; nothing is sent if they fail.
+
+        ``attempts`` is how many API calls may be made (default: one try plus one retry). A
+        batch result that failed counts as ``prior_attempts`` and leaves one real-time retry.
+        """
         with session_factory()() as session:
             check_provenance(session, provenance)
             check_budget(session)
 
-        output_config: dict[str, Any] = {
-            "format": {"type": "json_schema", "schema": strict_schema(output_model)}
-        }
-        if effort:
-            output_config["effort"] = effort
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "max_tokens": max_tokens,
-            # Stable instruction block first, cached (ADR 0004); per-document text after it.
-            "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-            "messages": [{"role": "user", "content": user}],
-            "output_config": output_config,
-        }
+        kwargs = request_params(
+            model=model, system=system, user=user, output_model=output_model,
+            max_tokens=max_tokens, effort=effort,
+        )  # fmt: skip
         result: LLMResult[T] = LLMResult(
             ok=False, parsed=None, model=model, prompt_version=prompt_version
         )
         last_error: str | None = None
         raw: str | None = None
         reason = "validation"
-        for attempt in (1, 2):
+        for attempt in range(1, attempts + 1):
             resp = self._send(kwargs, model)
-            result.attempts = attempt
-            stop = getattr(resp, "stop_reason", None)
-            raw = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), None)
-            status = "ok"
-            if stop == "refusal":
-                status, reason = "refusal", "refusal"
-                details = getattr(resp, "stop_details", None)
-                last_error = f"refusal: {getattr(details, 'category', None)}"
-            elif stop == "max_tokens":
-                status, reason, last_error = "max_tokens", "max_tokens", "output truncated"
+            result.attempts = prior_attempts + attempt
+            checked = assess(resp, output_model)
+            status, raw = checked.status, checked.raw
+            if checked.parsed is not None:
+                result.parsed, result.ok = checked.parsed, True
             else:
-                try:
-                    parsed = output_model.model_validate_json(raw or "")
-                except ValidationError as exc:
-                    status, reason, last_error = "invalid", "validation", str(exc)
-                else:
-                    result.parsed, result.ok = parsed, True
+                reason, last_error = checked.reason, checked.error
             with session_factory()() as session, session.begin():
-                usage = self._record(
+                usage = self.record(
                     session, stage=stage, model=model, prompt_version=prompt_version, resp=resp,
                     status=status,
                 )  # fmt: skip
@@ -326,7 +364,7 @@ class Gateway:
                 kwargs["max_tokens"] = min(kwargs["max_tokens"] * 2, 32_000)
         if not result.ok:
             with session_factory()() as session, session.begin():
-                result.quarantine_id = self._quarantine(
+                result.quarantine_id = self.quarantine(
                     session, stage=stage, model=model, prompt_version=prompt_version,
                     prov=provenance, reason=reason, error=last_error, raw=raw,
                     attempts=result.attempts,

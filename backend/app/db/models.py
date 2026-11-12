@@ -99,13 +99,22 @@ class Source(TimestampMixin, Base):
 # --------------------------------------------------------------------------- documents
 
 
-PIPELINE_STATUSES = ("new", "filtered_out", "relevant", "extracted", "quarantined", "skipped")
+PIPELINE_STATUSES = (
+    "new",
+    "filtered_out",
+    "relevant",
+    "batched",  # submitted to the Message Batches API; awaiting results
+    "extracted",
+    "quarantined",
+    "skipped",
+)
 
 
 class Document(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     """A retrieved article, report or release. LLM columns describe the translation step.
 
-    ``pipeline_status`` moves new -> filtered_out | relevant -> extracted | quarantined
+    ``pipeline_status`` moves new -> filtered_out | relevant [-> batched] -> extracted |
+    quarantined
     (``skipped`` = not processable, e.g. empty text). ACLED never appears here (ADR 0003).
     """
 
@@ -483,6 +492,32 @@ class Annotation(TimestampMixin, Base):
     target_table: Mapped[str] = mapped_column(String(64))
     target_id: Mapped[int] = mapped_column(BigInteger)
     body: Mapped[str] = mapped_column(Text)
+
+
+BATCH_STATUSES = ("submitted", "collected", "failed")
+
+
+class LLMBatch(TimestampMixin, Base):
+    """A Message Batches API job (50% price; backfills and backlogs, ADR 0004).
+
+    ``items`` maps each request's custom_id to the document it was built from, so results
+    can be stored, retried or quarantined against the right record.
+    """
+
+    __tablename__ = "llm_batches"
+    __table_args__ = (_check_in("status", BATCH_STATUSES, "status"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    anthropic_batch_id: Mapped[str] = mapped_column(String(128), unique=True)
+    stage: Mapped[str] = mapped_column(String(32))
+    model: Mapped[str] = mapped_column(String(64))
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16), default="submitted", index=True)
+    n_requests: Mapped[int] = mapped_column(Integer)
+    items: Mapped[dict[str, Any]] = mapped_column(default=dict)  # custom_id -> document_id
+    estimated_cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=Decimal(0))
+    collected_at: Mapped[dt.datetime | None]
+    result_counts: Mapped[dict[str, Any]] = mapped_column(default=dict)
 
 
 class LLMUsage(Base):

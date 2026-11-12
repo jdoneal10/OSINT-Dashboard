@@ -58,7 +58,9 @@ documents (new)
   → dedupe (canonical URL + SimHash; syndicated copies count once)
   → local filter: gemma3:4b via Ollama, threshold 0.2 (recall over precision)
   → Haiku extract (extract-v3): English summary, events, seizures, organizations;
-      strict JSON schema, one retry, then quarantine; no fields for people
+      strict JSON schema, one retry, then quarantine; no fields for people.
+      A backlog of >= 25 documents (backfill, `make reextract`) goes out as one Message
+      Batches job at 50% price; the `collect` stage stores results every 30 min
   → geocode against the local INEGI gazetteer / cited U.S. ports of entry; in_aoi flag
   → cluster (±1 day, 25 km, compatible type) + attach the matching ACLED event (ADR 0006)
   → Admiralty grade per cluster
@@ -70,7 +72,13 @@ The single Claude gateway (`app/enrich/llm/client.py`) does the following:
 - requires declared provenance for every call, and refuses ACLED-derived input unless ACLED's consent is on (ADR 0003, ADR 0006)
 - enforces the budget
 - uses prompt caching for the shared instruction block
-- logs every call to `llm_usage`
+- logs every call to `llm_usage` (batch results flagged and billed at 50%)
+
+Sonnet stays real-time, because batch requests cannot use the server-side refusal fallback it relies on. The batch path (`app/enrich/llm/batch.py`) applies the same guards when it submits a batch:
+- licence and provenance checks for every request
+- the budget check, trimming the batch so its estimated cost stays under the pause threshold
+
+Results are validated the same way as real-time responses. A failed result gets one real-time retry and is then quarantined.
 
 ## Backend layout
 

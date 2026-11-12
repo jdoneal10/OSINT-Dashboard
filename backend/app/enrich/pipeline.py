@@ -1,6 +1,7 @@
 """Enrichment pipeline orchestration (one pass; the worker schedules it).
 
-    dedupe -> local filter (Ollama) -> extract (Haiku) -> cluster -> Admiralty -> analyze (Sonnet)
+    dedupe -> local filter (Ollama) -> collect batches -> extract (Haiku; a backlog goes to the
+    Batch API) -> cluster -> Admiralty -> analyze (Sonnet)
 
 Each stage records an ``ingest_runs`` row (job ``pipeline-<stage>``). A stage that cannot run
 (Ollama down, budget paused) is logged and the later stages still run on whatever is ready.
@@ -41,6 +42,7 @@ def _cluster() -> dict[str, Any]:
 STAGES: dict[str, Callable[[], dict[str, Any]]] = {
     "dedupe": _dedupe,
     "filter": local_filter.run_filter,
+    "collect": extract.run_collect,
     "extract": extract.run_extract,
     "cluster": _cluster,
     "analyze": analyze.run_analyze,

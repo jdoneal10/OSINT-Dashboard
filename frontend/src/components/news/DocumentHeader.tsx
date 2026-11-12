@@ -7,6 +7,7 @@ const STATUS: Record<string, string> = {
   extracted: 'Extracted',
   filtered_out: 'Filtered out',
   relevant: 'Awaiting extraction',
+  batched: 'In extraction batch',
   quarantined: 'Quarantined',
   new: 'Awaiting filter',
   skipped: 'Skipped',

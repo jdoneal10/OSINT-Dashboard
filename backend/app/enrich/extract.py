@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.models import (
     Actor,
     ActorAlias,
@@ -42,6 +43,7 @@ from app.db.models import (
 from app.db.session import session_factory
 from app.enrich.actors import ActorIndex
 from app.enrich.geocode import geocode, in_aoi
+from app.enrich.llm import batch as llm_batch
 from app.enrich.llm.client import BudgetPausedError, Gateway, Provenance
 from app.enrich.llm.pricing import HAIKU
 from app.ingest.acled import RELIABILITY_CONFIDENCE
@@ -314,24 +316,111 @@ def store_extraction(
     return {"events": len(ex.events), "seizures": len(ex.seizures)}
 
 
-def run_extract(limit: int = 50, gateway: Gateway | None = None) -> dict[str, int]:
+MAX_TOKENS = 8000
+EFFORT = "low"
+
+
+def _item(session: Session, doc_id: int) -> llm_batch.BatchItem:
+    doc = session.get_one(Document, doc_id)
+    source_name = session.get_one(Source, doc.source_id).name
+    return llm_batch.BatchItem(
+        custom_id=f"doc-{doc_id}",
+        document_id=doc_id,
+        user=build_user(doc, source_name),
+        provenance=Provenance(document_ids=(doc_id,)),
+    )
+
+
+def _store(doc_id: int, parsed: Extraction, tokens: tuple[int, int]) -> dict[str, int]:
+    with session_factory()() as session, session.begin():
+        doc = session.get_one(Document, doc_id)
+        return store_extraction(session, doc, parsed, model=HAIKU, tokens=tokens)
+
+
+def _set_status(doc_id: int, status: str) -> None:
+    with session_factory()() as session, session.begin():
+        session.get_one(Document, doc_id).pipeline_status = status
+
+
+def batch_job(system: str) -> llm_batch.BatchJob[Extraction]:
+    """Extraction as a Message Batches job (backlogs; see app.enrich.llm.batch)."""
+
+    def rebuild(doc_id: int) -> llm_batch.BatchItem:
+        with session_factory()() as session:
+            return _item(session, doc_id)
+
+    def store(doc_id: int, parsed: Extraction, tokens: tuple[int, int]) -> None:
+        _store(doc_id, parsed, tokens)
+
+    return llm_batch.BatchJob(
+        stage="extract",
+        model=HAIKU,
+        prompt_version=PROMPT_VERSION,
+        system=system,
+        output_model=Extraction,
+        max_tokens=MAX_TOKENS,
+        effort=EFFORT,
+        rebuild=rebuild,
+        store=store,
+        fail=lambda doc_id: _set_status(doc_id, "quarantined"),
+        requeue=lambda doc_id: _set_status(doc_id, "relevant"),
+    )
+
+
+def submit_batch(gateway: Gateway, ids: list[int], system: str) -> int:
+    """Send ``ids`` through the Batch API; mark the submitted documents 'batched'."""
+    with session_factory()() as session:
+        items = [_item(session, doc_id) for doc_id in ids]
+    row = llm_batch.submit(gateway, batch_job(system), items)
+    if row is None:
+        return 0
+    with session_factory()() as session, session.begin():
+        for doc_id in row.items.values():
+            session.get_one(Document, int(doc_id)).pipeline_status = "batched"
+    return row.n_requests
+
+
+def run_collect(gateway: Gateway | None = None) -> dict[str, int]:
+    """Store results of finished extraction batches (pipeline stage ``collect``)."""
     gateway = gateway or Gateway()
-    counts = {"extracted": 0, "not_relevant": 0, "quarantined": 0, "events": 0, "seizures": 0}
     with session_factory()() as session:
         system = build_system(session)
-        ids = list(
-            session.scalars(
-                select(Document.id)
-                .where(Document.pipeline_status == "relevant")
-                .order_by(Document.published_at.desc().nulls_last(), Document.id)
-                .limit(limit)
-            )
-        )
+    return llm_batch.collect(gateway, {"extract": batch_job(system)})
+
+
+def run_extract(limit: int = 50, gateway: Gateway | None = None) -> dict[str, int]:
+    """Extract relevant documents: real-time for a normal run, the Batch API for a backlog.
+
+    A backlog of at least ``llm_batch_threshold`` documents (a backfill, or re-extraction
+    after a prompt change) is submitted as one batch at half price; results are stored by
+    the ``collect`` stage when the batch ends.
+    """
+    gateway = gateway or Gateway()
+    settings = get_settings()
+    counts = {"extracted": 0, "not_relevant": 0, "quarantined": 0, "events": 0, "seizures": 0}
+    relevant = (
+        select(Document.id)
+        .where(Document.pipeline_status == "relevant")
+        .order_by(Document.published_at.desc().nulls_last(), Document.id)
+    )
+    with session_factory()() as session:
+        system = build_system(session)
+        backlog = session.scalar(select(func.count()).select_from(relevant.subquery())) or 0
+        if backlog >= settings.llm_batch_threshold:
+            ids = list(session.scalars(relevant.limit(settings.llm_batch_max_requests)))
+        else:
+            ids = list(session.scalars(relevant.limit(limit)))
+    if backlog >= settings.llm_batch_threshold:
+        try:
+            batched = submit_batch(gateway, ids, system)
+        except BudgetPausedError:
+            log.warning("budget paused; extraction batch not submitted")
+            batched = 0
+        log.info("extraction: backlog %d -> %d submitted as a batch", backlog, batched)
+        return {"batched": batched}
     for doc_id in ids:
         with session_factory()() as session:
-            doc = session.get_one(Document, doc_id)
-            source_name = session.get_one(Source, doc.source_id).name
-            user = build_user(doc, source_name)
+            user = _item(session, doc_id).user
         try:
             result = gateway.call(
                 stage="extract",
@@ -341,24 +430,52 @@ def run_extract(limit: int = 50, gateway: Gateway | None = None) -> dict[str, in
                 user=user,
                 output_model=Extraction,
                 provenance=Provenance(document_ids=(doc_id,)),
-                max_tokens=8000,
-                effort="low",
+                max_tokens=MAX_TOKENS,
+                effort=EFFORT,
             )
         except BudgetPausedError:
             log.warning("budget paused; stopping extraction")
             break
-        with session_factory()() as session, session.begin():
-            doc = session.get_one(Document, doc_id)
-            if not result.ok or result.parsed is None:
-                doc.pipeline_status = "quarantined"
-                counts["quarantined"] += 1
-                continue
-            stored = store_extraction(
-                session, doc, result.parsed, model=HAIKU,
-                tokens=(result.input_tokens, result.output_tokens),
-            )  # fmt: skip
-            counts["extracted" if result.parsed.relevant else "not_relevant"] += 1
-            counts["events"] += stored["events"]
-            counts["seizures"] += stored["seizures"]
+        if not result.ok or result.parsed is None:
+            _set_status(doc_id, "quarantined")
+            counts["quarantined"] += 1
+            continue
+        stored = _store(doc_id, result.parsed, (result.input_tokens, result.output_tokens))
+        counts["extracted" if result.parsed.relevant else "not_relevant"] += 1
+        counts["events"] += stored["events"]
+        counts["seizures"] += stored["seizures"]
     log.info("extraction: %s", counts)
     return counts
+
+
+def mark_for_reextraction() -> int:
+    """Queue documents extracted under an older prompt version (a backfill; batched)."""
+    with session_factory()() as session, session.begin():
+        docs = session.scalars(
+            select(Document).where(
+                Document.pipeline_status == "extracted",
+                Document.prompt_version.is_distinct_from(PROMPT_VERSION),
+            )
+        ).all()
+        for doc in docs:
+            doc.pipeline_status = "relevant"
+        return len(docs)
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse  # noqa: PLC0415 — CLI only
+
+    parser = argparse.ArgumentParser(prog="python -m app.enrich.extract")
+    parser.add_argument(
+        "--reextract",
+        action="store_true",
+        help=f"queue documents extracted under a prompt other than {PROMPT_VERSION}",
+    )
+    args = parser.parse_args(argv)
+    if args.reextract:
+        print(f"Queued {mark_for_reextraction()} document(s); the pipeline batches them.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

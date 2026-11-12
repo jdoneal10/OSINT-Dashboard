@@ -196,7 +196,7 @@ export interface ClusterRef {
 }
 
 export type PipelineStatus =
-  'new' | 'filtered_out' | 'relevant' | 'extracted' | 'quarantined' | 'skipped'
+  'new' | 'filtered_out' | 'relevant' | 'batched' | 'extracted' | 'quarantined' | 'skipped'
 
 export interface DocumentSummary {
   id: number
