@@ -1,11 +1,13 @@
 """The single gateway to Claude. Every model call in this project goes through ``Gateway.call``.
 
-Guards (ADR 0003, ADR 0004):
+Guards (ADR 0003, ADR 0004, ADR 0006):
 
-1. **ACLED exclusion.** Callers must declare the provenance of everything in the prompt
-   (document and/or event ids). The gateway looks up their sources in the database, including
-   the documents behind each event, and raises ``LLMGuardError`` *before any request is sent*
-   if any of them is in ``BLOCKED_SOURCES``. A call with no declared provenance is refused.
+1. **Provenance and licence.** Callers must declare the provenance of everything in the
+   prompt (document and/or event ids); a call with no declared provenance is refused. The
+   gateway looks up their sources in the database, including the documents behind each
+   event, and raises ``LLMGuardError`` *before any request is sent* if any of them is
+   blocked. ACLED is blocked unless ``acled_llm_consent`` is set: ACLED gave written consent
+   on 2026-11-11 (ADR 0006), so it is on by default and can be switched off if withdrawn.
 2. **Budget.** Month-to-date spend (``llm_usage``) is checked before every call. At
    ``llm_budget_alert_fraction`` of ``llm_monthly_budget_usd`` the API stages pause
    (``BudgetPausedError``) and one ``alerts`` row is written for the month.
@@ -38,7 +40,12 @@ from app.enrich.llm.schema import strict_schema
 
 log = logging.getLogger(__name__)
 
-BLOCKED_SOURCES = frozenset({"acled"})  # licence: ACLED EULA s.7.1 (ADR 0003)
+
+def blocked_sources() -> frozenset[str]:
+    """Sources that may not reach an LLM. ACLED needs written consent (EULA s.7.1; ADR 0006)."""
+    return frozenset() if get_settings().acled_llm_consent else frozenset({"acled"})
+
+
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 API_BASE_URL = "https://api.anthropic.com"
 
@@ -113,11 +120,11 @@ def provenance_sources(session: Session, prov: Provenance) -> set[str]:
 def check_provenance(session: Session, prov: Provenance) -> None:
     if prov.empty:
         raise LLMGuardError("LLM call refused: provenance (document/event ids) must be declared")
-    blocked = provenance_sources(session, prov) & BLOCKED_SOURCES
+    blocked = provenance_sources(session, prov) & blocked_sources()
     if blocked:
         raise LLMGuardError(
             f"LLM call refused: input derives from {sorted(blocked)}, which may not be sent "
-            "to an LLM (licence; ADR 0003)"
+            "to an LLM without the source's consent (licence; ADR 0003, ADR 0006)"
         )
 
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.models import (
     Alert,
     Document,
@@ -105,7 +106,13 @@ def _acled_event(session: Session) -> int:
 # --------------------------------------------------------------------------- licence guard
 
 
-def test_acled_event_is_refused_before_sending(seeded: Session) -> None:
+@pytest.fixture
+def no_acled_consent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "acled_llm_consent", False)
+
+
+@pytest.mark.usefixtures("no_acled_consent")
+def test_acled_event_is_refused_without_consent(seeded: Session) -> None:
     fake = FakeClient(_resp('{"answer": "x", "count": 1}'))
     with pytest.raises(gw.LLMGuardError, match="acled"):
         _call(gw.Gateway(fake), gw.Provenance(event_ids=(_acled_event(seeded),)))
@@ -113,6 +120,7 @@ def test_acled_event_is_refused_before_sending(seeded: Session) -> None:
     assert seeded.scalar(select(func.count()).select_from(LLMUsage)) == 0
 
 
+@pytest.mark.usefixtures("no_acled_consent")
 def test_event_backed_by_acled_document_is_refused(seeded: Session, news_doc: int) -> None:
     acled = seeded.scalars(select(Source).where(Source.slug == "acled")).one()
     doc = seeded.get_one(Document, news_doc)
@@ -133,6 +141,16 @@ def test_event_backed_by_acled_document_is_refused(seeded: Session, news_doc: in
     with pytest.raises(gw.LLMGuardError):
         _call(gw.Gateway(fake), gw.Provenance(event_ids=(ev.id,)))
     assert fake.requests == []
+
+
+def test_acled_event_is_allowed_with_consent(seeded: Session) -> None:
+    """ADR 0006: ACLED's written consent (on by default) lets ACLED events reach Claude."""
+    assert get_settings().acled_llm_consent
+    result = _call(
+        gw.Gateway(FakeClient(_resp('{"answer": "ok", "count": 1}'))),
+        gw.Provenance(event_ids=(_acled_event(seeded),)),
+    )
+    assert result.ok
 
 
 def test_missing_provenance_is_refused() -> None:

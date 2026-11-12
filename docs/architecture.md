@@ -65,7 +65,7 @@ documents (new)
 ```
 
 The single Claude gateway (`app/enrich/llm/client.py`) does the following:
-- refuses any input that derives from ACLED (ADR 0003)
+- requires declared provenance for every call, and refuses ACLED-derived input unless ACLED's consent is on (ADR 0003, ADR 0006)
 - enforces the budget
 - uses prompt caching for the shared instruction block
 - logs every call to `llm_usage`
@@ -100,5 +100,6 @@ See [`decisions/`](decisions/):
 - ADR 0003: Phase 1 ingest and the ACLED licence
 - ADR 0004: Phase 2 sources and the AI pipeline
 - ADR 0005: naming reported criminal-group leaders
+- ADR 0006: ACLED written consent for Claude processing and professional use
 
 Evaluation reports are in [`evaluations/`](evaluations/).

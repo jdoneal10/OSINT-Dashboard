@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # Low on purpose (recall over precision): a borderline article costs < $0.001 at Haiku.
     relevance_threshold: float = 0.2
 
+    # ACLED's written consent (2026-11-11, ADR 0006) allows sending ACLED data to Claude for
+    # this project. Set OSINT_ACLED_LLM_CONSENT=false if that consent is withdrawn: the
+    # gateway then refuses any ACLED-derived input again (EULA s.7.1).
+    acled_llm_consent: bool = True
+
     worker_heartbeat_minutes: int = 5
     scheduled_ingest: bool = True
     # ACLED coverage: 1 = six Mexican border states (Phase 1), 2 = all of Mexico (Phase 2).

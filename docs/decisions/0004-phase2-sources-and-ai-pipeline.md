@@ -52,7 +52,10 @@ Source terms and robots.txt files were checked on 2026-11-11. Model facts come f
 - **Ledger:** every call is logged to `llm_usage` (model, `prompt_version`, input, output and cache tokens, cost), and every derived record stores its `model` and `prompt_version`.
 - **Budget:** `OSINT_LLM_MONTHLY_BUDGET_USD` defaults to $75. At 80% of the cap, the API stages pause and the UI and logs alert. Ingestion and the local filter keep running.
 
-### 5. ACLED exclusion (binding, from ADR 0003)
+### 5. ACLED exclusion (from ADR 0003; lifted by ADR 0006)
+
+*ACLED gave written consent on 2026-11-11 (ADR 0006). The check below now applies only when `acled_llm_consent` is false, and ACLED events may be sent for corroboration.*
+
 - **The gateway** (`app/enrich/llm/client.py`) is the only code that calls Claude. It accepts input only as `Document` records, plus derived records whose provenance traces back to documents.
 - **The check:** before each call it rejects any input whose source, or any linked event's source, is in a blocklist containing `acled`.
 - **The analytic stage** clusters document-derived events only. ACLED events may appear in the UI next to clusters, but they are never sent.

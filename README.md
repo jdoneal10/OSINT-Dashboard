@@ -72,9 +72,9 @@ The Claude stages stop when spend reaches 80% of the monthly cap ($75 by default
 - Publicly available information only. No classified, CUI, FOUO or LES material.
 - Organizations, events and public legal actions only. No profiling of private individuals.
 - No tracking of U.S. law-enforcement or military positions or tactics.
-- Source terms are honored. ACLED data is never redistributed in raw form and never sent to an LLM.
+- Source terms are honored. ACLED data is never redistributed in raw form or used for profit; it is processed with Claude only under ACLED's written consent (ADR 0006).
 - Only public article text is sent to the Claude API. Analyst labels and notes stay local.
 
-Violence events: ACLED (Armed Conflict Location & Event Data), acleddata.com — used under a personal, non-commercial licence; not redistributed. Border statistics: U.S. Customs and Border Protection public data; this project is not endorsed by CBP. Designations: U.S. Treasury OFAC and the Federal Register. Crime incidence: SESNSP (Secretariado Ejecutivo del Sistema Nacional de Seguridad Pública). Municipalities and gazetteer: INEGI Marco Geoestadístico. News discovery: the GDELT Project. Each news item links to its publisher.
+Violence events: ACLED (Armed Conflict Location & Event Data), acleddata.com — used for non-profit professional analysis with ACLED's written consent; not redistributed. Border statistics: U.S. Customs and Border Protection public data; this project is not endorsed by CBP. Designations: U.S. Treasury OFAC and the Federal Register. Crime incidence: SESNSP (Secretariado Ejecutivo del Sistema Nacional de Seguridad Pública). Municipalities and gazetteer: INEGI Marco Geoestadístico. News discovery: the GDELT Project. Each news item links to its publisher.
 
 Map data © OpenStreetMap contributors, via [Protomaps](https://protomaps.com). Boundaries: Natural Earth (public domain), U.S. Census Bureau (public domain).
