@@ -8,8 +8,10 @@ refuses anything ACLED-derived). Output, all tagged with model + prompt_version 
 - ``seizures`` (+ ``seizure_documents``)
 - ``actor_events`` (perpetrator / target) for named organizations only
 
-Hard rule 3: the schema has NO fields for individuals and the prompt forbids naming people;
-organizations named after families (e.g. "Los Salazar") are organizations.
+Hard rule 3 (ADR 0005): the schema has NO fields for individuals. Only leaders of criminal
+organizations, identified as such by the source, may be named, and only in free text
+(summary, description, evidence); everyone else is described by role. Organizations named
+after families (e.g. "Los Salazar") are organizations.
 
 Re-running with a new ``PROMPT_VERSION`` replaces the document's derived records.
 """
@@ -47,7 +49,7 @@ from app.reference.normalize import normalize_alias
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = "extract-v1"
+PROMPT_VERSION = "extract-v3"  # v3: reported TCO leaders may be named in free text (ADR 0005)
 MAX_TEXT_CHARS = 30_000
 
 EventType = Literal[
@@ -78,7 +80,9 @@ class ExtractedEvent(BaseModel):
     injured: int | None = Field(ge=0)
     perpetrators: list[str] = Field(description="Organizations or groups, never people")
     targets: list[str] = Field(description="Organizations or groups, never people")
-    description: str = Field(description="One or two English sentences, no personal names")
+    description: str = Field(
+        description="One or two English sentences; name only reported criminal-group leaders"
+    )
     evidence: str = Field(description="Short supporting quote (<= 200 chars) from the text")
 
 
@@ -100,7 +104,9 @@ class ExtractedOrganization(BaseModel):
 
 class Extraction(BaseModel):
     relevant: bool = Field(description="False if the article is not about organized crime")
-    summary_en: str = Field(description="English summary, 2-4 sentences, no personal names")
+    summary_en: str = Field(
+        description="English summary, 2-4 sentences; name only reported criminal-group leaders"
+    )
     events: list[ExtractedEvent] = Field(max_length=10)
     seizures: list[ExtractedSeizure] = Field(max_length=10)
     organizations: list[ExtractedOrganization] = Field(max_length=20)
@@ -112,9 +118,15 @@ the U.S. Southwest border. The output feeds an analyst's database; precision mat
 than coverage.
 
 RULES
-1. Never output the name of an individual person anywhere. Refer to people by role \
-("a municipal police officer", "a suspected cell leader", "two victims"). Organizations whose \
-names include a surname (e.g. "Los Salazar") are organizations and may be named.
+1. People. The only individuals you may name are leaders of criminal organizations whom the \
+text itself identifies as leaders (e.g. "CJNG leader Rafael Alvarez Ayala, alias R2"), and \
+only in summary_en, description and evidence, using the name and alias as the text gives \
+them. Never name anyone else: victims, relatives, bystanders, suspects or defendants not \
+described as leaders, journalists, or public officials. Refer to them by role ("two \
+victims", "a municipal police officer", "Mexico's Security Secretary"); if a quote would \
+name such a person, choose another quote. Never put a person in perpetrators, targets or \
+organizations; those lists hold organizations only. Organizations whose names include a \
+surname (e.g. "Los Salazar") are organizations.
 2. Extract only what the text states. Do not infer fatalities, dates or locations that are \
 not supported. Use null when unknown. "evidence" must be a short quote from the text.
 3. One event per distinct incident (place + time). Background, history and statistics are \

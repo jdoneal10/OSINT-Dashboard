@@ -180,6 +180,6 @@ def test_reextraction_replaces_records(seeded: Session, doc_id: int) -> None:
 def test_system_block_is_deterministic_and_cacheable(seeded: Session) -> None:
     a, b = extract.build_system(seeded), extract.build_system(seeded)
     assert a == b
-    assert "Never output the name of an individual person" in a
+    assert "The only individuals you may name are leaders of criminal organizations" in a
     assert "Cartel de Sinaloa" in a
     assert len(a) > 2500  # comfortably above the 512-token cache minimum

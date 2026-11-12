@@ -59,7 +59,7 @@ Source terms and robots.txt files were checked on 2026-11-11. Model facts come f
 - **Tests** prove that an ACLED-linked input raises before any request is sent.
 
 ### 6. People
-Extraction schemas have **no fields for individuals**. Prompts instruct the model to describe organizations, events, places and quantities only. Named people appear in stored source text, as they appear in the article, but never become records (hard rule 3).
+Extraction schemas have **no fields for individuals**. Prompts instruct the model to describe organizations, events, places and quantities only. Named people appear in stored source text, as they appear in the article, but never become records (hard rule 3). *Amended by ADR 0005: leaders of criminal organizations identified as such by the source may be named in free-text fields.*
 
 ### 7. Geography and AOI
 - **AOI:** expands to all 32 Mexican states, as phase-2 `reference_areas`.

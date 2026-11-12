@@ -51,7 +51,7 @@ At runtime the browser talks only to `127.0.0.1:5173`. The basemap, glyphs and s
 
 - **Upsert key:** every source-derived table has `UNIQUE(source_id, source_key)`, so re-running an ingester never duplicates rows.
 - **Revisions:** `border_metrics` is keyed on `snapshot_date`. CBP revisions add rows and never overwrite earlier ones.
-- **Individuals:** they have no table of their own. Names appear only as `designations.listed_parties`, attributes of public legal-action records (CLAUDE.md hard rule 3).
+- **Individuals:** they have no table of their own. Names appear only as `designations.listed_parties`, attributes of public legal-action records, and, for leaders of criminal organizations identified as such by the source, in the free text of news-derived summaries, descriptions and evidence quotes (CLAUDE.md hard rule 3, ADR 0005).
 - **No public geometry:** nodes such as USBP sectors (ADR 0002) store `NULL` geometry. The API returns `geometry: null`, and the UI lists them instead of drawing them.
 
 ## Decisions
