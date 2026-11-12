@@ -1,9 +1,9 @@
 import { Link, useNavigate, useParams } from 'react-router'
 import { useDocument, useLabelMutations, useLabelQueue } from '../api/hooks'
-import type { DocumentDetail, LabelRecord, LabelTarget, Verdict } from '../api/types'
+import type { DocumentDetail, LabelRecord, LabelTarget } from '../api/types'
 import DocumentHeader from '../components/news/DocumentHeader'
 import LabelControl from '../components/news/LabelControl'
-import type { LabelChange } from '../lib/labels'
+import { relevanceAnswer, relevanceVerdict, type LabelChange } from '../lib/labels'
 import Panel from '../components/news/Panel'
 import { EventsTable, SeizuresTable } from '../components/news/RecordTables'
 
@@ -30,16 +30,16 @@ function Workbench({ doc }: { doc: DocumentDetail }) {
     for (const l of stale) await remove.mutateAsync(l.id)
     save.mutate({ document_id: doc.id, target_table: table, target_id: id, ...change })
   }
-  const relevance = recordLabel(doc, 'documents', doc.id)
-  const setRelevance = (verdict: Verdict) =>
+  const pipelineRelevant = doc.status === 'extracted'
+  const answer = relevanceAnswer(recordLabel(doc, 'documents', doc.id), pipelineRelevant)
+  const setRelevance = (relevant: boolean) =>
     save.mutate({
       document_id: doc.id,
       target_table: 'documents',
       target_id: doc.id,
       field: 'relevant',
-      verdict,
+      verdict: relevanceVerdict(relevant, pipelineRelevant),
     })
-  const judged = doc.status === 'extracted' ? 'relevant' : 'not relevant'
 
   return (
     <div className="space-y-4">
@@ -47,29 +47,37 @@ function Workbench({ doc }: { doc: DocumentDetail }) {
       {save.isError && (
         <p className="text-xs text-rose-300">Could not save: {save.error.message}</p>
       )}
-      <Panel title="1 · Relevance decision" aside={`pipeline judged: ${judged}`}>
+      <Panel
+        title="1 · Relevance"
+        aside={`pipeline decision: ${pipelineRelevant ? 'relevant' : 'not relevant'}`}
+      >
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <span className="text-ink-300">
-            Is this article about organized crime in the AOI (so it <i>should</i> be {judged})?
+            Is this article relevant: organized crime with a link to the area of interest?
           </span>
-          {(['correct', 'incorrect'] as const).map((v) => (
+          {([true, false] as const).map((v) => (
             <button
-              key={v}
+              key={String(v)}
               type="button"
               disabled={busy}
-              aria-pressed={relevance?.verdict === v}
+              aria-pressed={answer === v}
               onClick={() => setRelevance(v)}
-              className={`rounded border px-2 py-0.5 ${
-                relevance?.verdict === v
-                  ? v === 'correct'
+              className={`rounded border px-3 py-0.5 ${
+                answer === v
+                  ? v
                     ? 'border-emerald-500 bg-emerald-500/20 text-emerald-200'
                     : 'border-rose-500 bg-rose-500/20 text-rose-200'
                   : 'border-ink-700 text-ink-300 hover:bg-ink-800'
               }`}
             >
-              {v === 'correct' ? 'Decision correct' : 'Decision wrong'}
+              {v ? 'Yes' : 'No'}
             </button>
           ))}
+          {answer !== null && (
+            <span className="text-ink-500">
+              {answer === pipelineRelevant ? 'pipeline agreed' : 'pipeline got this wrong'}
+            </span>
+          )}
         </div>
       </Panel>
       <div className="grid gap-4 xl:grid-cols-2">

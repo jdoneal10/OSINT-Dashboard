@@ -21,9 +21,11 @@ Definitions
   (``judged_decision``), so re-filtering later does not change the label's meaning; from it
   each labeled document gets a true relevance. **Filter recall** = truly relevant documents
   the local filter passed (score >= threshold) / truly relevant documents.
-- **Weighting**: the labeling queue oversamples documents the pipeline rejected, so recall
-  and pass rates are weighted by stratum (passed / rejected by the local filter): each
-  labeled document stands for (stratum size in the corpus) / (labeled in the stratum).
+- **Weighting**: the labeling queue samples by pipeline decision and oversamples rejected
+  documents, so recall and pass rates are weighted by that stratum (the decision the label
+  judged): each labeled document stands for (documents with that decision now) / (labeled in
+  the stratum). After a re-filter the current counts only approximate the counts at labeling
+  time.
 - Missed records (extraction recall) cannot be measured from record labels; they are out of
   scope for this report.
 """
@@ -171,8 +173,8 @@ class FilterMetrics:
     seconds_per_doc: float | None = None
 
 
-def judged_documents(session: Session, threshold: float) -> list[JudgedDocument]:
-    """Documents with a relevance label, with stratum weights (passed / rejected filter)."""
+def judged_documents(session: Session) -> list[JudgedDocument]:
+    """Documents with a relevance label, weighted by the decision stratum they were drawn from."""
     rows = session.execute(
         select(
             Document.id,
@@ -198,16 +200,15 @@ def judged_documents(session: Session, threshold: float) -> list[JudgedDocument]
                 doc_id, truly, pipeline_relevant, float(score) if score is not None else None
             )
         )
-    # Corpus stratum sizes among documents the filter has scored.
-    scored = select(func.count()).where(
+    # Corpus stratum sizes: documents the queue could draw from, by pipeline decision.
+    pool = select(func.count()).where(
         Document.relevance_score.is_not(None), Document.duplicate_of_id.is_(None)
     )
-    passed_total = session.scalar(scored.where(Document.relevance_score >= threshold)) or 0
-    rejected_total = session.scalar(scored.where(Document.relevance_score < threshold)) or 0
-    passed = [d for d in docs if d.score is not None and d.score >= threshold]
-    passed_ids = {d.document_id for d in passed}
-    rejected = [d for d in docs if d.document_id not in passed_ids]
-    for group, total in ((passed, passed_total), (rejected, rejected_total)):
+    relevant_total = session.scalar(pool.where(Document.pipeline_status == "extracted")) or 0
+    rejected_total = session.scalar(pool.where(Document.pipeline_status == "filtered_out")) or 0
+    passed = [d for d in docs if d.pipeline_relevant]
+    rejected = [d for d in docs if not d.pipeline_relevant]
+    for group, total in ((passed, relevant_total), (rejected, rejected_total)):
         for d in group:
             d.weight = total / len(group) if total else 1.0
     return docs
@@ -382,7 +383,7 @@ def run(
     threshold = settings.relevance_threshold
     with session_factory()() as session:
         rec = record_precision(session, version)
-        docs = judged_documents(session, threshold)
+        docs = judged_documents(session)
         stored = {d.document_id: d.score for d in docs}
         filters = [filter_metrics(docs, stored, f"{settings.relevance_model} (stored)", threshold)]
         for model in compare_models or []:

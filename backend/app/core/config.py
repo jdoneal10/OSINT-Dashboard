@@ -37,9 +37,13 @@ class Settings(BaseSettings):
 
     # Local relevance filter (Ollama on loopback only; ADR 0004).
     ollama_url: str = "http://127.0.0.1:11434"
-    relevance_model: str = "qwen3:4b"
-    # Low on purpose (recall over precision); tuned on the labeled set in Step 6.
-    relevance_threshold: float = 0.3
+    # Chosen on the owner's labels (docs/evaluations/2026-11-11-extraction-extract-v3.md):
+    # at 0.2 gemma3:4b passed all 14 relevant documents (qwen3:4b missed about 3 in 10).
+    # It passes most documents, so Haiku's relevance check does the real filtering; that
+    # costs < $0.001 per document, and recall matters more than the extra calls.
+    relevance_model: str = "gemma3:4b"
+    # Low on purpose (recall over precision): a borderline article costs < $0.001 at Haiku.
+    relevance_threshold: float = 0.2
 
     worker_heartbeat_minutes: int = 5
     scheduled_ingest: bool = True

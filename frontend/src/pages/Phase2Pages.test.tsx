@@ -187,7 +187,7 @@ describe('Labeling', () => {
       '/labels': { id: 1 },
     })
     const bench = await screen.findByRole('region', { name: 'Labeling workbench' })
-    fireEvent.click(await within(bench).findByRole('button', { name: 'Decision correct' }))
+    fireEvent.click(await within(bench).findByRole('button', { name: 'Yes' }))
     fireEvent.click(within(bench).getByRole('button', { name: 'Correct' }))
     await waitFor(() => {
       const puts = fetchMock.mock.calls.filter(

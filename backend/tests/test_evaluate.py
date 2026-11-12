@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.models import Document, Event, Label, Seizure, Source, event_documents
 from app.enrich import evaluate
 from app.enrich.local_filter import FilterOutput
@@ -100,7 +101,7 @@ def test_filter_recall_is_weighted_by_stratum(seeded: Session, source: int) -> N
     _label(seeded, rejected[1], "documents", rejected[1], "incorrect", "relevant")
     seeded.commit()
 
-    docs = evaluate.judged_documents(seeded, 0.3)
+    docs = evaluate.judged_documents(seeded)
     weights = {d.document_id: d.weight for d in docs}
     assert weights[passed[0]] == 4.0  # 8 in corpus / 2 labeled
     assert weights[rejected[0]] == 2.0  # 4 / 2
@@ -129,7 +130,7 @@ def test_relevance_label_keeps_the_decision_it_judged(seeded: Session, source: i
     # Later re-filtering passes the document; the label still means "this was relevant".
     seeded.get_one(Document, doc).pipeline_status = "extracted"
     seeded.commit()
-    (judged,) = evaluate.judged_documents(seeded, 0.3)
+    (judged,) = evaluate.judged_documents(seeded)
     assert judged.truly_relevant is True
 
 
@@ -159,5 +160,5 @@ def test_model_comparison_and_report(seeded: Session, source: int, tmp_path: Pat
     text = path.read_text()
     assert "INSUFFICIENT SAMPLE" in text
     assert "| events | 1 | 1 | 0 | 0 | 100.0% |" in text
-    assert "| fake | 0.30 |" in text
+    assert f"| fake | {get_settings().relevance_threshold:.2f} |" in text
     assert "text p0" not in text  # article text never lands in the report
