@@ -20,7 +20,7 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import select
 
 from app.core.config import get_settings
@@ -47,19 +47,25 @@ NOT RELEVANT (score low): ordinary politics, economy, sports, entertainment, wea
 traffic accidents, health, or crime with no organized-crime link; anything outside \
 Mexico/Central America/the U.S. border unless it involves those organizations.
 
-When unsure, score toward relevant. Reply with JSON only."""
+When unsure, score toward relevant. Reply with JSON only: "relevance" from 0 to 1 and a \
+"reason" of at most 25 words."""
 
 
 class FilterOutput(BaseModel):
     relevance: float = Field(ge=0, le=1)
-    reason: str = Field(max_length=300)
+    reason: str  # informational only; long reasons are truncated, never rejected
+
+    @field_validator("reason")
+    @classmethod
+    def _short(cls, v: str) -> str:
+        return v[:300]
 
 
 FORMAT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "relevance": {"type": "number", "minimum": 0, "maximum": 1},
-        "reason": {"type": "string"},
+        "reason": {"type": "string", "maxLength": 300},
     },
     "required": ["relevance", "reason"],
 }

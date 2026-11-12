@@ -81,3 +81,15 @@ def test_missing_model_gives_actionable_error() -> None:
     client = httpx.Client(transport=httpx.MockTransport(lambda _r: httpx.Response(404)))
     with pytest.raises(OllamaUnavailableError, match="ollama pull"):
         LocalFilter(model="qwen3:4b", client=client).score("x")
+
+
+def test_long_reason_is_truncated_not_rejected() -> None:
+    reply = json.dumps({"relevance": 0.9, "reason": "x" * 1000})
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda _r: httpx.Response(200, json={"message": {"content": reply}})
+        )
+    )
+    out = LocalFilter(model="qwen3:4b", client=client).score("text")
+    assert out.relevance == 0.9
+    assert len(out.reason) == 300
