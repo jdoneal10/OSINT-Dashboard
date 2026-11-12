@@ -139,8 +139,19 @@ class ActorIndex:
         self.slugs.add(slug)
         return slug
 
-    def create(self, name: str, raw: str, actor_type: str, parent_id: int | None = None) -> int:
-        citation = ACLED_CITATION | {"accessed": dt.date.today().isoformat()}  # noqa: DTZ011
+    def create(
+        self,
+        name: str,
+        raw: str,
+        actor_type: str,
+        parent_id: int | None = None,
+        citation: dict[str, str] | None = None,
+    ) -> int:
+        """New actor. ``citation`` defaults to ACLED (rule-based path); news extraction passes
+        the source document's citation instead."""
+        citation = (citation or ACLED_CITATION) | {
+            "accessed": dt.date.today().isoformat()  # noqa: DTZ011
+        }
         canonical = name
         n = 2
         while normalize_alias(canonical) in self.names:
