@@ -54,6 +54,10 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 - `make lint` — ruff, mypy, eslint, prettier --check
 - `make ingest SOURCE=acled SINCE=2018-01-01` — ACLED backfill (omit `SINCE` for an incremental pull; `DELETED=1` for deletion reconciliation)
 - `make ingest SOURCE=cbp` — newest CBP files (`ALL=1` for every robots-allowed series; `FILE=path` to import a manually downloaded file)
+- `make ingest SOURCE=news [FEED=slug]` — RSS/listing/GDELT feeds registered in `data/reference/feeds.yaml`
+- `make ingest SOURCE=designations` — OFAC SDN (regional programs) and Federal Register FTO/SDGT notices
+- `make ingest SOURCE=sesnsp FILE=path` — SESNSP municipal crime file (manual download; automated access is blocked)
+- `make reference-inegi` — one-time INEGI municipalities + local gazetteer (resumable, ~45 min)
 - `cd backend && uv run python -m app.core.secrets set ACLED_USERNAME` — store a secret in Keychain (owner runs this; never pass secrets on the command line)
 - `cd backend && uv run python -m app.enrich.actors --rebuild` — re-run actor normalization over all events
 - `cd backend && uv run python -m app.enrich.llm.check` — verify the stored Anthropic key (free Models API call; never prints the key)
