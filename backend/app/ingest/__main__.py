@@ -17,7 +17,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.ingest import acled, cbp, news
+from app.ingest import acled, cbp, designations, news
 
 
 def _cbp(args: argparse.Namespace) -> int:
@@ -42,6 +42,7 @@ INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "cbp": _cbp,
     "acled": _acled,
     "news": _news,
+    "designations": lambda _args: designations.run_designations(),
 }
 
 

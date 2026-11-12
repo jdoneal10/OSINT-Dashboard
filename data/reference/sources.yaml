@@ -47,6 +47,22 @@ sources:
         url: https://www.cbp.gov/newsroom/stats/cbp-public-data-portal/terms-and-conditions
         accessed: 2026-11-11
 
+  - slug: ofac
+    name: U.S. Treasury OFAC — Specially Designated Nationals (SDN) list
+    source_type: dataset
+    # A: the official sanctions list itself (the legal record of the designation).
+    reliability: A
+    homepage_url: https://ofac.treasury.gov/specially-designated-nationals-and-blocked-persons-list-sdn-human-readable-lists
+    redistribution_allowed: true
+    license_notes: >-
+      U.S. government data. Individuals are stored only as name + program attributes of the
+      designation record (CLAUDE.md hard rule 3); no dates of birth, IDs or addresses.
+    sources:
+      - title: SDN list XML export
+        publisher: U.S. Department of the Treasury, OFAC
+        url: https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.XML
+        accessed: 2026-11-11
+
   - slug: natural-earth
     name: Natural Earth
     source_type: reference
