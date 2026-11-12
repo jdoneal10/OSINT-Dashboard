@@ -5,6 +5,9 @@ Files (each optional; missing files are skipped with a warning):
 - ``nodes.geojson``      → ``nodes`` (upsert on slug)
 - ``actor_aliases.yaml`` → ``actors`` + ``actor_aliases`` (upsert; aliases are synced
   per actor, so an alias removed from the YAML is removed from the database)
+- ``sources.yaml``       → ``sources`` (upsert on slug; Admiralty reliability grades)
+- ``border_adjacency.yaml`` → merged into USBP sector ``nodes.properties``
+  (``adjacent_admin1``, ``field_office``, ``adjacency_method``)
 
 Validation runs over every file before anything is written; an uncited entry aborts the load.
 
@@ -22,21 +25,23 @@ from typing import Any
 import yaml
 from shapely.geometry import MultiPolygon, Polygon, shape
 from shapely.geometry.base import BaseGeometry
-from sqlalchemy import delete, func, select, update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import delete, func, select, type_coerce, update
+from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.db.models import Actor, ActorAlias, Node, ReferenceArea
+from app.db.models import Actor, ActorAlias, Node, ReferenceArea, Source
 from app.db.session import session_factory
 from app.reference.normalize import normalize_alias
 from app.reference.schemas import (
     ActorFile,
+    AdjacencyFile,
     AliasEntry,
     AreaCollection,
     Geometry,
     NodeCollection,
+    SourceFile,
 )
 
 log = logging.getLogger(__name__)
@@ -52,6 +57,8 @@ class LoadReport:
     nodes: int = 0
     actors: int = 0
     aliases: int = 0
+    sources: int = 0
+    adjacency: int = 0
     skipped_files: list[str] = field(default_factory=list)
 
 
@@ -60,6 +67,8 @@ class _Parsed:
     areas: list[AreaCollection] = field(default_factory=list)
     nodes: NodeCollection | None = None
     actors: ActorFile | None = None
+    sources: SourceFile | None = None
+    adjacency: AdjacencyFile | None = None
 
 
 def _ewkt(geom: BaseGeometry) -> Any:
@@ -124,10 +133,50 @@ def parse_reference_dir(ref_dir: Path) -> tuple[_Parsed, list[str]]:
     else:
         skipped.append(actors_path.name)
 
+    sources_path = ref_dir / "sources.yaml"
+    if sources_path.is_file():
+        parsed.sources = _validate(SourceFile, sources_path)
+        _check_unique([s.slug for s in parsed.sources.sources], "source slug")
+    else:
+        skipped.append(sources_path.name)
+
+    adjacency_path = ref_dir / "border_adjacency.yaml"
+    if adjacency_path.is_file():
+        parsed.adjacency = _validate(AdjacencyFile, adjacency_path)
+        _check_adjacency(parsed, adjacency_path.name)
+    else:
+        skipped.append(adjacency_path.name)
+
     _check_unique([f.properties.slug for c in parsed.areas for f in c.features], "area slug")
     if parsed.nodes:
         _check_unique([f.properties.slug for f in parsed.nodes.features], "node slug")
     return parsed, skipped
+
+
+def _check_adjacency(parsed: _Parsed, filename: str) -> None:
+    if parsed.adjacency is None:
+        return
+    node_types = (
+        {f.properties.slug: f.properties.node_type for f in parsed.nodes.features}
+        if parsed.nodes
+        else {}
+    )
+    mx_codes = {
+        f.properties.admin1_code
+        for c in parsed.areas
+        for f in c.features
+        if f.properties.country_iso3 == "MEX"
+    }
+    for entry in parsed.adjacency.sectors:
+        if node_types.get(entry.sector) != "usbp_sector":
+            raise ReferenceDataError(f"{filename}: {entry.sector!r} is not a usbp_sector node")
+        if entry.field_office and node_types.get(entry.field_office) != "ofo_field_office":
+            raise ReferenceDataError(
+                f"{filename}: {entry.field_office!r} is not an ofo_field_office node"
+            )
+        unknown = set(entry.adjacent_admin1) - mx_codes
+        if unknown:
+            raise ReferenceDataError(f"{filename}: unknown Mexican admin1 codes {sorted(unknown)}")
 
 
 def _check_unique(values: list[str], label: str) -> None:
@@ -266,22 +315,66 @@ def _load_actors(session: Session, actor_file: ActorFile) -> tuple[int, int]:
     return len(actor_file.actors), alias_count
 
 
+def _load_sources(session: Session, source_file: SourceFile) -> int:
+    for entry in source_file.sources:
+        values = {
+            "slug": entry.slug,
+            "name": entry.name,
+            "source_type": entry.source_type,
+            "reliability": entry.reliability,
+            "homepage_url": str(entry.homepage_url) if entry.homepage_url else None,
+            "terms_url": str(entry.terms_url) if entry.terms_url else None,
+            "license_notes": entry.license_notes,
+            "redistribution_allowed": entry.redistribution_allowed,
+        }
+        stmt = insert(Source).values(**values)
+        session.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[Source.slug],
+                set_={k: stmt.excluded[k] for k in values if k != "slug"}
+                | {"updated_at": func.now()},
+            )
+        )
+    return len(source_file.sources)
+
+
+def _load_adjacency(session: Session, adjacency: AdjacencyFile) -> int:
+    citations = [c.model_dump(mode="json") for c in adjacency.sources]
+    for entry in adjacency.sectors:
+        patch = {
+            "adjacent_admin1": entry.adjacent_admin1,
+            "field_office": entry.field_office,
+            "adjacency_method": adjacency.method,
+            "adjacency_sources": citations,
+        }
+        session.execute(
+            update(Node)
+            .where(Node.slug == entry.sector)
+            .values(properties=Node.properties.op("||")(type_coerce(patch, JSONB)))
+        )
+    return len(adjacency.sectors)
+
+
 def load_reference(session: Session, ref_dir: Path) -> LoadReport:
     """Validate everything first, then write in the caller's transaction."""
     parsed, skipped = parse_reference_dir(ref_dir)
     report = LoadReport(skipped_files=skipped)
+    if parsed.sources:
+        report.sources = _load_sources(session, parsed.sources)
     report.areas = _load_areas(session, parsed.areas)
     if parsed.nodes:
         report.nodes = _load_nodes(session, parsed.nodes)
     if parsed.actors:
         report.actors, report.aliases = _load_actors(session, parsed.actors)
+    if parsed.adjacency:
+        report.adjacency = _load_adjacency(session, parsed.adjacency)
     return report
 
 
 def table_counts(session: Session) -> dict[str, int]:
     return {
         model.__tablename__: session.scalar(select(func.count()).select_from(model)) or 0
-        for model in (ReferenceArea, Node, Actor, ActorAlias)
+        for model in (Source, ReferenceArea, Node, Actor, ActorAlias)
     }
 
 
@@ -298,11 +391,13 @@ def main() -> int:
     for name in report.skipped_files:
         log.warning("skipped missing reference file: %s", name)
     log.info(
-        "loaded %d areas, %d nodes, %d actors, %d aliases; table totals %s",
+        "loaded %d sources, %d areas, %d nodes, %d actors, %d aliases, %d adjacency; totals %s",
+        report.sources,
         report.areas,
         report.nodes,
         report.actors,
         report.aliases,
+        report.adjacency,
         counts,
     )
     return 0

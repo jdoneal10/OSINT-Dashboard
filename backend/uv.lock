@@ -112,6 +112,7 @@ dependencies = [
     { name = "apscheduler" },
     { name = "fastapi" },
     { name = "geoalchemy2" },
+    { name = "httpx" },
     { name = "keyring" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -126,7 +127,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "honcho" },
-    { name = "httpx" },
     { name = "httpx2" },
     { name = "mypy" },
     { name = "pytest" },
@@ -140,6 +140,7 @@ requires-dist = [
     { name = "apscheduler", specifier = ">=3.11,<4" },
     { name = "fastapi", specifier = ">=0.162.5" },
     { name = "geoalchemy2", specifier = ">=0.21.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "keyring", specifier = ">=25.7.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.8" },
     { name = "pydantic", specifier = ">=2.14.3" },
@@ -154,7 +155,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "honcho", specifier = ">=2.0.0" },
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx2", specifier = ">=2.16.0" },
     { name = "mypy", specifier = ">=2.4.1" },
     { name = "pytest", specifier = ">=9.2.0" },

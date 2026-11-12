@@ -74,6 +74,16 @@ SECTORS = [
     ("rio-grande-valley", "Rio Grande Valley Sector", "Texas", "rio-grande-valley-sector-texas"),
 ]
 
+# The four Southwest OFO field offices, labeled exactly as in CBP's public statistics (the
+# "Area of Responsibility" column). Statistical units only; no facility locations.
+CBP_ENCOUNTERS_PAGE = "https://www.cbp.gov/document/stats/nationwide-encounters"
+FIELD_OFFICES = [
+    ("san-diego", "San Diego Field Office", "California"),
+    ("tucson", "Tucson Field Office", "Arizona"),
+    ("el-paso", "El Paso Field Office", "Texas"),
+    ("laredo", "Laredo Field Office", "Texas"),
+]
+
 US_STATE_CODES = {"California": "US-CA", "Arizona": "US-AZ", "New Mexico": "US-NM", "Texas": "US-TX"}
 
 
@@ -178,6 +188,34 @@ def build_nodes(bts_json: Path) -> dict[str, Any]:
                             "publisher": "U.S. Customs and Border Protection",
                             "url": f"{CBP_SECTORS_INDEX}/{page}",
                             "accessed": ACCESSED,
+                        }
+                    ],
+                },
+            }
+        )
+    for slug, name, state in FIELD_OFFICES:
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": None,
+                "properties": {
+                    "slug": f"ofo-{slug}",
+                    "name": name,
+                    "node_type": "ofo_field_office",
+                    "country_iso3": "USA",
+                    "admin1_code": US_STATE_CODES[state],
+                    "attributes": {
+                        "state": state,
+                        "aor_label": name,
+                        "geometry_status": "none: statistical area of responsibility (ADR 0002)",
+                    },
+                    "sources": [
+                        {
+                            "title": "Nationwide Encounters (Area of Responsibility files)",
+                            "publisher": "U.S. Customs and Border Protection",
+                            "url": CBP_ENCOUNTERS_PAGE,
+                            "accessed": ACCESSED,
+                            "note": f"AOR label '{name}' as published in the AOR column.",
                         }
                     ],
                 },

@@ -1,10 +1,8 @@
-import AppShell from './components/AppShell'
-import MapPage from './pages/MapPage'
+import { useState } from 'react'
+import { RouterProvider } from 'react-router'
+import { createRouter } from './router'
 
 export default function App() {
-  return (
-    <AppShell>
-      <MapPage />
-    </AppShell>
-  )
+  const [router] = useState(createRouter)
+  return <RouterProvider router={router} />
 }

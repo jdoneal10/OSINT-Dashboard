@@ -1,0 +1,35 @@
+# USBP sector ↔ adjacent Mexican state(s), and the OFO field office paired with each sector.
+# ANALYST-DERIVED (labeled as such in the UI). Used by the border panel to put CBP figures
+# next to violence in the Mexican states across the line. Not an official CBP mapping.
+
+version: 1
+method: >-
+  Analyst-derived. A sector's adjacent Mexican states are those whose border with the U.S.
+  falls within the U.S. state(s) and border segment each CBP sector page describes, checked
+  against Natural Earth admin-1 boundaries. Each field office is paired with the sectors in
+  the same U.S. state(s) where its land ports of entry lie (BTS port coordinates). No sector
+  boundary geometry exists publicly (ADR 0002), so edge sectors may border extra states.
+sources:
+  - title: Border Patrol Sectors and Stations (sector pages)
+    publisher: U.S. Customs and Border Protection
+    url: https://www.cbp.gov/border-security/along-us-borders/border-patrol-sectors
+    accessed: 2026-11-11
+  - title: Admin 1 – States, Provinces (1:10m, v5.1)
+    publisher: Natural Earth (public domain)
+    url: https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/
+    accessed: 2026-11-11
+  - title: Border Crossing Entry Data (dataset keg4-3bc2)
+    publisher: U.S. DOT Bureau of Transportation Statistics
+    url: https://data.bts.gov/Research-and-Statistics/Border-Crossing-Entry-Data/keg4-3bc2
+    accessed: 2026-11-11
+
+sectors:
+  - {sector: usbp-san-diego,         adjacent_admin1: [MX-BCN],                 field_office: ofo-san-diego}
+  - {sector: usbp-el-centro,         adjacent_admin1: [MX-BCN],                 field_office: ofo-san-diego}
+  - {sector: usbp-yuma,              adjacent_admin1: [MX-BCN, MX-SON],         field_office: ofo-tucson}
+  - {sector: usbp-tucson,            adjacent_admin1: [MX-SON],                 field_office: ofo-tucson}
+  - {sector: usbp-el-paso,           adjacent_admin1: [MX-CHH, MX-SON],         field_office: ofo-el-paso}
+  - {sector: usbp-big-bend,          adjacent_admin1: [MX-CHH, MX-COA],         field_office: ofo-el-paso}
+  - {sector: usbp-del-rio,           adjacent_admin1: [MX-COA],                 field_office: ofo-laredo}
+  - {sector: usbp-laredo,            adjacent_admin1: [MX-COA, MX-NLE, MX-TAM], field_office: ofo-laredo}
+  - {sector: usbp-rio-grande-valley, adjacent_admin1: [MX-TAM],                 field_office: ofo-laredo}

@@ -172,9 +172,27 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     admin2_code: Mapped[str | None] = mapped_column(String(16))
     # 1 = exact point, 2 = near/municipality, 3 = admin1 or coarser (ACLED-style scale).
     geo_precision: Mapped[int | None] = mapped_column(SmallInteger)
+    # 1 = exact day, 2 = within a week, 3 = within a month (ACLED-style scale).
+    time_precision: Mapped[int | None] = mapped_column(SmallInteger)
+    admin1_name: Mapped[str | None] = mapped_column(String(128))
+    admin2_name: Mapped[str | None] = mapped_column(String(128))
+    location_name: Mapped[str | None] = mapped_column(String(256))
+    # Source-specific fields kept verbatim (e.g. ACLED actor strings, inter codes, tags) so
+    # derived steps such as actor normalization can be re-run without re-fetching.
+    attributes: Mapped[dict[str, Any]] = mapped_column(default=dict)
 
 
-ACTOR_ROLES = ("perpetrator", "target", "other")
+# actor1..assoc_actor2 mirror ACLED's dyad exactly (no perpetrator/target semantics);
+# perpetrator/target are reserved for LLM-derived roles from Phase 2.
+ACTOR_ROLES = (
+    "perpetrator",
+    "target",
+    "other",
+    "actor1",
+    "actor2",
+    "assoc_actor1",
+    "assoc_actor2",
+)
 
 actor_events = Table(
     "actor_events",
@@ -183,6 +201,8 @@ actor_events = Table(
     Column("event_id", ForeignKey("events.id", ondelete="CASCADE"), primary_key=True),
     Column("role", String(16), primary_key=True),
     _check_in("role", ACTOR_ROLES, "role"),
+    # The PK leads with actor_id; event -> actors lookups (map, API) need their own index.
+    Index("ix_actor_events_event_id", "event_id"),
 )
 
 event_documents = Table(
@@ -199,6 +219,7 @@ event_documents = Table(
 NODE_TYPES = (
     "poe",
     "usbp_sector",
+    "ofo_field_office",
     "seaport",
     "airport",
     "lab_region",

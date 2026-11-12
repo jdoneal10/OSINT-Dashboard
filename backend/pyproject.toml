@@ -8,6 +8,7 @@ dependencies = [
     "apscheduler>=3.11,<4",
     "fastapi>=0.162.5",
     "geoalchemy2>=0.21.0",
+    "httpx>=0.28.1",
     "keyring>=25.7.0",
     "psycopg[binary]>=3.3.8",
     "pydantic>=2.14.3",
@@ -29,7 +30,6 @@ packages = ["app"]
 [dependency-groups]
 dev = [
     "honcho>=2.0.0",
-    "httpx>=0.28.1",
     "httpx2>=2.16.0",
     "mypy>=2.4.1",
     "pytest>=9.2.0",
@@ -47,7 +47,8 @@ select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF", "PL", "N", "DTZ", "P
 ignore = ["PLR0913", "PLR2004"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106", "PLR2004", "PLR0917"]
+"app/api/**" = ["PLR0917"]  # FastAPI endpoints take many query params
+"tests/**" = ["S101", "S105", "S106", "PLR2004", "PLR0911", "PLR0917"]
 
 [tool.mypy]
 python_version = "3.12"

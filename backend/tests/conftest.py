@@ -26,6 +26,7 @@ from app.core.config import get_settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import get_engine, session_factory  # noqa: E402
 from app.main import app  # noqa: E402
+from app.reference.load import load_reference  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -47,6 +48,22 @@ def _clean_tables() -> Iterator[None]:
     tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
     with get_engine().begin() as conn:
         conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+
+
+@pytest.fixture(autouse=True)
+def raw_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Raw snapshots written during tests go to a temp dir, never data/raw/."""
+    raw = tmp_path / "raw"
+    monkeypatch.setattr(get_settings(), "data_raw_dir", raw)
+    return raw
+
+
+@pytest.fixture
+def seeded(session: Session) -> Session:
+    """Load the real committed reference data (sources, nodes, AOI, actors)."""
+    load_reference(session, get_settings().reference_dir)
+    session.commit()
+    return session
 
 
 @pytest.fixture

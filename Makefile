@@ -8,8 +8,11 @@ BACKEND  := cd backend &&
 FRONTEND := cd frontend &&
 UV       := uv run
 
-SOURCE ?=
-SINCE  ?=
+SOURCE  ?=
+SINCE   ?=
+FILE    ?=
+ALL     ?=
+DELETED ?=
 
 .PHONY: help setup dev db-up db-down db-reset db-migrate seed basemap \
         test test-backend test-frontend lint lint-backend lint-frontend fmt ingest
@@ -71,5 +74,6 @@ fmt: ## Auto-format backend and frontend
 	$(BACKEND) $(UV) ruff format .
 	$(FRONTEND) npm run format
 
-ingest: ## Run one ingester: make ingest SOURCE=acled SINCE=2026-01-01
-	$(BACKEND) $(UV) python -m app.ingest $(SOURCE) $(if $(SINCE),--since $(SINCE),)
+ingest: ## Run one ingester: make ingest SOURCE=acled SINCE=2026-01-01 (see app/ingest/__main__.py)
+	$(BACKEND) $(UV) python -m app.ingest $(SOURCE) $(if $(SINCE),--since $(SINCE),) \
+		$(if $(FILE),--file "$(CURDIR)/$(FILE)",) $(if $(ALL),--all,) $(if $(DELETED),--deleted,)

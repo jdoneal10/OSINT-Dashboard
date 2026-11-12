@@ -148,3 +148,55 @@ class ActorFile(BaseModel):
 
     version: int = 1
     actors: list[ActorEntry]
+
+
+# --------------------------------------------------------------------------- sources
+
+
+class SourceEntry(BaseModel):
+    """A data source with its Admiralty reliability grade and where its terms were read."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    name: str
+    source_type: Literal["api", "dataset", "rss", "web", "reference"]
+    reliability: Literal["A", "B", "C", "D", "E", "F"]
+    homepage_url: HttpUrl | None = None
+    terms_url: HttpUrl | None = None
+    redistribution_allowed: bool = False
+    license_notes: str | None = None
+    sources: Cited
+
+    _cited = field_validator("sources")(_nonempty)
+
+
+class SourceFile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = 1
+    sources: list[SourceEntry]
+
+
+# --------------------------------------------------------------------------- border adjacency
+
+
+class AdjacencyEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sector: str  # node slug (usbp_sector)
+    adjacent_admin1: list[str] = Field(min_length=1)  # reference_areas admin1 codes (MEX)
+    field_office: str | None = None  # node slug (ofo_field_office)
+
+
+class AdjacencyFile(BaseModel):
+    """Analyst-derived sector ↔ Mexican state adjacency (labeled as such in the UI)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = 1
+    method: str = Field(min_length=10)
+    sources: Cited
+    sectors: list[AdjacencyEntry]
+
+    _cited = field_validator("sources")(_nonempty)

@@ -1,0 +1,8 @@
+version: 1
+sources:
+  - slug: test-source
+    name: Synthetic Test Source
+    source_type: dataset
+    reliability: C
+    sources:
+      - {title: Synthetic test fixture, publisher: cartel-osint tests, url: "https://example.org/test-fixture", accessed: 2026-11-11}

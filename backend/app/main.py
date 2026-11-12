@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api import health, reference
+from app.api import actors, border, events, health, reference
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 
@@ -38,6 +38,9 @@ def create_app() -> FastAPI:
     )
     app.include_router(health.router)
     app.include_router(reference.router)
+    app.include_router(events.router)
+    app.include_router(border.router)
+    app.include_router(actors.router)
     return app
 
 
