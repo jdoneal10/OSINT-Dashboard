@@ -9,7 +9,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api import actors, border, events, health, reference
+from app.api import (
+    actors,
+    border,
+    clusters,
+    crime,
+    designations,
+    documents,
+    events,
+    health,
+    labels,
+    llm,
+    reference,
+)
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 
@@ -33,7 +45,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET"],
+        allow_methods=["GET", "PUT", "DELETE"],  # writes: /labels only
         allow_headers=["*"],
     )
     app.include_router(health.router)
@@ -41,6 +53,8 @@ def create_app() -> FastAPI:
     app.include_router(events.router)
     app.include_router(border.router)
     app.include_router(actors.router)
+    for module in (documents, clusters, designations, crime, llm, labels):
+        app.include_router(module.router)
     return app
 
 
