@@ -62,7 +62,7 @@ feeds:
     url: https://www.gob.mx/semar/es/archivo/prensa
     text: full
     reliability: B
-    status: pending  # listing markup to verify at implementation (gob.mx RSS returns HTTP 500)
+    status: pending  # gob.mx archive pages are JavaScript shells (no links in HTML); RSS 500. Re-checked 2026-11-11
     terms_note: Mexican government publication. robots.txt allows. Official claims are self-reported; corroborate.
     sources:
       - {title: "SEMAR prensa", publisher: Gobierno de México — SEMAR, url: "https://www.gob.mx/semar/es/archivo/prensa", accessed: 2026-11-11}
@@ -76,7 +76,7 @@ feeds:
     url: https://www.gob.mx/fgr/es/archivo/prensa
     text: full
     reliability: B
-    status: pending  # returned HTTP 500 on 2026-11-11; retry at implementation
+    status: pending  # archive page is a JavaScript shell like SEMAR's (200, no links in HTML). Re-checked 2026-11-11
     terms_note: Mexican government publication. robots.txt allows.
     sources:
       - {title: "FGR prensa", publisher: Gobierno de México — FGR, url: "https://www.gob.mx/fgr/es/archivo/prensa", accessed: 2026-11-11}
@@ -121,7 +121,7 @@ feeds:
     url: https://riodoce.mx/feed/
     text: full
     reliability: B
-    status: pending  # feed returned HTTP 500 on 2026-11-11; retry at implementation
+    status: pending  # feed still HTTP 500 to our client on re-check 2026-11-11 (may reject non-browser clients)
     terms_note: Aviso legal permits personal use; prohibits commercial use. robots.txt allows.
     sources:
       - {title: "Ríodoce aviso legal", publisher: Reporteros en S.A. de C.V., url: "https://riodoce.mx/aviso-legal/", accessed: 2026-11-11}
@@ -181,7 +181,7 @@ feeds:
     url: https://animalpolitico.com/feed/
     text: full
     reliability: B
-    status: pending  # site returned HTTP 504 for robots.txt and feed on 2026-11-11; re-check
+    status: pending  # robots.txt and feed still HTTP 504 on re-check 2026-11-11; inactive until readable
     terms_note: robots.txt and terms not yet readable; stays inactive until checked.
     sources:
       - {title: "Animal Político", publisher: Animal Político, url: "https://animalpolitico.com", accessed: 2026-11-11}
