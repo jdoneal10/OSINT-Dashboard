@@ -9,7 +9,7 @@ import {
 } from '../api/hooks'
 import type { MetricSeries } from '../api/types'
 import Chart, { type ChartOption } from '../components/charts/Chart'
-import { pivot, snapshotNote, violenceTotals } from '../lib/borderSeries'
+import { pivot, snapshotNote, violenceTotals, type Value } from '../lib/borderSeries'
 import { localDate } from '../lib/dates'
 import { firstDay, monthLabel, toMonth } from '../lib/months'
 
@@ -22,7 +22,7 @@ type SeizureScope = 'sector' | 'field_office' | 'both'
 
 function stackedBars(
   months: string[],
-  series: { name: string; data: number[] }[],
+  series: { name: string; data: Value[] }[],
   unit: string,
 ): ChartOption {
   return {
@@ -123,8 +123,8 @@ export default function BorderPage() {
     return p.series.length ? stackedBars(p.months, p.series, 'lbs') : null
   }, [seizures.data])
   const violenceChart = useMemo((): ChartOption | null => {
-    const v = violenceTotals(violence.data ?? [], RANGE)
-    if (!v.events.some(Boolean)) return null
+    const v = violenceTotals(violence.data ?? [], RANGE, meta.data?.max_date)
+    if (!v.events.some((x) => x !== null && x > 0)) return null
     return {
       grid: { left: 48, right: 48, top: 36, bottom: 48 },
       legend: { top: 0 },
@@ -146,6 +146,7 @@ export default function BorderPage() {
         {
           name: 'Fatalities',
           type: 'line',
+          connectNulls: false,
           yAxisIndex: 1,
           data: v.fatalities,
           symbol: 'none',
@@ -154,7 +155,7 @@ export default function BorderPage() {
         },
       ],
     }
-  }, [violence.data])
+  }, [violence.data, meta.data?.max_date])
 
   const cbp: MetricSeries | undefined = encounters.data ?? seizures.data?.weight
 
@@ -242,7 +243,11 @@ export default function BorderPage() {
 
         <Card
           title="Violence in adjacent Mexican states"
-          subtitle={stateNames.length ? stateNames.join(', ') : '…'}
+          subtitle={`${stateNames.length ? stateNames.join(', ') : '…'}${
+            meta.data?.max_date
+              ? ` · ACLED events available through ${meta.data.max_date} (licence-tier lag); later months left blank`
+              : ''
+          }`}
           note={meta.data?.accessed ? `ACLED accessed ${localDate(meta.data.accessed)}` : null}
         >
           {violenceChart ? (

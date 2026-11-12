@@ -1,38 +1,41 @@
 import type { MetricSeries, MonthCount } from '../api/types'
 import { monthsBetween, toMonth } from './months'
 
+/** null = no data published/available for that month (drawn as a gap, never as zero). */
+export type Value = number | null
+
 export interface StackedSeries {
   months: string[] // 'YYYY-MM'
-  series: { name: string; data: number[] }[]
+  series: { name: string; data: Value[] }[]
 }
 
 /**
  * Pivot API points into one dense series per group over a continuous month axis.
- * Missing months become 0; groups are ordered by total (largest first).
+ * Inside the span the source covers, missing months are 0 (genuinely none reported);
+ * outside it (not yet published, or before coverage) they are null so charts show a gap
+ * instead of a misleading drop. Groups are ordered by total (largest first).
  */
 export function pivot(
   points: { month: string; group: string | null; value: number }[],
   range?: [string, string],
 ): StackedSeries {
-  if (points.length === 0 && !range) return { months: [], series: [] }
-  const months = range
-    ? monthsBetween(range[0], range[1])
-    : monthsBetween(
-        points.reduce((a, p) => (toMonth(p.month) < a ? toMonth(p.month) : a), '9999-12'),
-        points.reduce((a, p) => (toMonth(p.month) > a ? toMonth(p.month) : a), '0000-01'),
-      )
+  if (points.length === 0) return { months: range ? monthsBetween(...range) : [], series: [] }
+  const covered = points.map((p) => toMonth(p.month)).sort()
+  const [first, last] = [covered[0], covered[covered.length - 1]]
+  const months = range ? monthsBetween(range[0], range[1]) : monthsBetween(first, last)
   const index = new Map(months.map((m, i) => [m as string, i]))
-  const groups = new Map<string, number[]>()
+  const blank = (): Value[] => months.map((m) => (m < first || m > last ? null : 0))
+  const groups = new Map<string, Value[]>()
   for (const p of points) {
     const i = index.get(toMonth(p.month))
     if (i === undefined) continue
     const name = p.group ?? 'Total'
     let data = groups.get(name)
     if (!data) {
-      data = new Array<number>(months.length).fill(0)
+      data = blank()
       groups.set(name, data)
     }
-    data[i] += p.value
+    data[i] = (data[i] ?? 0) + p.value
   }
   const series = [...groups.entries()]
     .map(([name, data]) => ({ name, data }))
@@ -40,24 +43,30 @@ export function pivot(
   return { months, series }
 }
 
-export function sum(values: number[]): number {
-  return values.reduce((a, b) => a + b, 0)
+export function sum(values: Value[]): number {
+  return values.reduce<number>((a, b) => a + (b ?? 0), 0)
 }
 
-/** Monthly totals of events and fatalities across the given admin1 rows. */
+/**
+ * Monthly totals of events and fatalities across the given admin1 rows. Months after
+ * ``through`` (the last date the source covers, e.g. ACLED's access-tier lag) are null.
+ */
 export function violenceTotals(
   rows: MonthCount[],
   range: [string, string],
-): { months: string[]; events: number[]; fatalities: number[] } {
+  through?: string | null,
+): { months: string[]; events: Value[]; fatalities: Value[] } {
   const months = monthsBetween(range[0], range[1])
+  const end = through ? toMonth(through) : null
   const index = new Map(months.map((m, i) => [m as string, i]))
-  const events = new Array<number>(months.length).fill(0)
-  const fatalities = new Array<number>(months.length).fill(0)
+  const init = (): Value[] => months.map((m) => (end && m > end ? null : 0))
+  const events = init()
+  const fatalities = init()
   for (const r of rows) {
     const i = index.get(toMonth(r.month))
-    if (i === undefined) continue
-    events[i] += r.events
-    fatalities[i] += r.fatalities
+    if (i === undefined || events[i] === null) continue
+    events[i] = (events[i] ?? 0) + r.events
+    fatalities[i] = (fatalities[i] ?? 0) + r.fatalities
   }
   return { months, events, fatalities }
 }

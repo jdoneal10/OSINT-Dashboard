@@ -17,6 +17,16 @@ describe('pivot', () => {
       { name: 'FMUA', data: [5, 0, 1] },
     ])
   })
+  it('leaves months outside source coverage as gaps, not zeros', () => {
+    const p = pivot(
+      [
+        { month: '2024-02-01', group: 'A', value: 1 },
+        { month: '2024-04-01', group: 'A', value: 2 },
+      ],
+      ['2024-01', '2024-06'],
+    )
+    expect(p.series).toEqual([{ name: 'A', data: [null, 1, 0, 2, null, null] }])
+  })
   it('drops points outside the range and names ungrouped series Total', () => {
     const p = pivot([{ month: '2018-01-01', group: null, value: 9 }], ['2024-01', '2024-01'])
     expect(p.series).toEqual([])
@@ -35,6 +45,14 @@ describe('violenceTotals', () => {
       ['2024-01', '2024-02'],
     )
     expect(v).toEqual({ months: ['2024-01', '2024-02'], events: [0, 5], fatalities: [0, 5] })
+  })
+  it('blanks months after the source coverage ends', () => {
+    const v = violenceTotals(
+      [{ month: '2024-01-01', admin1_code: 'MX-SON', events: 3, fatalities: 1 }],
+      ['2024-01', '2024-03'],
+      '2024-01-20',
+    )
+    expect(v.events).toEqual([3, null, null])
   })
 })
 
