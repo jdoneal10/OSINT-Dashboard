@@ -8,6 +8,7 @@ export function feedParams(search: URLSearchParams, q: string): Record<string, u
     source: sources.length ? sources : undefined,
     admin1: get('admin1'),
     event_type: get('event_type'),
+    border_threat: get('threat'),
     status: get('status'),
     include_out_of_aoi: search.get('out') === 'true' || undefined,
     q: q || undefined,

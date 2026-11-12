@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import type { EventDetail, SeizureRecord } from '../../api/types'
 import { GEO_PRECISION, quantity } from '../../lib/format'
 import { eventColor } from '../map/eventColors'
+import ThreatChip from './ThreatChip'
 
 const TH = 'text-ink-500 px-2 py-1.5 text-left text-[10px] font-semibold tracking-wider uppercase'
 const TD = 'border-ink-700 border-t px-2 py-2 align-top'
@@ -72,6 +73,11 @@ export function EventsTable({
                   )}
                 </div>
                 <div className="text-ink-500">{ev.event_date}</div>
+                {ev.border_threat && (
+                  <div className="mt-0.5">
+                    <ThreatChip threat={ev.border_threat} />
+                  </div>
+                )}
                 {ev.description && <p className="text-ink-300 mt-1">{ev.description}</p>}
                 {ev.evidence && (
                   <blockquote className="border-ink-700 text-ink-500 mt-1 border-l-2 pl-2 italic">

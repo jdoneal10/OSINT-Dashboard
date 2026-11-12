@@ -56,8 +56,10 @@ A failed job is logged and recorded, and does not stop the scheduler. The Claude
 ```
 documents (new)
   → dedupe (canonical URL + SimHash; syndicated copies count once)
-  → local filter: gemma3:4b via Ollama, threshold 0.2 (recall over precision)
-  → Haiku extract (extract-v3): English summary, events, seizures, organizations;
+  → local filter: gemma3:4b via Ollama, threshold 0.2 (recall over precision; filter-v2)
+  → Haiku extract (extract-v4): English summary, events, seizures, organizations;
+      priority on human smuggling and border threats, with a border_threat category
+      per event (ADR 0007; threat activity only, hard rule 4);
       strict JSON schema, one retry, then quarantine; no fields for people.
       A backlog of >= 25 documents (backfill, `make reextract`) goes out as one Message
       Batches job at 50% price; the `collect` stage stores results every 30 min
@@ -111,5 +113,6 @@ See [`decisions/`](decisions/):
 - ADR 0004: Phase 2 sources and the AI pipeline
 - ADR 0005: naming reported criminal-group leaders
 - ADR 0006: ACLED written consent for Claude processing and professional use
+- ADR 0007: priority focus on human smuggling and threats to the border
 
 Evaluation reports are in [`evaluations/`](evaluations/).

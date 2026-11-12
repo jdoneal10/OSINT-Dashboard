@@ -65,6 +65,7 @@ GOOD = {
             "targets": ["hombres armados"],
             "description": "Gunmen clashed; three died.",
             "evidence": "dejó tres muertos",
+            "border_threat": None,
         }
     ],
     "seizures": [
@@ -183,3 +184,23 @@ def test_system_block_is_deterministic_and_cacheable(seeded: Session) -> None:
     assert "The only individuals you may name are leaders of criminal organizations" in a
     assert "Cartel de Sinaloa" in a
     assert len(a) > 2500  # comfortably above the 512-token cache minimum
+
+
+def test_border_threat_categories_match_the_database() -> None:
+    from typing import get_args  # noqa: PLC0415
+
+    from app.db.models import BORDER_THREATS  # noqa: PLC0415
+
+    assert get_args(extract.BorderThreat) == BORDER_THREATS
+
+
+def test_border_threat_is_stored(seeded: Session, doc_id: int) -> None:
+    payload = json.loads(json.dumps(GOOD))
+    payload["events"][0]["border_threat"] = "gunfire"
+    _run(_resp(payload))
+    assert seeded.scalars(select(Event.border_threat)).one() == "gunfire"
+
+
+def test_prompt_states_threat_only_rule() -> None:
+    assert "NEVER record the number" in extract.RULES
+    assert "border_threat" in extract.RULES

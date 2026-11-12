@@ -14,6 +14,7 @@ See [`PLAN.md`](PLAN.md) for the intelligence requirements and phase roadmap, an
   - Claude Haiku for translation and extraction
   - Claude Sonnet for corroboration judgments
 - Extracted events and seizures are geocoded against a local INEGI gazetteer, clustered across independent sources, and graded on the Admiralty scale.
+- **Priority focus (ADR 0007):** human smuggling, and threats to the border such as drone incursions, laser strikes and gunfire. These have their own Border threats view and filters on the feed and map. Records describe threat activity only, never U.S. or Mexican personnel or operations.
 - The app adds:
   - a news feed and document detail
   - an in-app labeling page for precision evaluation

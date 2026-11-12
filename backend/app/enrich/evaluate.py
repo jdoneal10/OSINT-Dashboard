@@ -26,6 +26,10 @@ Definitions
   judged): each labeled document stands for (documents with that decision now) / (labeled in
   the stratum). After a re-filter the current counts only approximate the counts at labeling
   time.
+- **Haiku relevance** (``--haiku``, costs about $0.001 per labeled document): a dry run of
+  the extraction prompt's own relevant/not-relevant decision on every relevance-labeled
+  document, compared with the owner's answer. Nothing is stored; calls are logged to
+  ``llm_usage`` like any other. Unweighted: it measures the prompt, not the pipeline.
 - Missed records (extraction recall) cannot be measured from record labels; they are out of
   scope for this report.
 """
@@ -48,9 +52,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Document, Label
+from app.db.models import Document, Label, Source
 from app.db.session import session_factory
 from app.enrich import extract
+from app.enrich.llm.client import Gateway, Provenance
+from app.enrich.llm.pricing import HAIKU
 from app.enrich.local_filter import LocalFilter, OllamaUnavailableError, document_text
 
 TARGET_PRECISION = 0.85
@@ -261,6 +267,60 @@ def rescore(
     return out, per_doc
 
 
+@dataclass
+class HaikuRelevance:
+    prompt_version: str
+    tp: int = 0
+    fp: int = 0
+    fn: int = 0
+    tn: int = 0
+    failed: int = 0
+    missed: list[int] = field(default_factory=list)  # truly relevant, judged not relevant
+    over: list[int] = field(default_factory=list)  # not relevant, judged relevant
+
+    @property
+    def recall(self) -> float | None:
+        return self.tp / (self.tp + self.fn) if self.tp + self.fn else None
+
+    @property
+    def precision(self) -> float | None:
+        return self.tp / (self.tp + self.fp) if self.tp + self.fp else None
+
+
+def haiku_relevance(
+    session: Session, docs: list[JudgedDocument], gateway: Gateway
+) -> HaikuRelevance:
+    """Dry run of the extraction prompt's relevance decision on labeled documents."""
+    system = extract.build_system(session)
+    out = HaikuRelevance(prompt_version=extract.PROMPT_VERSION)
+    for d in sorted(docs, key=lambda x: x.document_id):
+        doc = session.get_one(Document, d.document_id)
+        source = session.get_one(Source, doc.source_id).name
+        result = gateway.call(
+            stage="extract", model=HAIKU, prompt_version=extract.PROMPT_VERSION,
+            system=system, user=extract.build_user(doc, source),
+            output_model=extract.Extraction,
+            provenance=Provenance(document_ids=(d.document_id,)),
+            max_tokens=extract.MAX_TOKENS, effort=extract.EFFORT,
+        )  # fmt: skip
+        if not result.ok or result.parsed is None:
+            out.failed += 1
+            judged = False
+        else:
+            judged = result.parsed.relevant
+        if d.truly_relevant and judged:
+            out.tp += 1
+        elif d.truly_relevant:
+            out.fn += 1
+            out.missed.append(d.document_id)
+        elif judged:
+            out.fp += 1
+            out.over.append(d.document_id)
+        else:
+            out.tn += 1
+    return out
+
+
 # --------------------------------------------------------------------------- report
 
 
@@ -287,6 +347,8 @@ def render(
     docs: list[JudgedDocument],
     filters: list[FilterMetrics],
     today: dt.date,
+    *,
+    haiku: HaikuRelevance | None = None,
 ) -> str:
     lines = [
         f"# Extraction evaluation: {prompt_version}",
@@ -352,6 +414,20 @@ def render(
         for i, t in enumerate(SWEEP):
             cells = [f"{_pct(m.sweep[i][1])} / {_pct(m.sweep[i][2])}" for m in filters]
             lines.append(f"| {t:.1f} | " + " | ".join(cells) + " |")
+    if haiku is not None:
+        lines += [
+            "",
+            f"## Haiku relevance decision ({haiku.prompt_version}, dry run)",
+            "",
+            "| Recall | Precision | Correct relevant | Missed | Over-included | "
+            "Correct not relevant | Failed calls |",
+            "|---:|---:|---:|---:|---:|---:|---:|",
+            f"| {_pct(haiku.recall)} | {_pct(haiku.precision)} | {haiku.tp} | {haiku.fn} | "
+            f"{haiku.fp} | {haiku.tn} | {haiku.failed} |",
+            "",
+            f"Missed (documents): {', '.join(map(str, haiku.missed)) or 'none'}. "
+            f"Over-included: {', '.join(map(str, haiku.over)) or 'none'}.",
+        ]
     if rec.wrong_records:
         lines += [
             "",
@@ -374,10 +450,13 @@ def render(
 def run(
     prompt_version: str | None = None,
     compare_models: list[str] | None = None,
+    *,
     out_dir: Path | None = None,
     today: dt.date | None = None,
     scorer_factory: Callable[[str], LocalFilter] | None = None,
+    haiku_gateway: Gateway | None = None,
 ) -> Path:
+    """Write the report. ``haiku_gateway`` enables the paid Haiku relevance dry run."""
     settings = get_settings()
     version = prompt_version or extract.PROMPT_VERSION
     threshold = settings.relevance_threshold
@@ -392,11 +471,12 @@ def run(
             m = filter_metrics(docs, scores, model, threshold)
             m.seconds_per_doc = per_doc
             filters.append(m)
+        haiku = haiku_relevance(session, docs, haiku_gateway) if haiku_gateway else None
     today = today or dt.datetime.now().astimezone().date()  # the owner's local date
     out_dir = out_dir or settings.repo_root / "docs" / "evaluations"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{today.isoformat()}-extraction-{version}.md"
-    path.write_text(render(version, rec, docs, filters, today), encoding="utf-8")
+    path.write_text(render(version, rec, docs, filters, today, haiku=haiku), encoding="utf-8")
     return path
 
 
@@ -407,10 +487,15 @@ def main(argv: list[str] | None = None) -> int:
         "--compare-models",
         help="comma-separated Ollama models to re-score the labeled documents with",
     )
+    parser.add_argument(
+        "--haiku",
+        action="store_true",
+        help="also dry-run Haiku's relevance decision on the labeled documents (~$0.001 each)",
+    )
     args = parser.parse_args(argv)
     models = [m.strip() for m in (args.compare_models or "").split(",") if m.strip()]
     try:
-        path = run(args.prompt_version, models)
+        path = run(args.prompt_version, models, haiku_gateway=Gateway() if args.haiku else None)
     except OllamaUnavailableError as exc:
         print(f"Model comparison needs Ollama: {exc}")
         return 2

@@ -4,9 +4,11 @@ import { useAoi, useDocumentFeed, useDocumentSources, useEventTypes } from '../a
 import type { DocumentSummary } from '../api/types'
 import AcledAttribution from '../components/news/AcledAttribution'
 import AdmiraltyBadge from '../components/news/AdmiraltyBadge'
+import ThreatChip from '../components/news/ThreatChip'
 import { useDebounced } from '../hooks/useDebounced'
 import { feedParams } from '../lib/feed'
 import { dateTime } from '../lib/format'
+import { BORDER_THREATS } from '../lib/threats'
 
 const STATUSES = [
   { value: 'extracted', label: 'Extracted (relevant)' },
@@ -38,6 +40,9 @@ function FeedItem({ doc }: { doc: DocumentSummary }) {
             {doc.language}
           </span>
         )}
+        {doc.border_threats.map((t) => (
+          <ThreatChip key={t} threat={t} />
+        ))}
         {!doc.in_aoi && (
           <span className="rounded border border-amber-500/40 px-1 text-amber-300">
             outside AOI
@@ -106,7 +111,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const INPUT =
   'border-ink-700 bg-ink-800 text-ink-100 w-full rounded border px-2 py-1 text-xs focus:border-sky-500 focus:outline-none'
 
-export default function NewsPage() {
+/** The news feed; ``threats`` fixes it to the priority border threats (ADR 0007). */
+export default function NewsPage({ threats = false }: { threats?: boolean }) {
   const [search, setSearch] = useSearchParams()
   const sources = useDocumentSources()
   const aoi = useAoi(2)
@@ -129,7 +135,10 @@ export default function NewsPage() {
   const q = useDebounced(get('q'), 300)
 
   const key = search.toString()
-  const params = useMemo(() => feedParams(new URLSearchParams(key), q), [key, q])
+  const params = useMemo(() => {
+    const p = feedParams(new URLSearchParams(key), q)
+    return threats && !p.border_threat ? { ...p, border_threat: 'any' } : p
+  }, [key, q, threats])
   const feed = useDocumentFeed(params)
   const docs = feed.data?.pages.flatMap((p) => p.items) ?? []
   const states = (aoi.data?.features ?? []).map((f) => f.properties)
@@ -177,6 +186,21 @@ export default function NewsPage() {
             {states.map((s) => (
               <option key={s.slug} value={s.admin1_code ?? ''}>
                 {s.name} ({s.country_iso3 === 'MEX' ? 'MX' : 'US'})
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Border threat">
+          <select
+            value={get('threat')}
+            onChange={(e) => set('threat', e.target.value)}
+            className={INPUT}
+          >
+            <option value="">{threats ? 'All border threats' : 'Any (no filter)'}</option>
+            {!threats && <option value="any">All border threats</option>}
+            {Object.entries(BORDER_THREATS).map(([value, t]) => (
+              <option key={value} value={value}>
+                {t.label}
               </option>
             ))}
           </select>
@@ -250,7 +274,9 @@ export default function NewsPage() {
       <section aria-label="News feed" className="min-w-0 flex-1 overflow-y-auto px-6 py-4">
         <div className="mx-auto max-w-3xl space-y-3">
           <div className="text-ink-500 flex items-baseline justify-between text-xs">
-            <h1 className="text-ink-100 text-sm font-semibold">News feed</h1>
+            <h1 className="text-ink-100 text-sm font-semibold">
+              {threats ? 'Border threats and human smuggling' : 'News feed'}
+            </h1>
             <span>
               {feed.isFetching && !feed.isFetchingNextPage ? 'Loading…' : `${docs.length} shown`}
             </span>

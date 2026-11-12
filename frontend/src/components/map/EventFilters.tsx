@@ -56,6 +56,15 @@ export default function EventFilters(props: Props) {
           </button>
         ))}
       </div>
+      <label className="text-ink-300 flex items-center gap-2 text-xs">
+        <input
+          type="checkbox"
+          className="accent-rose-500"
+          checked={value.borderThreatsOnly ?? false}
+          onChange={(e) => onChange({ ...value, borderThreatsOnly: e.target.checked })}
+        />
+        Border threats and human smuggling only
+      </label>
       <div className="flex items-center justify-between">
         <span className="text-ink-300 text-xs tabular-nums">
           {props.shown === null ? 'Loading events…' : `${props.shown.toLocaleString()} events`}

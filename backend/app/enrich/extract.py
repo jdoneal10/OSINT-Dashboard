@@ -34,6 +34,7 @@ from app.db.models import (
     ActorAlias,
     Document,
     Event,
+    Label,
     Seizure,
     Source,
     actor_events,
@@ -51,7 +52,10 @@ from app.reference.normalize import normalize_alias
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = "extract-v3"  # v3: reported TCO leaders may be named in free text (ADR 0005)
+# v3: reported TCO leaders may be named in free text (ADR 0005)
+# v4: smuggling and border-threat priority, border_threat field, threat-only rule (ADR 0007)
+# v5: relevance boundaries (South America/Caribbean out; border-crossing context in)
+PROMPT_VERSION = "extract-v5"
 MAX_TEXT_CHARS = 30_000
 
 EventType = Literal[
@@ -63,6 +67,17 @@ EventType = Literal[
     "Strategic developments",
 ]
 OrgType = Literal["cartel", "gang", "faction", "armed_group", "government", "other"]
+
+
+BorderThreat = Literal[
+    "human_smuggling",
+    "uas_incursion",
+    "laser_strike",
+    "gunfire",
+    "assault_on_personnel",
+    "tunnel",
+    "other_border_threat",
+]
 
 
 class Location(BaseModel):
@@ -86,6 +101,7 @@ class ExtractedEvent(BaseModel):
         description="One or two English sentences; name only reported criminal-group leaders"
     )
     evidence: str = Field(description="Short supporting quote (<= 200 chars) from the text")
+    border_threat: BorderThreat | None = Field(description="Priority border-threat category")
 
 
 class ExtractedSeizure(BaseModel):
@@ -117,7 +133,9 @@ class Extraction(BaseModel):
 RULES = """You extract structured intelligence from news articles and official press releases \
 (Spanish or English) about transnational criminal organizations in Mexico, Central America and \
 the U.S. Southwest border. The output feeds an analyst's database; precision matters more \
-than coverage.
+than coverage. TOP PRIORITY: human smuggling, and threats to the U.S.-Mexico border such as \
+criminal drone (UAS) incursions, laser strikes, gunfire at or across the border, attacks on \
+border personnel, and cross-border tunnels.
 
 RULES
 1. People. The only individuals you may name are leaders of criminal organizations whom the \
@@ -149,9 +167,32 @@ if materials were seized.
 6. Organizations: list each criminal organization, faction, gang or armed group named, and \
 any government force (e.g. SEMAR, Guardia Nacional, CBP). Use the canonical name from the \
 KNOWN ORGANIZATIONS list when the text refers to one of them by an alias.
-7. Set "relevant" to false and leave the lists empty if the article is not actually about \
-organized crime in the region.
-8. "summary_en" is always in English."""
+7. Relevance. Set "relevant" to true when the article is about any of: organized-crime \
+activity in Mexico, Central America or the U.S. border region; human smuggling or migrant \
+smuggling; threats to the border (rule 9); actions against criminal groups operating in the \
+region (arrests, prosecutions, extraditions, sanctions, designations), wherever they happen; \
+seizures of drugs, precursors, weapons or cash linked to the region; or U.S.-Mexico border \
+context: border-security policy, crossing and port-of-entry developments (closures, customs \
+cooperation, trade-fraud enforcement) and official border enforcement statistics (context \
+only: no events, see rule 10). Set it to false, with empty lists, for: ordinary politics, \
+business, sport or entertainment; crime with no organized-crime or border link, including \
+sexual exploitation or fraud by individuals or networks not tied to cartels or smuggling; \
+and crime in South America, the Caribbean or elsewhere unless the article ties it to \
+Mexico, Central America or the U.S. border (country profiles of those places too).
+8. "summary_en" is always in English.
+9. border_threat. For each event, set border_threat to one of: human_smuggling (smuggling \
+loads, stash houses, smuggling deaths, smuggling organizations and their prosecution), \
+uas_incursion (criminal drones crossing or operating at the border), laser_strike (lasers \
+aimed at aircraft or border personnel), gunfire (shots fired at or across the border), \
+assault_on_personnel (attacks on border officers or soldiers), tunnel (cross-border \
+tunnels), other_border_threat (another criminal threat at the border); otherwise null.
+10. Threat activity only. Describe what the criminal actors did, where (city, municipality \
+or port, as the text gives it, never finer), when, and the outcome. NEVER record the number, \
+units, equipment, positions, patrol patterns or response tactics of U.S. or Mexican \
+personnel, or the locations of sensors, cameras or towers; leave such details out of \
+description and evidence too. An article that only describes law-enforcement or military \
+operations, deployments, closures or training produces no events: summarize it in \
+summary_en only."""
 
 
 def build_system(session: Session) -> str:
@@ -262,6 +303,7 @@ def store_extraction(
             geom=func.ST_GeogFromText(geo.ewkt) if geo else None,
             country_iso3=geo.country_iso3 if geo else None,
             in_aoi=in_aoi(e.location.country, e.location.state),
+            border_threat=e.border_threat,
             admin1_code=geo.admin1_code if geo else None,
             admin2_code=geo.admin2_code if geo else None,
             admin1_name=e.location.state,
@@ -449,12 +491,20 @@ def run_extract(limit: int = 50, gateway: Gateway | None = None) -> dict[str, in
 
 
 def mark_for_reextraction() -> int:
-    """Queue documents extracted under an older prompt version (a backfill; batched)."""
+    """Queue documents Haiku processed under an older prompt version (a backfill; batched).
+
+    Covers documents it extracted and documents it judged not relevant. Documents whose
+    records the owner has labeled are skipped: re-extraction would replace those records,
+    and their labels must keep judging the version they were made on.
+    """
+    labeled = select(Label.document_id).where(Label.target_table.in_(("events", "seizures")))
     with session_factory()() as session, session.begin():
         docs = session.scalars(
             select(Document).where(
-                Document.pipeline_status == "extracted",
-                Document.prompt_version.is_distinct_from(PROMPT_VERSION),
+                Document.pipeline_status.in_(("extracted", "filtered_out")),
+                Document.prompt_version.is_not(None),  # Haiku has seen it
+                Document.prompt_version != PROMPT_VERSION,
+                Document.id.not_in(labeled),
             )
         ).all()
         for doc in docs:

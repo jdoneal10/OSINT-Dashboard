@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import { useEvent } from '../../api/hooks'
 import { localDate } from '../../lib/dates'
+import { threatLabel } from '../../lib/threats'
 import { eventColor } from './eventColors'
 
 const GEO = { 1: 'exact location', 2: 'near location', 3: 'regional (admin-level)' } as const
@@ -57,6 +58,12 @@ export default function EventDetailCard({ id, onClose }: Props) {
       {data && !isPending && (
         <div className="max-h-[60vh] space-y-3 overflow-y-auto px-3 py-2 text-xs">
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            {data.border_threat && (
+              <>
+                <dt className="text-ink-500">Border threat</dt>
+                <dd>{threatLabel(data.border_threat)}</dd>
+              </>
+            )}
             <dt className="text-ink-500">Fatalities</dt>
             <dd className="tabular-nums">{data.fatalities ?? '—'}</dd>
             <dt className="text-ink-500">Location</dt>

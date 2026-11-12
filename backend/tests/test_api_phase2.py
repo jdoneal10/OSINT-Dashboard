@@ -167,6 +167,20 @@ def test_acled_corroboration_is_flagged(
     assert "acled" in {e["source"] for e in c["events"]}
 
 
+def test_border_threat_filters(client: TestClient, news: dict[str, int], seeded: Session) -> None:
+    seeded.get_one(Event, news["ev_in"]).border_threat = "uas_incursion"
+    seeded.commit()
+    docs = client.get("/documents", params={"border_threat": "any"}).json()["items"]
+    assert [d["id"] for d in docs] == [news["doc_in"]]
+    assert docs[0]["border_threats"] == ["uas_incursion"]
+    none = client.get("/documents", params={"border_threat": "tunnel"}).json()["items"]
+    assert none == []
+    evs = client.get("/events", params={"border_threat": "uas_incursion"}).json()["items"]
+    assert [(e["id"], e["border_threat"]) for e in evs] == [(news["ev_in"], "uas_incursion")]
+    points = client.get("/events/geojson", params={"border_threat": "any"}).json()["features"]
+    assert [p["properties"]["bt"] for p in points] == ["uas_incursion"]
+
+
 # --------------------------------------------------------------------------- events
 
 

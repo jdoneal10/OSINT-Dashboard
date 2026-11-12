@@ -180,11 +180,29 @@ class ActorAlias(TimestampMixin, Base):
 # --------------------------------------------------------------------------- events
 
 
+# Priority threat categories for news-derived events (ADR 0007). Threat activity only:
+# never friendly-force positions, numbers, equipment or tactics (CLAUDE.md hard rule 4).
+BORDER_THREATS = (
+    "human_smuggling",  # smuggling loads, stash houses, smuggling deaths, organizations
+    "uas_incursion",  # criminal drones crossing or operating at the border
+    "laser_strike",  # lasers aimed at aircraft or personnel at the border
+    "gunfire",  # shots fired at or across the border
+    "assault_on_personnel",  # attacks on border officers or soldiers
+    "tunnel",  # cross-border tunnels
+    "other_border_threat",
+)
+
+
 class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     __tablename__ = "events"
     __table_args__ = (
         *provenance_table_args("events"),
         CheckConstraint("fatalities IS NULL OR fatalities >= 0", "fatalities"),
+        CheckConstraint(
+            "border_threat IS NULL OR border_threat IN "
+            f"({', '.join(repr(t) for t in BORDER_THREATS)})",
+            "border_threat",
+        ),
         _gist("events", "geom"),
         Index("ix_events_event_date", "event_date"),
     )
@@ -213,6 +231,8 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     # False for news-derived records placed outside the current AOI (e.g. Bolivia): kept for
     # context, hidden from feeds and the map by default (ADR 0004).
     in_aoi: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    # Priority border-threat category (news-derived events; ADR 0007), else NULL.
+    border_threat: Mapped[str | None] = mapped_column(String(32), index=True)
 
 
 # actor1..assoc_actor2 mirror ACLED's dyad exactly (no perpetrator/target semantics);

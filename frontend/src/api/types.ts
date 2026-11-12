@@ -83,6 +83,8 @@ export interface EventDetail {
   credibility: number | null
   cluster_id: number | null
   in_aoi: boolean
+  /** Priority border-threat category (ADR 0007), or null. */
+  border_threat: string | null
   /** Supporting quote from the source text (news-derived events only). */
   evidence: string | null
   actors: EventActor[]
@@ -98,6 +100,7 @@ export interface EventPointProps {
   f: number
   gp: number | null
   a: number[]
+  bt: string | null
 }
 
 export interface EventPoints {
@@ -213,6 +216,8 @@ export interface DocumentSummary {
   n_events: number
   n_seizures: number
   in_aoi: boolean
+  /** Border-threat categories of the document's events (ADR 0007). */
+  border_threats: string[]
   clusters: ClusterRef[]
   admiralty: string | null
 }

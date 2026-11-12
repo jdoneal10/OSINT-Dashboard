@@ -33,6 +33,10 @@ describe('event filters', () => {
     expect(eventFilterParams({ ...base, source: 'news' }, ['acled']).source).toEqual(['__none__'])
     expect(eventFilterParams({ ...base, source: 'both' }, sources).source).toBeUndefined()
   })
+  it('limits to border threats when asked', () => {
+    expect(eventFilterParams({ ...base, borderThreatsOnly: true }).border_threat).toEqual(['any'])
+    expect(eventFilterParams(base).border_threat).toBeUndefined()
+  })
   it('describes filters for ACLED attribution', () => {
     expect(describeFilters(base, 6)).toBe('all of Mexico; 2018-01 to 2024-02; all event types')
     expect(

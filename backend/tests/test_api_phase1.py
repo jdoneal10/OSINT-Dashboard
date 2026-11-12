@@ -80,7 +80,7 @@ def test_events_geojson_timeseries_types_and_detail(client: TestClient) -> None:
     assert fc["truncated"] is False
     assert len(fc["features"]) == 4
     props = fc["features"][0]["properties"]
-    assert set(props) == {"id", "d", "t", "f", "gp", "a"}
+    assert set(props) == {"id", "d", "t", "f", "gp", "a", "bt"}
 
     ts = client.get("/events/timeseries", params={"admin1": ["MX-TAM"]}).json()
     assert ts == [{"month": "2024-03-01", "admin1_code": "MX-TAM", "events": 1, "fatalities": 4}]

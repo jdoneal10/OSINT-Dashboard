@@ -17,7 +17,14 @@ from pydantic import BaseModel
 from sqlalchemy import Select, cast, exists, func, not_, or_, select, tuple_
 from sqlalchemy.orm import Session
 
-from app.api.events import EventOut, actors_for, documents_for, event_out, event_select
+from app.api.events import (
+    EventOut,
+    actors_for,
+    documents_for,
+    event_out,
+    event_select,
+    threat_clause,
+)
 from app.db.models import (
     PIPELINE_STATUSES,
     Document,
@@ -73,6 +80,7 @@ class DocumentSummary(BaseModel):
     n_events: int
     n_seizures: int
     in_aoi: bool  # false when every derived record lies outside the AOI
+    border_threats: list[str]  # categories of its events (ADR 0007)
     clusters: list[ClusterRef]
     admiralty: str | None  # best grade among its clusters
 
@@ -237,7 +245,14 @@ def summary_select() -> Select[Any]:
         .correlate(Document)
         .scalar_subquery()
     )
-    return select(Document, Source, n_events, n_seizures, in_aoi_clause()).join(
+    threats = (
+        select(func.array_agg(func.distinct(Event.border_threat)))
+        .join(event_documents, event_documents.c.event_id == Event.id)
+        .where(event_documents.c.document_id == Document.id, Event.border_threat.is_not(None))
+        .correlate(Document)
+        .scalar_subquery()
+    )
+    return select(Document, Source, n_events, n_seizures, in_aoi_clause(), threats).join(
         Source, Source.id == Document.source_id
     )
 
@@ -248,7 +263,7 @@ def summaries(session: Session, rows: list[Any]) -> list[DocumentSummary]:
 
 
 def _summary(row: Any, clusters: list[ClusterRef]) -> DocumentSummary:
-    doc, src, n_events, n_seizures, inside = row
+    doc, src, n_events, n_seizures, inside, threats = row
     return DocumentSummary(
         id=doc.id,
         title=doc.title,
@@ -264,6 +279,7 @@ def _summary(row: Any, clusters: list[ClusterRef]) -> DocumentSummary:
         n_events=n_events,
         n_seizures=n_seizures,
         in_aoi=bool(inside),
+        border_threats=sorted(threats or []),
         clusters=clusters,
         admiralty=_best(clusters),
     )
@@ -318,13 +334,18 @@ def label_out(lab: Label) -> LabelOut:
 
 
 def _docs_with_events(
-    admin1: list[str] | None, event_type: list[str] | None, actor: list[int] | None
+    admin1: list[str] | None,
+    event_type: list[str] | None,
+    actor: list[int] | None,
+    border_threat: list[str] | None = None,
 ) -> Select[Any]:
     ev = select(event_documents.c.document_id).join(Event, Event.id == event_documents.c.event_id)
     if admin1:
         ev = ev.where(Event.admin1_code.in_(admin1))
     if event_type:
         ev = ev.where(Event.event_type.in_(event_type))
+    if border_threat:
+        ev = ev.where(threat_clause(Event.border_threat, border_threat))
     if actor:
         ev = ev.where(
             Event.id.in_(select(actor_events.c.event_id).where(actor_events.c.actor_id.in_(actor)))
@@ -348,6 +369,9 @@ def list_documents(
     admin1: Annotated[list[str] | None, Query(description="documents with events here")] = None,
     event_type: Annotated[list[str] | None, Query()] = None,
     actor: Annotated[list[int] | None, Query(description="documents with events linked")] = None,
+    border_threat: Annotated[
+        list[str] | None, Query(description="border-threat categories, or 'any' (ADR 0007)")
+    ] = None,
     q: Annotated[str | None, Query(description="search title and English summary")] = None,
     include_duplicates: bool = False,
     include_out_of_aoi: bool = False,
@@ -368,8 +392,10 @@ def list_documents(
         stmt = stmt.where(Document.duplicate_of_id.is_(None))
     if not include_out_of_aoi:
         stmt = stmt.where(in_aoi_clause())
-    if admin1 or event_type or actor:
-        stmt = stmt.where(Document.id.in_(_docs_with_events(admin1, event_type, actor)))
+    if admin1 or event_type or actor or border_threat:
+        stmt = stmt.where(
+            Document.id.in_(_docs_with_events(admin1, event_type, actor, border_threat))
+        )
     if q:
         like = f"%{q}%"
         stmt = stmt.where(or_(Document.title.ilike(like), Document.translated_text.ilike(like)))

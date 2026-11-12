@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Document, LLMBatch, LLMQuarantine, LLMUsage
+from app.db.models import Document, Label, LLMBatch, LLMQuarantine, LLMUsage
 from app.enrich import extract
 from app.enrich.llm.client import Gateway
 from app.enrich.llm.pricing import HAIKU
@@ -180,10 +180,28 @@ def test_prompt_change_while_running_requeues(
     assert _statuses(seeded, three_docs) == ["relevant"] * 3
 
 
-def test_reextraction_queues_old_prompt_versions(seeded: Session, doc_id: int) -> None:  # noqa: F811
-    doc = seeded.get_one(Document, doc_id)
-    doc.pipeline_status, doc.prompt_version = "extracted", "extract-v1"
+def test_reextraction_skips_labeled_and_unseen_documents(
+    seeded: Session,
+    three_docs: list[int],
+) -> None:
+    a, b, c = three_docs
+    for target, status, version in (
+        (a, "extracted", "extract-v1"),
+        (b, "filtered_out", "extract-v1"),  # Haiku said no
+        (c, "filtered_out", None),
+    ):  # local filter said no
+        doc = seeded.get_one(Document, target)
+        doc.pipeline_status, doc.prompt_version = status, version
+    labeled = Document(source_id=seeded.get_one(Document, a).source_id, source_key="lab",
+                       retrieved_at=dt.datetime.now(dt.UTC), pipeline_status="extracted",
+                       prompt_version="extract-v1")  # fmt: skip
+    seeded.add(labeled)
+    seeded.flush()
+    seeded.add(Label(document_id=labeled.id, target_table="events", target_id=1,
+                     verdict="correct"))  # fmt: skip
     seeded.commit()
-    assert extract.mark_for_reextraction() == 1
-    assert _statuses(seeded, [doc_id]) == ["relevant"]
+    assert extract.mark_for_reextraction() == 2
+    assert _statuses(seeded, [a, b, c, labeled.id]) == [
+        "relevant", "relevant", "filtered_out", "extracted",
+    ]  # fmt: skip
     assert json.dumps(GOOD)  # fixture sanity

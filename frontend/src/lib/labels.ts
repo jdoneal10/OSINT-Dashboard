@@ -11,6 +11,7 @@ export const RECORD_FIELDS: Record<'events' | 'seizures', string[]> = {
     'targets',
     'description',
     'evidence',
+    'border_threat',
     // Hard rule 3 (ADR 0005): someone other than a reported criminal-group leader is named.
     'person_named',
   ],

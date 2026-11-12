@@ -60,7 +60,7 @@ reextract: ## Queue documents extracted under an older prompt; the pipeline send
 	cd backend && uv run python -m app.enrich.extract --reextract
 
 eval: ## Precision/recall report from hand labels -> docs/evaluations (MODELS=qwen3:4b,gemma3:4b to compare filters)
-	cd backend && uv run python -m app.enrich.evaluate $(if $(MODELS),--compare-models $(MODELS)) $(if $(PROMPT),--prompt-version $(PROMPT))
+	cd backend && uv run python -m app.enrich.evaluate $(if $(MODELS),--compare-models $(MODELS)) $(if $(PROMPT),--prompt-version $(PROMPT)) $(if $(HAIKU),--haiku)
 
 basemap: ## One-time: extract the local Protomaps basemap for the AOI
 	./scripts/basemap.sh

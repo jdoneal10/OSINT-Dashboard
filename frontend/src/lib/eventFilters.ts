@@ -9,6 +9,8 @@ export interface EventFilterState {
   eventTypes: string[] // empty = all
   actors: { id: number; name: string }[]
   source?: EventSource // default both
+  /** Only priority border-threat events (ADR 0007); news-derived by definition. */
+  borderThreatsOnly?: boolean
 }
 
 /** Matches no source: used when "news" is chosen but no news-derived events exist yet. */
@@ -36,6 +38,7 @@ export function eventFilterParams(
             ? news
             : [NO_SOURCE]
           : undefined,
+    border_threat: f.borderThreatsOnly ? ['any'] : undefined,
   }
 }
 
@@ -49,5 +52,6 @@ export function describeFilters(f: EventFilterState, allTypes: number): string {
       ? 'all event types'
       : f.eventTypes.join(', ')
   const actors = f.actors.length ? `; actors: ${f.actors.map((a) => a.name).join(', ')}` : ''
-  return `all of Mexico; ${f.startMonth} to ${f.endMonth}; ${types}${actors}`
+  const threats = f.borderThreatsOnly ? '; border threats only' : ''
+  return `all of Mexico; ${f.startMonth} to ${f.endMonth}; ${types}${actors}${threats}`
 }

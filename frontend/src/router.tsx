@@ -16,6 +16,7 @@ export const routes: RouteObject[] = [
       { index: true, element: <MapPage /> },
       { path: 'border', element: <BorderPage /> },
       { path: 'news', element: <NewsPage /> },
+      { path: 'threats', element: <NewsPage threats key="threats" /> },
       { path: 'news/:id', element: <DocumentPage /> },
       { path: 'clusters/:id', element: <ClusterPage /> },
       { path: 'designations', element: <DesignationsPage /> },

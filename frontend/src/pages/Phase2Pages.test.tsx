@@ -23,6 +23,7 @@ const summary: DocumentSummary = {
   n_events: 1,
   n_seizures: 0,
   in_aoi: true,
+  border_threats: ['human_smuggling'],
   clusters: [
     {
       id: 3,
@@ -61,6 +62,7 @@ const event: EventDetail = {
   credibility: 2,
   cluster_id: 3,
   in_aoi: true,
+  border_threat: 'human_smuggling',
   evidence: 'se enfrentaron dos grupos armados',
   actors: [{ id: 1, name: 'Sinaloa Cartel', type: 'tco', role: 'perpetrator' }],
   document_ids: [7],
@@ -140,6 +142,21 @@ describe('News feed', () => {
     const urls = fetchMock.mock.calls.map(([u]) => String(u))
     expect(
       urls.some((u) => u.startsWith('/api/documents?') && u.includes('source=zetatijuana')),
+    ).toBe(true)
+  })
+})
+
+describe('Border threats view', () => {
+  it('fixes the feed to border threats and shows threat chips', async () => {
+    const fetchMock = renderAt('/threats')
+    expect(
+      await screen.findByRole('heading', { name: 'Border threats and human smuggling' }),
+    ).toBeInTheDocument()
+    const feed = screen.getByRole('region', { name: 'News feed' })
+    expect(await within(feed).findByText('Human smuggling')).toBeInTheDocument()
+    const urls = fetchMock.mock.calls.map(([u]) => String(u))
+    expect(
+      urls.some((u) => u.startsWith('/api/documents?') && u.includes('border_threat=any')),
     ).toBe(true)
   })
 })

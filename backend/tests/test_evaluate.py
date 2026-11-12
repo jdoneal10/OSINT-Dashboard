@@ -10,11 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models import Document, Event, Label, Seizure, Source, event_documents
-from app.enrich import evaluate
+from app.enrich import evaluate, extract
 from app.enrich.local_filter import FilterOutput
 
 NOW = dt.datetime(2026, 11, 10, tzinfo=dt.UTC)
-V = "extract-v3"
+V = extract.PROMPT_VERSION
 
 
 def _doc(session: Session, sid: int, key: str, status: str, score: str) -> int:

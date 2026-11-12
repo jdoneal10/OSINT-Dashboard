@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Document, LLMQuarantine, Source
-from app.enrich.local_filter import LocalFilter, OllamaUnavailableError, run_filter
+from app.enrich.local_filter import PROMPT_VERSION, LocalFilter, OllamaUnavailableError, run_filter
 
 
 def _ollama(scores: dict[str, Any], calls: list[dict[str, Any]]) -> httpx.Client:
@@ -63,7 +63,7 @@ def test_scores_and_routes_documents(seeded: Session) -> None:
     status = {d.id: d.pipeline_status for d in seeded.scalars(select(Document))}
     assert status == {a: "relevant", b: "filtered_out", c: "relevant", empty: "skipped"}
     doc = seeded.get_one(Document, a)
-    assert doc.relevance_model == "qwen3:4b/filter-v1"
+    assert doc.relevance_model == f"qwen3:4b/{PROMPT_VERSION}"
     assert calls[0]["think"] is False
     assert calls[0]["options"]["temperature"] == 0
 

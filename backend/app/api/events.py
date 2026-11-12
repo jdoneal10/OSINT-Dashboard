@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import Select, cast, func, select, tuple_
 from sqlalchemy.orm import Session
 
-from app.db.models import Actor, Event, Source, actor_events, event_documents
+from app.db.models import BORDER_THREATS, Actor, Event, Source, actor_events, event_documents
 from app.db.session import get_session
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -32,6 +32,12 @@ class EventFilters(BaseModel):
     bbox: tuple[float, float, float, float] | None = None
     source: list[str] | None = None
     include_out_of_aoi: bool = False
+    border_threat: list[str] | None = None
+
+
+def threat_clause(column: Any, threats: list[str]) -> Any:
+    """``any`` matches every border-threat category; otherwise the listed ones (ADR 0007)."""
+    return column.is_not(None) if "any" in threats else column.in_(threats)
 
 
 def event_filters(
@@ -45,6 +51,10 @@ def event_filters(
     include_out_of_aoi: Annotated[
         bool, Query(description="include news-derived events outside the AOI")
     ] = False,
+    border_threat: Annotated[
+        list[str] | None,
+        Query(description=f"border-threat categories, or 'any' (ADR 0007): {BORDER_THREATS}"),
+    ] = None,
 ) -> EventFilters:
     box = None
     if bbox:
@@ -64,6 +74,7 @@ def event_filters(
         bbox=box,
         source=source,
         include_out_of_aoi=include_out_of_aoi,
+        border_threat=border_threat,
     )
 
 
@@ -90,6 +101,8 @@ def apply_filters[T: Any](stmt: Select[T], f: EventFilters, session: Session) ->
         stmt = stmt.where(Event.in_aoi.is_(True))
     if f.source:
         stmt = stmt.where(Event.source_id.in_(select(Source.id).where(Source.slug.in_(f.source))))
+    if f.border_threat:
+        stmt = stmt.where(threat_clause(Event.border_threat, f.border_threat))
     if f.start:
         stmt = stmt.where(Event.event_date >= f.start)
     if f.end:
@@ -170,6 +183,7 @@ class EventOut(BaseModel):
     credibility: int | None
     cluster_id: int | None
     in_aoi: bool
+    border_threat: str | None
     evidence: str | None  # supporting quote from the source text (news-derived only)
     actors: list[dict[str, Any]]
     document_ids: list[int]  # documents this event was derived from (empty for ACLED)
@@ -214,6 +228,7 @@ def event_out(
         credibility=ev.credibility,
         cluster_id=ev.cluster_id,
         in_aoi=ev.in_aoi,
+        border_threat=ev.border_threat,
         evidence=(ev.attributes or {}).get("evidence"),
         actors=actors.get(ev.id, []),
         document_ids=docs.get(ev.id, []),
@@ -265,7 +280,7 @@ def event_types(session: DB) -> list[EventTypeCount]:
 @router.get("/geojson")
 def events_geojson(session: DB, filters: Filters) -> dict[str, Any]:
     """Compact points for the map. Properties: id, d (date), t (type), f (fatalities),
-    gp (geo precision), a (actor ids)."""
+    gp (geo precision), a (actor ids), bt (border-threat category or null)."""
     point = cast(Event.geom, Geometry)
     actor_ids = (
         select(func.array_agg(func.distinct(actor_events.c.actor_id)))
@@ -282,6 +297,7 @@ def events_geojson(session: DB, filters: Filters) -> dict[str, Any]:
         func.ST_X(point),
         func.ST_Y(point),
         actor_ids,
+        Event.border_threat,
     ).where(Event.geom.is_not(None))
     stmt = apply_filters(stmt, filters, session).order_by(Event.event_date).limit(MAX_POINTS + 1)
     rows = session.execute(stmt).all()
@@ -298,9 +314,10 @@ def events_geojson(session: DB, filters: Filters) -> dict[str, Any]:
                 "f": f or 0,
                 "gp": gp,
                 "a": a or [],
+                "bt": bt,
             },
         }
-        for eid, d, t, f, gp, x, y, a in rows[:MAX_POINTS]
+        for eid, d, t, f, gp, x, y, a, bt in rows[:MAX_POINTS]
     ]
     return {"type": "FeatureCollection", "features": features, "truncated": truncated}
 
