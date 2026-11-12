@@ -1,0 +1,192 @@
+# Unstructured-source registry (Phase 2). One entry per outlet or agency. ADR 0004.
+#
+# discovery:
+#   rss      - the outlet's RSS feed (url)
+#   listing  - an HTML listing page parsed for article links (url)
+#   gdelt    - GDELT DOC 2.0 queries filtered to this domain (no RSS available)
+# text:
+#   full     - fetch and store the article body (trafilatura) for translation/extraction
+#   summary  - keep only title + feed teaser + link (full text paywalled or unavailable)
+#
+# Policy (owner decision 2026-11-11, ADR 0004): full text from any outlet whose robots.txt
+# permits our generic client, as private non-commercial research, including outlets whose
+# terms prohibit reproduction (risk accepted by the owner; noted per entry). Outlets whose
+# robots.txt blocks AI agents (ClaudeBot / anthropic-ai) or disallows access are EXCLUDED.
+# robots.txt is re-checked at fetch time by app/ingest/http.py; this file records the
+# 2026-11-11 check. reliability = initial Admiralty source grade (A-F), adjustable in ADR.
+
+version: 1
+checked: 2026-11-11
+
+feeds:
+  # ------------------------------------------------------------------ U.S. government
+  - slug: doj
+    name: U.S. Department of Justice — press releases
+    domain: www.justice.gov
+    country: USA
+    language: en
+    discovery: rss
+    url: https://www.justice.gov/news/rss?type=press_release&m=1
+    text: full
+    reliability: A
+    status: active
+    terms_note: U.S. government work (public domain). robots.txt allows generic and AI agents.
+    sources:
+      - {title: "DOJ news RSS", publisher: U.S. Department of Justice, url: "https://www.justice.gov/news/rss?type=press_release&m=1", accessed: 2026-11-11}
+
+  - slug: cbp-news
+    name: U.S. Customs and Border Protection — media releases
+    domain: www.cbp.gov
+    country: USA
+    language: en
+    discovery: listing
+    url: https://www.cbp.gov/newsroom/media-releases/all
+    text: full
+    reliability: A
+    status: active
+    terms_note: U.S. government; "not endorsed by CBP" notice applies. No RSS; listing page allowed by robots.txt.
+    sources:
+      - {title: "CBP media releases", publisher: U.S. Customs and Border Protection, url: "https://www.cbp.gov/newsroom/media-releases/all", accessed: 2026-11-11}
+
+  # DEA and USCG: robots.txt returns HTTP 403 to automated clients (treated as disallow-all).
+  # Not ingested directly; their releases may still surface via other outlets.
+
+  # ------------------------------------------------------------------ Mexican government
+  - slug: semar
+    name: Secretaría de Marina (SEMAR) — prensa
+    domain: www.gob.mx
+    country: MEX
+    language: es
+    discovery: listing
+    url: https://www.gob.mx/semar/es/archivo/prensa
+    text: full
+    reliability: B
+    status: pending  # listing markup to verify at implementation (gob.mx RSS returns HTTP 500)
+    terms_note: Mexican government publication. robots.txt allows. Official claims are self-reported; corroborate.
+    sources:
+      - {title: "SEMAR prensa", publisher: Gobierno de México — SEMAR, url: "https://www.gob.mx/semar/es/archivo/prensa", accessed: 2026-11-11}
+
+  - slug: fgr
+    name: Fiscalía General de la República (FGR) — prensa
+    domain: www.gob.mx
+    country: MEX
+    language: es
+    discovery: listing
+    url: https://www.gob.mx/fgr/es/archivo/prensa
+    text: full
+    reliability: B
+    status: pending  # returned HTTP 500 on 2026-11-11; retry at implementation
+    terms_note: Mexican government publication. robots.txt allows.
+    sources:
+      - {title: "FGR prensa", publisher: Gobierno de México — FGR, url: "https://www.gob.mx/fgr/es/archivo/prensa", accessed: 2026-11-11}
+
+  # ------------------------------------------------------------------ research / media
+  - slug: insightcrime
+    name: InSight Crime
+    domain: insightcrime.org
+    country: USA
+    language: en
+    discovery: rss
+    url: https://insightcrime.org/feed/
+    text: full  # feed carries full content
+    reliability: B
+    status: active
+    terms_note: >-
+      Copyright InSight Crime; no reuse licence stated. Full text processed under the
+      owner's policy. robots.txt allows generic and AI agents.
+    sources:
+      - {title: "InSight Crime RSS", publisher: InSight Crime, url: "https://insightcrime.org/feed/", accessed: 2026-11-11}
+
+  - slug: zetatijuana
+    name: Zeta Tijuana
+    domain: zetatijuana.com
+    country: MEX
+    language: es
+    discovery: rss
+    url: https://zetatijuana.com/feed/
+    text: full
+    reliability: B
+    status: active
+    terms_note: No legal page found linked from homepage. robots.txt allows generic and AI agents.
+    sources:
+      - {title: "Zeta Tijuana RSS", publisher: Zeta Tijuana, url: "https://zetatijuana.com/feed/", accessed: 2026-11-11}
+
+  - slug: riodoce
+    name: Ríodoce
+    domain: riodoce.mx
+    country: MEX
+    language: es
+    discovery: rss
+    url: https://riodoce.mx/feed/
+    text: full
+    reliability: B
+    status: pending  # feed returned HTTP 500 on 2026-11-11; retry at implementation
+    terms_note: Aviso legal permits personal use; prohibits commercial use. robots.txt allows.
+    sources:
+      - {title: "Ríodoce aviso legal", publisher: Reporteros en S.A. de C.V., url: "https://riodoce.mx/aviso-legal/", accessed: 2026-11-11}
+
+  - slug: proceso
+    name: Proceso
+    domain: www.proceso.com.mx
+    country: MEX
+    language: es
+    discovery: gdelt  # no RSS advertised
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Aviso legal prohibits total or partial reproduction by any means, including
+      electronic. Processed under the owner's accepted-risk policy (ADR 0004).
+      robots.txt allows generic and AI agents.
+    sources:
+      - {title: "Proceso aviso legal", publisher: Editorial Esfuerzo, url: "https://www.proceso.com.mx/p/institucional-aviso-legal", accessed: 2026-11-11}
+
+  - slug: milenio
+    name: Milenio
+    domain: www.milenio.com
+    country: MEX
+    language: es
+    discovery: gdelt  # no RSS advertised
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Aviso legal prohibits copying even non-commercially without written permission and
+      limits use to the site's own means. Processed under the owner's accepted-risk policy
+      (ADR 0004). robots.txt allows generic and AI agents.
+    sources:
+      - {title: "Milenio aviso legal", publisher: Milenio, url: "https://www.milenio.com/aviso-legal", accessed: 2026-11-11}
+
+  - slug: elnorte
+    name: El Norte (Grupo Reforma)
+    domain: www.elnorte.com
+    country: MEX
+    language: es
+    discovery: rss
+    url: https://www.elnorte.com/rss/portada.xml
+    text: summary  # article bodies are paywalled
+    reliability: B
+    status: active
+    terms_note: robots.txt allows. Paywalled; only title, teaser and link are kept.
+    sources:
+      - {title: "El Norte RSS", publisher: Grupo Reforma, url: "https://www.elnorte.com/rss/portada.xml", accessed: 2026-11-11}
+
+  - slug: animalpolitico
+    name: Animal Político
+    domain: animalpolitico.com
+    country: MEX
+    language: es
+    discovery: rss
+    url: https://animalpolitico.com/feed/
+    text: full
+    reliability: B
+    status: pending  # site returned HTTP 504 for robots.txt and feed on 2026-11-11; re-check
+    terms_note: robots.txt and terms not yet readable; stays inactive until checked.
+    sources:
+      - {title: "Animal Político", publisher: Animal Político, url: "https://animalpolitico.com", accessed: 2026-11-11}
+
+# Excluded (2026-11-11 robots.txt check):
+# - www.borderreport.com, www.elsiglodetorreon.com.mx (also Content-Signal ai-train=no),
+#   www.congress.gov (CRS): robots.txt disallows ClaudeBot / anthropic-ai.
+# - www.eluniversal.com.mx, diario.mx (El Diario de Juárez): robots.txt disallows our
+#   generic client on article paths.
