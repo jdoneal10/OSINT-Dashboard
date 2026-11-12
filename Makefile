@@ -15,8 +15,9 @@ ALL     ?=
 DELETED ?=
 REPROCESS ?=
 FEED ?=
+STAGE ?=
 
-.PHONY: help setup dev db-up db-down db-reset db-migrate seed reference-inegi basemap \
+.PHONY: help setup dev db-up db-down db-reset db-migrate seed reference-inegi pipeline basemap \
         test test-backend test-frontend lint lint-backend lint-frontend fmt ingest
 
 help: ## List targets
@@ -51,6 +52,9 @@ seed: ## Load cited reference data from data/reference (idempotent)
 reference-inegi: ## Download (resumable, ~45 min) and load INEGI municipalities + gazetteer
 	$(BACKEND) $(UV) python -m app.reference.inegi download
 	$(BACKEND) $(UV) python -m app.reference.inegi load
+
+pipeline: ## Enrichment pass: dedupe, local filter, Haiku extract, cluster, Admiralty, Sonnet
+	$(BACKEND) $(UV) python -m app.enrich.pipeline $(if $(STAGE),--stage $(STAGE),)
 
 basemap: ## One-time: extract the local Protomaps basemap for the AOI
 	./scripts/basemap.sh
