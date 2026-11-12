@@ -201,6 +201,8 @@ actor_events = Table(
     Column("event_id", ForeignKey("events.id", ondelete="CASCADE"), primary_key=True),
     Column("role", String(16), primary_key=True),
     _check_in("role", ACTOR_ROLES, "role"),
+    # The PK leads with actor_id; event -> actors lookups (map, API) need their own index.
+    Index("ix_actor_events_event_id", "event_id"),
 )
 
 event_documents = Table(
