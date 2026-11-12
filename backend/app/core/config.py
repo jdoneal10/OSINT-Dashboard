@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     worker_heartbeat_minutes: int = 5
 
     repo_root: Path = REPO_ROOT
+    # Raw source snapshots (gitignored). Overridable so tests never write into the repo.
+    data_raw_dir: Path = REPO_ROOT / "data" / "raw"
 
     @property
     def reference_dir(self) -> Path:
@@ -45,7 +47,7 @@ class Settings(BaseSettings):
 
     @property
     def raw_dir(self) -> Path:
-        return self.repo_root / "data" / "raw"
+        return self.data_raw_dir
 
 
 @lru_cache

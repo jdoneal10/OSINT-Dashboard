@@ -7,7 +7,6 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.db.models import IngestRun
 from app.ingest.http import USER_AGENT, PoliteClient, RobotsDisallowedError
 from app.ingest.raw import write_raw
@@ -107,13 +106,13 @@ def test_throttles_requests_per_host() -> None:
     assert clock.slept == [1.0, 1.0]
 
 
-def test_write_raw(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(get_settings(), "repo_root", tmp_path)
+def test_write_raw(raw_dir: Path) -> None:
     snap = write_raw("cbp", 7, "nationwide drugs.csv", b"a,b\n1,2\n")
     assert snap.path.read_bytes() == b"a,b\n1,2\n"
     assert snap.path.parent.parent.name == "cbp"
     assert snap.path.name == "7-nationwide_drugs.csv"
     assert len(snap.sha256) == 64
+    assert snap.path.is_relative_to(raw_dir)
 
 
 def test_ingest_run_records_success_and_watermark(session: Session) -> None:
