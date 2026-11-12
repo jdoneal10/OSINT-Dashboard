@@ -17,7 +17,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.ingest import cbp
+from app.ingest import acled, cbp
 
 
 def _cbp(args: argparse.Namespace) -> int:
@@ -26,7 +26,13 @@ def _cbp(args: argparse.Namespace) -> int:
     return cbp.run_remote(all_series=args.all)
 
 
-INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {"cbp": _cbp}
+def _acled(args: argparse.Namespace) -> int:
+    if args.deleted:
+        return acled.run_deleted()
+    return acled.run_events(since=args.since)
+
+
+INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {"cbp": _cbp, "acled": _acled}
 
 
 def main(argv: list[str] | None = None) -> int:

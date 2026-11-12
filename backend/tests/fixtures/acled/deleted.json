@@ -1,0 +1,12 @@
+{
+ "status": 200,
+ "success": true,
+ "count": 1,
+ "next_cursor": null,
+ "data": [
+  {
+   "event_id_cnty": "MEX900002",
+   "deleted_timestamp": "1700000200"
+  }
+ ]
+}
