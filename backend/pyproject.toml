@@ -8,6 +8,7 @@ dependencies = [
     "apscheduler>=3.11,<4",
     "fastapi>=0.162.5",
     "geoalchemy2>=0.21.0",
+    "httpx>=0.28.1",
     "keyring>=25.7.0",
     "psycopg[binary]>=3.3.8",
     "pydantic>=2.14.3",
@@ -29,7 +30,6 @@ packages = ["app"]
 [dependency-groups]
 dev = [
     "honcho>=2.0.0",
-    "httpx>=0.28.1",
     "httpx2>=2.16.0",
     "mypy>=2.4.1",
     "pytest>=9.2.0",

@@ -1,0 +1,6 @@
+version: 1
+method: Synthetic test adjacency for loader tests.
+sources:
+  - {title: Synthetic test fixture, publisher: cartel-osint tests, url: "https://example.org/test-fixture", accessed: 2026-11-11}
+sectors:
+  - {sector: sector-test, adjacent_admin1: [MX-TA]}

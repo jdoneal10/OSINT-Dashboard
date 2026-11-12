@@ -1,0 +1,87 @@
+# Data sources and their initial Admiralty source-reliability grade (A–F).
+# Grades are analyst judgments recorded in ADR 0003; adjust there with rationale.
+# Every entry cites where its terms of use were read (CLAUDE.md hard rule 2).
+
+version: 1
+sources:
+  - slug: acled
+    name: ACLED (Armed Conflict Location & Event Data)
+    source_type: api
+    # B: curated, methodology-documented event coding from public reporting; events can be
+    # revised or deleted (living dataset), so not A.
+    reliability: B
+    homepage_url: https://acleddata.com
+    terms_url: https://acleddata.com/eula
+    redistribution_allowed: false
+    license_notes: >-
+      Personal non-commercial licence (EULA effective 2026-11-01). Internal use only; no raw
+      redistribution; external materials must be transformative and not reverse-engineerable.
+      No ACLED content as LLM input without written consent (s.7.1). Attribute on every visual
+      with access date. API access only; no scraping.
+    sources:
+      - title: ACLED End User License Agreement
+        publisher: ACLED
+        url: https://acleddata.com/eula
+        accessed: 2026-11-11
+      - title: ACLED Attribution Policy
+        publisher: ACLED
+        url: https://acleddata.com/attributionpolicy
+        accessed: 2026-11-11
+
+  - slug: cbp
+    name: U.S. Customs and Border Protection — Public Data Portal
+    source_type: dataset
+    # A: official administrative statistics for CBP's own enforcement actions. Counts reflect
+    # enforcement effort, and figures are revised until fiscal-year close.
+    reliability: A
+    homepage_url: https://www.cbp.gov/newsroom/stats/cbp-public-data-portal
+    terms_url: https://www.cbp.gov/newsroom/stats/cbp-public-data-portal/terms-and-conditions
+    redistribution_allowed: true
+    license_notes: >-
+      U.S. government data. Cite retrieval date; state the product uses CBP data but is not
+      endorsed by CBP; no CBP/DHS logos. robots.txt disallows /sites/default/files/assets/documents/
+      (older files are imported manually).
+    sources:
+      - title: CBP Public Data Portal — Terms and Conditions
+        publisher: U.S. Customs and Border Protection
+        url: https://www.cbp.gov/newsroom/stats/cbp-public-data-portal/terms-and-conditions
+        accessed: 2026-11-11
+
+  - slug: natural-earth
+    name: Natural Earth
+    source_type: reference
+    reliability: A
+    homepage_url: https://www.naturalearthdata.com
+    redistribution_allowed: true
+    license_notes: Public domain.
+    sources:
+      - title: Natural Earth terms of use
+        publisher: Natural Earth
+        url: https://www.naturalearthdata.com/about/terms-of-use/
+        accessed: 2026-11-11
+
+  - slug: bts
+    name: U.S. DOT Bureau of Transportation Statistics
+    source_type: dataset
+    reliability: A
+    homepage_url: https://data.bts.gov
+    redistribution_allowed: true
+    license_notes: U.S. government data (Border Crossing Entry Data, from CBP).
+    sources:
+      - title: Border Crossing Entry Data (keg4-3bc2)
+        publisher: U.S. DOT Bureau of Transportation Statistics
+        url: https://data.bts.gov/Research-and-Statistics/Border-Crossing-Entry-Data/keg4-3bc2
+        accessed: 2026-11-11
+
+  - slug: federal-register
+    name: Federal Register (govinfo.gov)
+    source_type: web
+    reliability: A
+    homepage_url: https://www.govinfo.gov/app/collection/fr
+    redistribution_allowed: true
+    license_notes: U.S. government publication; the citable record for designations.
+    sources:
+      - title: Federal Register on govinfo
+        publisher: U.S. Government Publishing Office
+        url: https://www.govinfo.gov/app/collection/fr
+        accessed: 2026-11-11

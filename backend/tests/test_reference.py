@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Actor, ActorAlias
+from app.db.models import Actor, ActorAlias, Node
 from app.reference.load import (
     ReferenceDataError,
     load_reference,
@@ -29,7 +29,13 @@ def test_load_is_idempotent(session: Session, ref_fixture_dir: Path) -> None:
     first = _load(session, ref_fixture_dir)
     second = _load(session, ref_fixture_dir)
     assert first == second
-    assert first == {"reference_areas": 2, "nodes": 3, "actors": 2, "actor_aliases": 4}
+    assert first == {
+        "sources": 1,
+        "reference_areas": 2,
+        "nodes": 3,
+        "actors": 2,
+        "actor_aliases": 4,
+    }
 
 
 def test_parent_and_canonical_alias(session: Session, ref_fixture_dir: Path) -> None:
@@ -133,3 +139,28 @@ def test_aoi_and_nodes_endpoints(
 
     only_poe = client.get("/reference/nodes", params={"node_type": "poe"}).json()
     assert [f["id"] for f in only_poe["features"]] == ["poe-test"]
+
+
+def test_adjacency_merged_into_sector_properties(session: Session, ref_fixture_dir: Path) -> None:
+    _load(session, ref_fixture_dir)
+    _load(session, ref_fixture_dir)
+    sector = session.scalars(select(Node).where(Node.slug == "sector-test")).one()
+    assert sector.properties["adjacent_admin1"] == ["MX-TA"]
+    assert sector.properties["adjacency_method"].startswith("Synthetic")
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        ("adjacent_admin1: [MX-TA]", "adjacent_admin1: [MX-ZZ]", "unknown Mexican admin1"),
+        ("sector: sector-test", "sector: poe-test", "not a usbp_sector"),
+    ],
+)
+def test_bad_adjacency_rejected(
+    ref_fixture_dir: Path, tmp_path: Path, old: str, new: str, message: str
+) -> None:
+    ref = tmp_path / "ref"
+    shutil.copytree(ref_fixture_dir, ref)
+    _break(ref, "border_adjacency.yaml", old, new)
+    with pytest.raises(ReferenceDataError, match=message):
+        parse_reference_dir(ref)
