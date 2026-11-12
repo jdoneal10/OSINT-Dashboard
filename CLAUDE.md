@@ -52,7 +52,10 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 - `make db-migrate` — `uv run alembic upgrade head`
 - `make test` — backend + frontend tests
 - `make lint` — ruff, mypy, eslint, prettier --check
-- `make ingest SOURCE=acled SINCE=2026-01-01` — run one ingester manually
+- `make ingest SOURCE=acled SINCE=2018-01-01` — ACLED backfill (omit `SINCE` for an incremental pull; `DELETED=1` for deletion reconciliation)
+- `make ingest SOURCE=cbp` — newest CBP files (`ALL=1` for every robots-allowed series; `FILE=path` to import a manually downloaded file)
+- `cd backend && uv run python -m app.core.secrets set ACLED_USERNAME` — store a secret in Keychain (owner runs this; never pass secrets on the command line)
+- `cd backend && uv run python -m app.enrich.actors --rebuild` — re-run actor normalization over all events
 
 ## Engineering conventions
 - **Ingesters are idempotent.** Upsert on a stable source key; re-running a pull never duplicates rows. Store every raw pull in `data/raw/<source>/<date>/` before parsing.

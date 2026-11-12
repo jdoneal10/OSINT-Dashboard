@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     llm_budget_alert_fraction: float = 0.8
 
     worker_heartbeat_minutes: int = 5
+    scheduled_ingest: bool = True
 
     repo_root: Path = REPO_ROOT
     # Raw source snapshots (gitignored). Overridable so tests never write into the repo.

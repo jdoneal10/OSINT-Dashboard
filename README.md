@@ -8,7 +8,7 @@ See [`PLAN.md`](PLAN.md) for the intelligence requirements and phase roadmap, an
 
 ## Status
 
-Phase 0 (foundation): repository, database, API/worker/web skeletons, local basemap, and cited reference data for the Phase 1 area of interest.
+Phase 1 (border MVP): ACLED violence events for the six Mexican border states on the operational map, and CBP encounters and drug seizures by USBP sector and OFO field office in the border panel, next to violence in the adjacent Mexican states. Phase 0 (foundation) is complete.
 
 ## Quick start (macOS, Apple Silicon)
 
@@ -30,7 +30,8 @@ Open <http://localhost:5173>.
 | `make seed` | Load `data/reference/` into the database (idempotent) |
 | `make test` | Backend (pytest) and frontend (Vitest) tests |
 | `make lint` | ruff, mypy, eslint, prettier --check |
-| `make ingest SOURCE=… SINCE=…` | Run one ingester manually (Phase 1+) |
+| `make ingest SOURCE=acled SINCE=2018-01-01` | ACLED backfill (incremental without `SINCE`; `DELETED=1` reconciles deletions) |
+| `make ingest SOURCE=cbp ALL=1` | CBP files (`FILE=…` imports a manually downloaded file) |
 
 ## Data handling
 
@@ -38,5 +39,7 @@ Open <http://localhost:5173>.
 - Organizations, events and public legal actions only. No profiling of private individuals.
 - No tracking of U.S. law-enforcement or military positions or tactics.
 - Source terms are honored. ACLED data is never redistributed in raw form.
+
+Violence events: ACLED (Armed Conflict Location & Event Data), acleddata.com — used under a personal, non-commercial licence; not redistributed. Border statistics: U.S. Customs and Border Protection public data; this project is not endorsed by CBP.
 
 Map data © OpenStreetMap contributors, via [Protomaps](https://protomaps.com). Boundaries: Natural Earth (public domain), U.S. Census Bureau (public domain).
