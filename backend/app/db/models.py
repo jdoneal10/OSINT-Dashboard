@@ -33,6 +33,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -200,6 +201,9 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     # derived steps such as actor normalization can be re-run without re-fetching.
     attributes: Mapped[dict[str, Any]] = mapped_column(default=dict)
     cluster_id: Mapped[int | None] = mapped_column(ForeignKey("event_clusters.id"), index=True)
+    # False for news-derived records placed outside the current AOI (e.g. Bolivia): kept for
+    # context, hidden from feeds and the map by default (ADR 0004).
+    in_aoi: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
 
 
 # actor1..assoc_actor2 mirror ACLED's dyad exactly (no perpetrator/target semantics);
@@ -348,6 +352,7 @@ class Seizure(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     seizing_agency: Mapped[str | None] = mapped_column(String(256))
     country_iso3: Mapped[str | None] = mapped_column(String(3))
     admin1_code: Mapped[str | None] = mapped_column(String(16))
+    in_aoi: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
 
 
 seizure_documents = Table(

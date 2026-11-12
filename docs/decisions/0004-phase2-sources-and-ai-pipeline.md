@@ -65,6 +65,8 @@ Extraction schemas have **no fields for individuals**. Prompts instruct the mode
 - **AOI:** expands to all 32 Mexican states, as phase-2 `reference_areas`.
 - **ACLED filter:** widens to all of Mexico, by re-processing raw pages already on disk; no new pulls.
 - **Geocoding:** uses a **local gazetteer** built from INEGI localities and municipalities. No external geocoding service is called (CLAUDE.md "Do not": no outbound calls beyond source pulls and Claude). Each result records its precision: 1 locality, 2 municipality, 3 state.
+- **U.S. mentions:** geocoded only within the four border states. A named port of entry resolves to its cited `nodes` point (precision 2, `node_id` on seizures); otherwise to the state (precision 3).
+- **Records outside the AOI (owner decision, 2026-11-11):** regional outlets also report on, for example, Bolivia, Colombia or Puerto Rico. These news-derived events and seizures are **stored with `in_aoi = false` and no geometry, and are hidden from feeds and the map by default**, with an opt-in filter to show them. A record counts as inside the AOI when its extracted country is Mexico, or the U.S. with a border state or no state named; an unknown country also counts as inside. Central America becomes in-AOI in Phase 4.
 
 ## Consequences
 - Coverage of Spanish-language reporting depends on GDELT's recall for Proceso and Milenio, which is modest (2 Proceso hits in 3 days in the test query). RSS-native outlets carry most of the volume.

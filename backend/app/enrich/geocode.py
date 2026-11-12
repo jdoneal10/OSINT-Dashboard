@@ -30,6 +30,8 @@ from app.db.models import Node, Place, ReferenceArea
 from app.reference.inegi_load import place_key
 
 MEXICO = {"mexico", "méxico", "mx", "mex"}
+# Phase 2 AOI: all of Mexico plus the four U.S. border states. Phase 4 adds Central America.
+US_BORDER_STATES = {"arizona", "california", "new mexico", "texas", "az", "ca", "nm", "tx"}
 USA = {"united states", "united states of america", "usa", "us", "u s", "u s a",
        "estados unidos", "eeuu", "ee uu"}  # fmt: skip
 
@@ -227,3 +229,19 @@ def _geocode_us(
     if xy := _state_point(session, code):
         return GeoResult(xy[0], xy[1], code, None, 3, name, "USA")
     return None
+
+
+def in_aoi(country: str | None, state: str | None) -> bool:
+    """Whether an extracted location falls in the current AOI.
+
+    Unknown country or U.S. state counts as inside (hide only what is clearly elsewhere):
+    a national DOJ indictment with no state stays visible; one in South Carolina does not.
+    """
+    if not country:
+        return True
+    key = place_key(country)
+    if key in MEXICO:
+        return True
+    if key in USA:
+        return not state or place_key(state) in US_BORDER_STATES
+    return False

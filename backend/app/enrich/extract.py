@@ -39,7 +39,7 @@ from app.db.models import (
 )
 from app.db.session import session_factory
 from app.enrich.actors import ActorIndex
-from app.enrich.geocode import geocode
+from app.enrich.geocode import geocode, in_aoi
 from app.enrich.llm.client import BudgetPausedError, Gateway, Provenance
 from app.enrich.llm.pricing import HAIKU
 from app.ingest.acled import RELIABILITY_CONFIDENCE
@@ -247,6 +247,7 @@ def store_extraction(
             fatalities=e.fatalities,
             geom=func.ST_GeogFromText(geo.ewkt) if geo else None,
             country_iso3=geo.country_iso3 if geo else None,
+            in_aoi=in_aoi(e.location.country, e.location.state),
             admin1_code=geo.admin1_code if geo else None,
             admin2_code=geo.admin2_code if geo else None,
             admin1_name=e.location.state,
@@ -291,6 +292,7 @@ def store_extraction(
             seizing_agency=s.seizing_agency,
             node_id=geo.node_id if geo else None,
             country_iso3=geo.country_iso3 if geo else None,
+            in_aoi=in_aoi(s.location.country, s.location.state),
             admin1_code=geo.admin1_code if geo else None,
             **llm,
         )

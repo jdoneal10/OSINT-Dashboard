@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import Session
 
-from app.enrich.geocode import geocode, resolve_state
+from app.enrich.geocode import geocode, in_aoi, resolve_state
 from app.reference.inegi_load import load
 
 FIX = Path(__file__).parent / "fixtures" / "inegi"
@@ -91,3 +91,21 @@ def test_us_border_states_and_ports(
     if r is not None:
         assert r.country_iso3 == "USA"
         assert (r.node_id is not None) == (r.precision == 2)
+
+
+@pytest.mark.parametrize(
+    ("country", "state", "expected"),
+    [
+        ("Mexico", "Jalisco", True),
+        ("México", None, True),
+        ("United States", "Texas", True),
+        ("United States", None, True),  # national action, state unknown
+        ("United States", "South Carolina", False),
+        ("United States", "Puerto Rico", False),
+        ("Bolivia", "Santa Cruz", False),
+        ("Colombia", None, False),
+        (None, None, True),
+    ],
+)
+def test_in_aoi(country: str | None, state: str | None, expected: bool) -> None:
+    assert in_aoi(country, state) is expected
