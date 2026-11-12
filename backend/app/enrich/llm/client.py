@@ -40,6 +40,7 @@ log = logging.getLogger(__name__)
 
 BLOCKED_SOURCES = frozenset({"acled"})  # licence: ACLED EULA s.7.1 (ADR 0003)
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+API_BASE_URL = "https://api.anthropic.com"
 
 
 class LLMGuardError(RuntimeError):
@@ -180,8 +181,12 @@ class Gateway:
     @property
     def client(self) -> Any:
         if self._client is None:
+            # Pin the official endpoint: never inherit ANTHROPIC_BASE_URL (or any proxy) from
+            # the environment, so the key and article text only ever go to the Claude API
+            # (CLAUDE.md: no outbound calls beyond source pulls and the Claude API).
             self._client = anthropic.Anthropic(
-                api_key=require_secret("ANTHROPIC_API_KEY").get_secret_value()
+                api_key=require_secret("ANTHROPIC_API_KEY").get_secret_value(),
+                base_url=API_BASE_URL,
             )
         return self._client
 

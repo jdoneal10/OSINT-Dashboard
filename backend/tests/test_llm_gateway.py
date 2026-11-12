@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -266,3 +266,10 @@ def test_strict_schema_nested() -> None:
     assert inner["additionalProperties"] is False
     assert inner["required"] == ["x", "y"]
     assert "title" not in inner
+
+
+def test_client_pins_official_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://proxy.example.invalid")
+    monkeypatch.setattr(gw, "require_secret", lambda _name: SecretStr("sk-test-not-real"))
+    client = gw.Gateway().client
+    assert str(client.base_url).rstrip("/") == "https://api.anthropic.com"
