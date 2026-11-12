@@ -2,7 +2,9 @@ import { vi } from 'vitest'
 
 /** Route fetch calls by URL path prefix to canned JSON bodies; unknown paths return 404. */
 export function mockApi(routes: Record<string, unknown>) {
-  const fn = vi.fn(async (input: RequestInfo | URL) => {
+  // ``init`` is part of the signature so tests can read method and body from mock.calls.
+  const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void init
     const url = new URL(String(input), 'http://localhost')
     const path = url.pathname.replace(/^\/api/, '')
     const key = Object.keys(routes)

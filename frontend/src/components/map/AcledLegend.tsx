@@ -4,13 +4,22 @@ interface Props {
   accessed: string | null
   filters: string
   mode: 'heat' | 'points'
+  /** Which event sources are on the map. */
+  acled?: boolean
+  news?: boolean
 }
 
 /**
  * Legend + ACLED attribution on the visual itself, as ACLED's Attribution Policy requires:
  * source name, link, access date, and the filters applied.
  */
-export default function AcledLegend({ accessed, filters, mode }: Props) {
+export default function AcledLegend({
+  accessed,
+  filters,
+  mode,
+  acled = true,
+  news = false,
+}: Props) {
   return (
     <div
       aria-label="Event legend and attribution"
@@ -35,18 +44,26 @@ export default function AcledLegend({ accessed, filters, mode }: Props) {
           <span className="text-ink-500">weighted by fatalities</span>
         </div>
       )}
-      <p className="text-ink-300 leading-snug">
-        Events: ACLED (Armed Conflict Location &amp; Event Data),{' '}
-        <a
-          href="https://acleddata.com"
-          target="_blank"
-          rel="noreferrer noopener"
-          className="underline"
-        >
-          acleddata.com
-        </a>
-        {accessed ? `, accessed ${accessed}` : ''}. Filtered: {filters}.
-      </p>
+      {acled && (
+        <p className="text-ink-300 leading-snug">
+          Events: ACLED (Armed Conflict Location &amp; Event Data),{' '}
+          <a
+            href="https://acleddata.com"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="underline"
+          >
+            acleddata.com
+          </a>
+          {accessed ? `, accessed ${accessed}` : ''}. Filtered: {filters}.
+        </p>
+      )}
+      {news && (
+        <p className="text-ink-300 mt-1 leading-snug">
+          News-derived events: extracted by machine from public reporting and graded on the
+          Admiralty scale; single-source reports are unconfirmed.
+        </p>
+      )}
     </div>
   )
 }

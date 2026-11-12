@@ -9,6 +9,7 @@ import type {
   NodeProps,
   ReferenceCollection,
 } from '../../api/types'
+import { CHOROPLETH_COLORS } from '../../lib/choropleth'
 import { EVENT_TYPE_COLORS, OTHER_EVENT_COLOR } from './eventColors'
 import { basemapStyle, fallbackStyle } from './basemap'
 
@@ -16,6 +17,14 @@ export interface LayerVisibility {
   aoi: boolean
   poe: boolean
   events: boolean
+  crime: boolean
+}
+
+/** SESNSP municipal choropleth: polygons with value ``v`` and class breaks. */
+export interface CrimeLayer {
+  data: GeoJSON.FeatureCollection
+  breaks: number[]
+  label: string
 }
 
 export type EventMode = 'heat' | 'points'
@@ -24,6 +33,7 @@ interface Props {
   aoi?: ReferenceCollection<AreaProps>
   nodes?: ReferenceCollection<NodeProps>
   events?: EventPoints
+  crime?: CrimeLayer
   eventMode: EventMode
   basemap: boolean
   visibility: LayerVisibility
@@ -137,7 +147,54 @@ function addEventLayers(map: maplibregl.Map) {
   })
 }
 
+function crimeColor(breaks: number[]): ExpressionSpecification {
+  if (breaks.length < 2) return CHOROPLETH_COLORS[0] as unknown as ExpressionSpecification
+  const stops = breaks.slice(1).flatMap((b, i) => [b, CHOROPLETH_COLORS[i + 1]])
+  return [
+    'step',
+    ['get', 'v'],
+    CHOROPLETH_COLORS[0],
+    ...stops,
+  ] as unknown as ExpressionSpecification
+}
+
+function addCrimeLayers(map: maplibregl.Map) {
+  map.addSource('crime', {
+    type: 'geojson',
+    data: EMPTY,
+    attribution: 'Crime incidence: SESNSP; municipalities: INEGI',
+  })
+  map.addLayer({
+    id: 'crime-fill',
+    type: 'fill',
+    source: 'crime',
+    filter: ['>', ['get', 'v'], 0],
+    paint: { 'fill-color': CHOROPLETH_COLORS[0], 'fill-opacity': 0.6 },
+  })
+  map.addLayer({
+    id: 'crime-line',
+    type: 'line',
+    source: 'crime',
+    minzoom: 6,
+    paint: { 'line-color': '#0b0f14', 'line-width': 0.4, 'line-opacity': 0.6 },
+  })
+  const popup = new maplibregl.Popup({ closeButton: false, className: 'osint-popup' })
+  map.on('click', 'crime-fill', (e) => {
+    // Events and ports sit above the choropleth; let their own handlers win.
+    const above = map.queryRenderedFeatures(e.point, { layers: ['events-points', 'poe-hit'] })
+    const f = e.features?.[0]
+    if (!f || above.length) return
+    const el = document.createElement('div')
+    el.className = 'text-xs'
+    el.innerHTML = '<strong></strong><div></div>'
+    el.children[0].textContent = String(f.properties?.name ?? f.properties?.code)
+    el.children[1].textContent = `${Number(f.properties?.v).toLocaleString()} reported`
+    popup.setLngLat(e.lngLat).setDOMContent(el).addTo(map)
+  })
+}
+
 function addOverlays(map: maplibregl.Map) {
+  addCrimeLayers(map)
   map.addSource('aoi', { type: 'geojson', data: EMPTY, attribution: 'Boundaries: Natural Earth' })
   map.addSource('poe', { type: 'geojson', data: EMPTY, attribution: 'Ports: BTS / CBP' })
 
@@ -238,6 +295,7 @@ export default function OperationalMap({
   aoi,
   nodes,
   events,
+  crime,
   eventMode,
   basemap,
   visibility,
@@ -314,6 +372,7 @@ export default function OperationalMap({
     set(['poe-circle', 'poe-hit', 'poe-label'], visibility.poe)
     set(['events-heat'], visibility.events && eventMode === 'heat')
     set(['events-points'], visibility.events && eventMode === 'points')
+    set(['crime-fill', 'crime-line'], visibility.crime)
   }, [ready, visibility, eventMode])
 
   useEffect(() => {
@@ -323,6 +382,13 @@ export default function OperationalMap({
       (events as unknown as GeoJSON.FeatureCollection | undefined) ?? EMPTY,
     )
   }, [ready, events])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
+    ;(map.getSource('crime') as GeoJSONSource).setData(crime?.data ?? EMPTY)
+    map.setPaintProperty('crime-fill', 'fill-color', crimeColor(crime?.breaks ?? []))
+  }, [ready, crime])
 
   return (
     <div ref={container} className="h-full w-full" aria-label="Operational map" role="region" />

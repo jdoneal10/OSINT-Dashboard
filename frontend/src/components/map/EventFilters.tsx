@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useActorSearch } from '../../api/hooks'
 import type { EventTypeCount } from '../../api/types'
-import type { EventFilterState } from '../../lib/eventFilters'
+import type { EventFilterState, EventSource } from '../../lib/eventFilters'
 import { useDebounced } from '../../hooks/useDebounced'
 import { eventColor } from './eventColors'
 import MonthRangeSlider from './MonthRangeSlider'
@@ -32,8 +32,30 @@ export default function EventFilters(props: Props) {
   }
   const isOn = (t: string) => value.eventTypes.length === 0 || value.eventTypes.includes(t)
 
+  const SOURCES: { value: EventSource; label: string }[] = [
+    { value: 'both', label: 'All' },
+    { value: 'acled', label: 'ACLED' },
+    { value: 'news', label: 'News-derived' },
+  ]
+  const source = value.source ?? 'both'
+
   return (
     <div className="space-y-4">
+      <div role="radiogroup" aria-label="Event source" className="bg-ink-800 flex rounded p-0.5">
+        {SOURCES.map((s) => (
+          <button
+            key={s.value}
+            role="radio"
+            aria-checked={source === s.value}
+            onClick={() => onChange({ ...value, source: s.value })}
+            className={`flex-1 rounded px-2 py-0.5 text-xs ${
+              source === s.value ? 'bg-ink-700 text-ink-100' : 'text-ink-500 hover:text-ink-300'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
       <div className="flex items-center justify-between">
         <span className="text-ink-300 text-xs tabular-nums">
           {props.shown === null ? 'Loading events…' : `${props.shown.toLocaleString()} events`}

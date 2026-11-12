@@ -372,6 +372,23 @@ def list_documents(
     return DocumentPage(items=summaries(session, list(page)), next_cursor=nxt)
 
 
+class SourceCount(SourceRef):
+    documents: int
+
+
+@router.get("/sources", response_model=list[SourceCount])
+def document_sources(session: DB) -> list[SourceCount]:
+    """Sources with extracted documents (news-feed source filter)."""
+    rows = session.execute(
+        select(Source.slug, Source.name, Source.reliability, func.count())
+        .join(Document, Document.source_id == Source.id)
+        .where(Document.pipeline_status == "extracted")
+        .group_by(Source.slug, Source.name, Source.reliability)
+        .order_by(Source.name)
+    ).all()
+    return [SourceCount(slug=a, name=b, reliability=c, documents=n) for a, b, c, n in rows]
+
+
 @router.get("/{document_id}", response_model=DocumentDetail)
 def get_document(document_id: int, session: DB) -> DocumentDetail:
     row = session.execute(summary_select().where(Document.id == document_id)).one_or_none()

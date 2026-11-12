@@ -170,6 +170,7 @@ class EventOut(BaseModel):
     credibility: int | None
     cluster_id: int | None
     in_aoi: bool
+    evidence: str | None  # supporting quote from the source text (news-derived only)
     actors: list[dict[str, Any]]
     document_ids: list[int]  # documents this event was derived from (empty for ACLED)
 
@@ -213,6 +214,7 @@ def event_out(
         credibility=ev.credibility,
         cluster_id=ev.cluster_id,
         in_aoi=ev.in_aoi,
+        evidence=(ev.attributes or {}).get("evidence"),
         actors=actors.get(ev.id, []),
         document_ids=docs.get(ev.id, []),
     )

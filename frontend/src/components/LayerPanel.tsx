@@ -10,6 +10,8 @@ interface Props {
   onToggle: (key: keyof LayerVisibility) => void
   /** Rendered as the first section (event filters). */
   children?: ReactNode
+  /** Crime-type/month picker and legend, shown under the crime toggle when it is on. */
+  crimeControls?: ReactNode
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -47,23 +49,31 @@ function Toggle(props: {
   )
 }
 
-export default function LayerPanel({ aoi, nodes, basemap, visibility, onToggle, children }: Props) {
+export default function LayerPanel({
+  aoi,
+  nodes,
+  basemap,
+  visibility,
+  onToggle,
+  children,
+  crimeControls,
+}: Props) {
   const states = aoi?.features ?? []
   const poes = nodes?.features.filter((f) => f.properties.node_type === 'poe') ?? []
   const sectors = nodes?.features.filter((f) => f.properties.node_type === 'usbp_sector') ?? []
 
   return (
     <aside className="border-ink-700 bg-ink-900 flex w-80 shrink-0 flex-col overflow-y-auto border-r">
-      {children && <Section title="Violence events · ACLED">{children}</Section>}
-      <Section title="Layers · Phase 1 AOI">
+      {children && <Section title="Events">{children}</Section>}
+      <Section title="Layers · Phase 2 AOI">
         <Toggle
-          label="Violence events"
+          label="Events"
           swatch="#f43f5e"
           on={visibility.events}
           onChange={() => onToggle('events')}
         />
         <Toggle
-          label="Border states"
+          label="AOI states"
           swatch="linear-gradient(90deg,#f59e0b 50%,#38bdf8 50%)"
           count={states.length}
           on={visibility.aoi}
@@ -76,6 +86,13 @@ export default function LayerPanel({ aoi, nodes, basemap, visibility, onToggle, 
           on={visibility.poe}
           onChange={() => onToggle('poe')}
         />
+        <Toggle
+          label="Crime incidence (SESNSP)"
+          swatch="linear-gradient(90deg,#3b0764,#db2777,#fda4af)"
+          on={visibility.crime}
+          onChange={() => onToggle('crime')}
+        />
+        {visibility.crime && crimeControls}
         <div className="text-ink-500 mt-2 flex gap-3 text-xs">
           <span>
             <span className="text-amber-500">■</span> Mexico
@@ -124,6 +141,9 @@ export default function LayerPanel({ aoi, nodes, basemap, visibility, onToggle, 
       <Section title="Sources">
         <ul className="text-ink-500 space-y-1 text-xs">
           <li>Events: ACLED (Armed Conflict Location &amp; Event Data)</li>
+          <li>News-derived events: public news and press releases, extracted by Claude</li>
+          <li>Crime incidence: SESNSP municipal data (Mexican government)</li>
+          <li>Municipalities: INEGI Marco Geoestadístico</li>
           <li>Boundaries: Natural Earth 1:10m (public domain)</li>
           <li>Ports of entry: BTS Border Crossing Entry Data</li>
           <li>Sectors: CBP public sector pages</li>

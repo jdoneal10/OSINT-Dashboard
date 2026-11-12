@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app import __version__
 from app.api import (
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
         description=CLASSIFICATION,
         lifespan=_lifespan,
     )
+    app.add_middleware(GZipMiddleware, minimum_size=2048)  # map layers are large GeoJSON
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

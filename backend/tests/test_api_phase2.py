@@ -124,12 +124,18 @@ def test_feed_filters_and_pagination(client: TestClient, news: dict[str, int]) -
     assert client.get("/documents", params={"cursor": "junk"}).status_code == 422
 
 
+def test_document_sources(client: TestClient, news: dict[str, int]) -> None:
+    rows = client.get("/documents/sources").json()
+    assert [(r["slug"], r["documents"]) for r in rows] == [("news-a", 2), ("news-b", 2)]
+
+
 def test_document_detail(client: TestClient, news: dict[str, int]) -> None:
     d = client.get(f"/documents/{news['doc_in']}").json()
     assert d["original_text"] == "Texto original in"
     assert d["summary_en"] == "Summary in"
     assert [e["id"] for e in d["events"]] == [news["ev_in"]]
     assert d["events"][0]["document_ids"] == [news["doc_in"]]
+    assert d["events"][0]["evidence"] is None
     assert [s["substance"] for s in d["seizures"]] == ["fentanyl"]
     assert d["duplicates"] == [news["doc_dup"]]
     assert (d["quarantine"], d["labels"]) == ([], [])
@@ -286,3 +292,16 @@ def test_label_queue_is_stratified_and_tracks_progress(
     item = next(i for i in q["items"] if i["document_id"] == doc)
     assert (item["relevance_labeled"], item["n_records"], item["done"]) == (True, 0, True)
     assert q["done"] == 1
+
+
+# --------------------------------------------------------------------------- reference
+
+
+@pytest.mark.usefixtures("seeded")
+def test_aoi_is_state_level_and_municipalities_are_separate(client: TestClient) -> None:
+    aoi = client.get("/reference/aoi", params={"phase": 2}).json()["features"]
+    assert {f["properties"]["area_type"] for f in aoi} == {"admin1"}
+    assert len([f for f in aoi if f["properties"]["country_iso3"] == "MEX"]) == 32
+    r = client.get("/reference/municipalities", headers={"Accept-Encoding": "gzip"})
+    assert r.status_code == 200
+    assert r.json()["features"] == []  # gazetteer not loaded in this fixture

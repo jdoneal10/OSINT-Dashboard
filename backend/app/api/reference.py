@@ -40,12 +40,13 @@ def aoi(
     session: Annotated[Session, Depends(get_session)],
     phase: Annotated[int, Query(ge=1, le=5)] = 1,
 ) -> FeatureCollection:
-    """Area-of-interest polygons for the given phase (and earlier phases), each with a
-    ``label_point`` (one per area, so multi-part states get a single label)."""
+    """State-level (admin1) area-of-interest polygons for the given phase and earlier ones,
+    each with a ``label_point`` (one per area, so multi-part states get a single label).
+    Municipalities are served separately by ``/reference/municipalities``."""
     label = func.ST_PointOnSurface(cast(ReferenceArea.geom, Geometry))
     rows = session.execute(
         select(ReferenceArea, _geojson(ReferenceArea.geom), func.ST_X(label), func.ST_Y(label))
-        .where(ReferenceArea.phase <= phase)
+        .where(ReferenceArea.phase <= phase, ReferenceArea.area_type == "admin1")
         .order_by(ReferenceArea.country_iso3, ReferenceArea.name)
     ).all()
     return FeatureCollection(
@@ -65,6 +66,37 @@ def aoi(
                 },
             )
             for area, geom, x, y in rows
+        ]
+    )
+
+
+MUNICIPAL_TOLERANCE = 0.004  # degrees (~400 m): national choropleth, not boundary analysis
+
+
+@router.get("/municipalities", response_model=FeatureCollection)
+def municipalities(
+    session: Annotated[Session, Depends(get_session)],
+    admin1: Annotated[list[str] | None, Query(description="e.g. MX-SIN")] = None,
+) -> FeatureCollection:
+    """Mexican municipalities (INEGI) simplified for choropleths. Feature id = cvegeo."""
+    geom = func.ST_AsGeoJSON(
+        func.ST_SimplifyPreserveTopology(cast(ReferenceArea.geom, Geometry), MUNICIPAL_TOLERANCE),
+        3,
+    )
+    stmt = select(
+        ReferenceArea.admin2_code, ReferenceArea.name, ReferenceArea.admin1_code, geom
+    ).where(ReferenceArea.area_type == "admin2", ReferenceArea.admin2_code.is_not(None))
+    if admin1:
+        stmt = stmt.where(ReferenceArea.admin1_code.in_(admin1))
+    rows = session.execute(stmt.order_by(ReferenceArea.admin2_code)).all()
+    return FeatureCollection(
+        features=[
+            Feature(
+                id=code,
+                geometry=json.loads(g),
+                properties={"code": code, "name": name, "admin1_code": a1},
+            )
+            for code, name, a1, g in rows
         ]
     )
 

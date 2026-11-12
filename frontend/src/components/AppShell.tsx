@@ -1,10 +1,14 @@
 import { NavLink, Outlet } from 'react-router'
+import BudgetIndicator from './BudgetIndicator'
 import ClassificationBanner from './ClassificationBanner'
 import HealthIndicator from './HealthIndicator'
 
 const NAV = [
   { to: '/', label: 'Operational map', end: true },
   { to: '/border', label: 'Border panel', end: false },
+  { to: '/news', label: 'News feed', end: false },
+  { to: '/designations', label: 'Designations', end: false },
+  { to: '/labeling', label: 'Labeling', end: false },
 ]
 
 /** Root layout route. Every page renders in its Outlet, so no view can appear without the banners. */
@@ -36,7 +40,10 @@ export default function AppShell() {
             ))}
           </nav>
         </div>
-        <HealthIndicator />
+        <div className="flex items-center gap-5">
+          <BudgetIndicator />
+          <HealthIndicator />
+        </div>
       </header>
       <main className="min-h-0 flex-1">
         <Outlet />
