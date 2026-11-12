@@ -152,6 +152,21 @@ def test_cluster_detail(client: TestClient, news: dict[str, int], seeded: Sessio
     assert client.get("/clusters/999999").status_code == 404
 
 
+def test_acled_corroboration_is_flagged(
+    client: TestClient, news: dict[str, int], seeded: Session
+) -> None:
+    cid = seeded.get_one(Event, news["ev_in"]).cluster_id
+    acled = seeded.scalars(select(Source.id).where(Source.slug == "acled")).one()
+    seeded.add(Event(source_id=acled, source_key="MEX-9", retrieved_at=NOW, cluster_id=cid,
+                     event_date=dt.date(2026, 11, 9), event_type="Battles"))  # fmt: skip
+    seeded.commit()
+    top = client.get("/documents").json()["items"][0]
+    assert top["clusters"][0]["acled_corroborated"] is True
+    c = client.get(f"/clusters/{cid}").json()
+    assert c["acled_corroborated"] is True
+    assert "acled" in {e["source"] for e in c["events"]}
+
+
 # --------------------------------------------------------------------------- events
 
 

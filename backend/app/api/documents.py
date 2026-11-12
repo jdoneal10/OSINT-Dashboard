@@ -8,6 +8,7 @@ hides documents whose derived records all fall outside the AOI unless
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Iterable
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -54,6 +55,7 @@ class ClusterRef(BaseModel):
     n_documents: int
     n_independent_sources: int
     has_conflicts: bool
+    acled_corroborated: bool  # an ACLED event is attached (ADR 0006): show ACLED attribution
 
 
 class DocumentSummary(BaseModel):
@@ -182,12 +184,26 @@ def _clusters_for(session: Session, doc_ids: list[int]) -> dict[int, list[Cluste
         .distinct()
         .order_by(event_documents.c.document_id, EventCluster.id)
     ).all()
+    with_acled = clusters_with_acled(session, (c.id for _, c in rows))
     for doc_id, c in rows:
-        out.setdefault(doc_id, []).append(cluster_ref(c))
+        out.setdefault(doc_id, []).append(cluster_ref(c, c.id in with_acled))
     return out
 
 
-def cluster_ref(c: EventCluster) -> ClusterRef:
+def clusters_with_acled(session: Session, cluster_ids: Iterable[int]) -> set[int]:
+    ids = list(set(cluster_ids))
+    if not ids:
+        return set()
+    return set(
+        session.scalars(
+            select(Event.cluster_id)
+            .join(Source, Source.id == Event.source_id)
+            .where(Source.slug == "acled", Event.cluster_id.in_(ids))
+        )
+    )
+
+
+def cluster_ref(c: EventCluster, acled: bool = False) -> ClusterRef:
     return ClusterRef(
         id=c.id,
         reliability=c.reliability,
@@ -196,6 +212,7 @@ def cluster_ref(c: EventCluster) -> ClusterRef:
         n_documents=c.n_documents,
         n_independent_sources=c.n_independent_sources,
         has_conflicts=bool(c.conflicts),
+        acled_corroborated=acled,
     )
 
 

@@ -33,6 +33,12 @@ On **11 November 2026** ACLED's administration team gave the owner **written con
 - Only Claude is covered. Any other model or service receiving ACLED data needs a new decision.
 
 ## Consequences
-- The analytic stage can corroborate news-derived events against ACLED events, as a future pipeline change. Today, clustering still uses news-derived events only.
+- **Corroboration against ACLED (built 2026-11-12):**
+  - Clustering attaches at most one matching ACLED event to a news cluster. A match needs the same INEGI municipality as a news event geocoded to municipality level or finer, an event date within ±1 day, and a compatible event type. The best candidate is the closest date, then the closest fatality count.
+  - The ACLED event counts as one more independent source in the cluster's Admiralty grade. Its fatality count can raise a conflict, which sends the cluster to Sonnet.
+  - Sonnet sees the ACLED record as `[acled event N]` and may cite it. Its prompt notes that ACLED may code from the same articles, so agreement is not fully independent.
+  - The UI marks such reports "ACLED-corroborated" and shows ACLED attribution beside them.
+  - ACLED never creates a cluster on its own.
+- **ACLED's release delay:** the owner's ACLED access releases events about 12 months late. The newest event was 2025-11-12 when checked on 2026-11-12. A current report can therefore only be corroborated about a year later, so clusters stay matchable for 400 days. Until then, corroboration of recent reporting rests on news sources alone.
 - Any ACLED-derived prompt is logged in `llm_usage` and carries record ids, like every other LLM call.
 - If ACLED narrows or withdraws consent, set the switch to `false`, update this ADR and review any ACLED-derived assessments.

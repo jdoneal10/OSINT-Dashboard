@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useAoi, useDocumentFeed, useDocumentSources, useEventTypes } from '../api/hooks'
 import type { DocumentSummary } from '../api/types'
+import AcledAttribution from '../components/news/AcledAttribution'
 import AdmiraltyBadge from '../components/news/AdmiraltyBadge'
 import { useDebounced } from '../hooks/useDebounced'
 import { feedParams } from '../lib/feed'
@@ -40,6 +41,14 @@ function FeedItem({ doc }: { doc: DocumentSummary }) {
         {!doc.in_aoi && (
           <span className="rounded border border-amber-500/40 px-1 text-amber-300">
             outside AOI
+          </span>
+        )}
+        {doc.clusters.some((c) => c.acled_corroborated) && (
+          <span
+            className="rounded border border-sky-500/40 px-1 text-sky-300"
+            title="A matching ACLED event corroborates this report"
+          >
+            ACLED-corroborated
           </span>
         )}
         {conflicted && (
@@ -260,6 +269,9 @@ export default function NewsPage() {
           {docs.map((d) => (
             <FeedItem key={d.id} doc={d} />
           ))}
+          {docs.some((d) => d.clusters.some((c) => c.acled_corroborated)) && (
+            <AcledAttribution className="pt-1" />
+          )}
           {feed.hasNextPage && (
             <button
               onClick={() => feed.fetchNextPage()}

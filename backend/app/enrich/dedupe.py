@@ -18,9 +18,10 @@ import logging
 import re
 from typing import Any
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.models import (
     ClusterAssessment,
     Document,
@@ -36,6 +37,9 @@ SIMHASH_BITS = 3  # max Hamming distance for "same text"
 WINDOW_DAYS = 14
 CLUSTER_KM = 25
 CLUSTER_DAYS = 1
+# The owner's ACLED access releases events about 12 months after they happen (latest event
+# 2025-11-12 when checked on 2026-11-12), so news clusters stay matchable for 13 months.
+ACLED_LOOKBACK_DAYS = 400
 VIOLENT = {"Battles", "Violence against civilians", "Explosions/Remote violence"}
 _WORD = re.compile(r"\w+", re.UNICODE)
 
@@ -129,10 +133,16 @@ def refresh_cluster(session: Session, cluster: EventCluster) -> None:
         .where(event_documents.c.event_id.in_([e.id for e in members]))
     ).all()
     cluster.n_documents = len({d for d, _ in docs})
-    cluster.n_independent_sources = len({s for _, s in docs})
-    grades = session.scalars(
-        select(Source.reliability).where(Source.id.in_({s for _, s in docs}))
-    ).all()
+    # Independent sources: distinct outlets behind the reports, plus record-level sources
+    # such as ACLED (an event with no document is its own source; ADR 0006).
+    with_docs = {e for e in session.scalars(
+        select(event_documents.c.event_id).where(
+            event_documents.c.event_id.in_([e.id for e in members])
+        )
+    )}  # fmt: skip
+    sources = {s for _, s in docs} | {e.source_id for e in members if e.id not in with_docs}
+    cluster.n_independent_sources = len(sources)
+    grades = session.scalars(select(Source.reliability).where(Source.id.in_(sources))).all()
     cluster.reliability = min(grades) if grades else None
     session.flush()
     session.execute(
@@ -170,18 +180,88 @@ def prune_clusters(session: Session) -> int:
     actual = select(func.count()).where(Event.cluster_id == EventCluster.id).scalar_subquery()
     stale = list(session.scalars(select(EventCluster).where(EventCluster.n_events != actual)))
     for cluster in stale:
-        if session.scalar(select(func.count()).where(Event.cluster_id == cluster.id)):
+        # A cluster exists for news reports; ACLED alone does not keep one alive.
+        if session.scalar(select(func.count()).where(Event.cluster_id == cluster.id, _has_doc())):
             session.execute(
                 delete(ClusterAssessment).where(ClusterAssessment.cluster_id == cluster.id)
             )
             refresh_cluster(session, cluster)
         else:
+            session.execute(
+                update(Event).where(Event.cluster_id == cluster.id).values(cluster_id=None)
+            )
             session.delete(cluster)
     session.flush()
     return len(stale)
 
 
-def cluster_events(session: Session) -> dict[str, int]:
+def _has_doc() -> Any:
+    return select(event_documents.c.event_id).where(event_documents.c.event_id == Event.id).exists()
+
+
+def attach_acled(session: Session, today: dt.date | None = None) -> int:
+    """Attach the matching ACLED event (at most one) to recent news clusters (ADR 0006).
+
+    A match has the same INEGI municipality as a news-derived member geocoded to municipality
+    or better, an event date within +/- CLUSTER_DAYS, and a compatible event type. The best
+    candidate is the closest date, then the closest fatality count. ACLED codes one event per
+    incident, so a cluster takes one ACLED event, and an ACLED event joins one cluster.
+    Returns clusters that gained an ACLED event; their assessments are dropped.
+    """
+    acled = session.scalar(select(Source.id).where(Source.slug == "acled"))
+    if acled is None:
+        return 0
+    since = (today or dt.datetime.now(dt.UTC).date()) - dt.timedelta(days=ACLED_LOOKBACK_DAYS)
+    has_acled = select(Event.cluster_id).where(
+        Event.source_id == acled, Event.cluster_id.is_not(None)
+    )
+    clusters = session.scalars(
+        select(EventCluster).where(
+            EventCluster.last_date >= since, EventCluster.id.not_in(has_acled)
+        )
+    ).all()
+    attached = 0
+    for cluster in clusters:
+        news = session.scalars(
+            select(Event).where(
+                Event.cluster_id == cluster.id,
+                Event.admin2_code.is_not(None),
+                Event.geo_precision.is_not(None),
+                Event.geo_precision <= 2,  # municipality or finer
+            )
+        ).all()
+        best: tuple[tuple[int, int], Event] | None = None
+        for ev in news:
+            for cand in session.scalars(
+                select(Event).where(
+                    Event.source_id == acled,
+                    Event.cluster_id.is_(None),
+                    Event.admin2_code == ev.admin2_code,
+                    Event.event_date.between(
+                        ev.event_date - dt.timedelta(days=CLUSTER_DAYS),
+                        ev.event_date + dt.timedelta(days=CLUSTER_DAYS),
+                    ),
+                )
+            ):
+                if not _compatible(cand.event_type, ev.event_type):
+                    continue
+                key = (
+                    abs((cand.event_date - ev.event_date).days),
+                    abs((cand.fatalities or 0) - (ev.fatalities or 0)),
+                )
+                if best is None or key < best[0]:
+                    best = (key, cand)
+        if best is None:
+            continue
+        best[1].cluster_id = cluster.id
+        session.execute(delete(ClusterAssessment).where(ClusterAssessment.cluster_id == cluster.id))
+        session.flush()
+        refresh_cluster(session, cluster)
+        attached += 1
+    return attached
+
+
+def cluster_events(session: Session, today: dt.date | None = None) -> dict[str, int]:
     """Assign unclustered document-derived events to clusters.
 
     A cluster that gains members loses its assessment, so the analysis re-runs with them.
@@ -226,5 +306,6 @@ def cluster_events(session: Session) -> dict[str, int]:
         touched.add(cluster.id)
     for cid in touched:
         refresh_cluster(session, session.get_one(EventCluster, cid))
+    counts["acled"] = attach_acled(session, today) if get_settings().acled_llm_consent else 0
     log.info("clustering: %s (%d touched, %d pruned)", counts, len(touched), pruned)
     return counts

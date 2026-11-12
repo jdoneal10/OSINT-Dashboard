@@ -191,6 +191,8 @@ export interface ClusterRef {
   n_documents: number
   n_independent_sources: number
   has_conflicts: boolean
+  /** An ACLED event is attached as corroboration (ADR 0006); show ACLED attribution. */
+  acled_corroborated: boolean
 }
 
 export type PipelineStatus =

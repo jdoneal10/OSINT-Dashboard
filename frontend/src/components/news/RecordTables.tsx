@@ -15,6 +15,12 @@ function OutsideAoi() {
   )
 }
 
+/** News events use perpetrator/target; ACLED events keep ACLED's actor1/actor2 dyad. */
+const ROLE_PAIRS: Record<string, [string, string]> = {
+  news: ['perpetrator', 'target'],
+  acled: ['actor1', 'actor2'],
+}
+
 function actorsByRole(ev: EventDetail, role: string): string {
   return (
     ev.actors
@@ -56,6 +62,11 @@ export function EventsTable({
                     style={{ background: eventColor(ev.event_type) }}
                   />
                   {ev.event_type}
+                  {ev.source === 'acled' && (
+                    <span className="rounded border border-sky-500/40 px-1 text-[10px] font-normal text-sky-300">
+                      ACLED {ev.source_key}
+                    </span>
+                  )}
                   {ev.sub_event_type && (
                     <span className="text-ink-500 font-normal">· {ev.sub_event_type}</span>
                   )}
@@ -80,8 +91,17 @@ export function EventsTable({
               </td>
               <td className={`${TD} tabular-nums`}>{ev.fatalities ?? '—'}</td>
               <td className={TD}>
-                <div>{actorsByRole(ev, 'perpetrator')}</div>
-                <div className="text-ink-500">→ {actorsByRole(ev, 'target')}</div>
+                {(() => {
+                  const [a, b] = ROLE_PAIRS[ev.source === 'acled' ? 'acled' : 'news']
+                  return (
+                    <>
+                      <div>{actorsByRole(ev, a)}</div>
+                      <div className="text-ink-500">
+                        {ev.source === 'acled' ? 'vs' : '→'} {actorsByRole(ev, b)}
+                      </div>
+                    </>
+                  )
+                })()}
               </td>
               <td className={TD}>
                 {ev.cluster_id ? (

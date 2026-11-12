@@ -50,11 +50,12 @@ def _doc(session: Session, sid: int, key: str, text: str = TEXT, status: str = "
 def _event(
     session: Session, sid: int, doc_id: int | None, key: str, lon: float, lat: float,
     fatalities: int | None = 3, etype: str = "Battles", day: int = 10,
+    precision: int | None = None, admin2: str = "25006",
 ) -> int:  # fmt: skip
     ev = Event(
         source_id=sid, source_key=key, retrieved_at=NOW, event_date=dt.date(2026, 11, day),
-        event_type=etype, fatalities=fatalities, admin1_code="MX-SIN", admin2_code="25006",
-        geom=func.ST_GeogFromText(f"SRID=4326;POINT({lon} {lat})"),
+        event_type=etype, fatalities=fatalities, admin1_code="MX-SIN", admin2_code=admin2,
+        geom=func.ST_GeogFromText(f"SRID=4326;POINT({lon} {lat})"), geo_precision=precision,
     )  # fmt: skip
     session.add(ev)
     session.flush()
@@ -97,7 +98,7 @@ def test_clustering_counts_independent_sources_and_conflicts(seeded: Session) ->
     acled = seeded.scalars(select(Source.id).where(Source.slug == "acled")).one()
     acled_ev = _event(seeded, acled, None, "MEX-1", -107.39, 24.80)
     counts = dedupe.cluster_events(seeded)
-    assert counts == {"new": 2, "joined": 1}
+    assert counts == {"new": 2, "joined": 1, "acled": 0}  # news events lack municipal precision
     c = seeded.get_one(Event, e1).cluster_id
     assert seeded.get_one(Event, e2).cluster_id == c
     assert seeded.get_one(Event, far).cluster_id not in (None, c)
@@ -107,6 +108,89 @@ def test_clustering_counts_independent_sources_and_conflicts(seeded: Session) ->
     assert cluster.reliability == "A"
     assert cluster.conflicts["fatalities"] == [3, 4]
     assert (cluster.first_date, cluster.last_date) == (dt.date(2026, 11, 10), dt.date(2026, 11, 11))
+
+
+# --------------------------------------------------------------------------- ACLED (ADR 0006)
+
+TODAY = dt.date(2026, 11, 20)
+
+
+def _acled_id(session: Session) -> int:
+    return session.scalars(select(Source.id).where(Source.slug == "acled")).one()
+
+
+def _acled_scene(session: Session) -> dict[str, int]:
+    """A municipal-precision news report plus three ACLED candidates."""
+    s1 = _source(session, "out-a", "C")
+    acled = _acled_id(session)
+    ids = {"doc": _doc(session, s1, "a")}
+    ids["news"] = _event(session, s1, ids["doc"], "a:e0", -107.39, 24.80, fatalities=3,
+                         precision=2)  # fmt: skip
+    ids["match"] = _event(session, acled, None, "MEX-1", -107.40, 24.81, fatalities=4, day=11)
+    ids["other_mun"] = _event(session, acled, None, "MEX-2", -107.39, 24.80, admin2="25012")
+    ids["too_late"] = _event(session, acled, None, "MEX-3", -107.39, 24.80, day=13)
+    ids["wrong_type"] = _event(session, acled, None, "MEX-4", -107.39, 24.80, etype="Protests")
+    return ids
+
+
+def test_acled_event_corroborates_matching_cluster(seeded: Session) -> None:
+    ids = _acled_scene(seeded)
+    assert dedupe.cluster_events(seeded, TODAY)["acled"] == 1
+    admiralty.score_clusters(seeded)
+    cid = seeded.get_one(Event, ids["news"]).cluster_id
+    assert seeded.get_one(Event, ids["match"]).cluster_id == cid
+    for k in ("other_mun", "too_late", "wrong_type"):
+        assert seeded.get_one(Event, ids[k]).cluster_id is None
+    cluster = seeded.get_one(EventCluster, cid)
+    # One outlet (C) + ACLED (B): two independent sources, best reliability B.
+    assert (cluster.n_events, cluster.n_documents, cluster.n_independent_sources) == (2, 1, 2)
+    assert cluster.reliability == "B"
+    assert cluster.conflicts["fatalities"] == [3, 4]  # ACLED disagreement feeds Sonnet
+    assert seeded.get_one(Event, ids["match"]).credibility is None  # ACLED row untouched
+    assert dedupe.attach_acled(seeded, TODAY) == 0  # one ACLED event per cluster
+
+
+def test_acled_matching_requires_consent_and_recency(
+    seeded: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ids = _acled_scene(seeded)
+    monkeypatch.setattr(get_settings(), "acled_llm_consent", False)
+    assert dedupe.cluster_events(seeded, TODAY)["acled"] == 0
+    assert dedupe.attach_acled(seeded, dt.date(2028, 6, 1)) == 0  # outside the look-back
+    assert seeded.get_one(Event, ids["match"]).cluster_id is None
+
+
+def test_acled_never_keeps_a_cluster_alive(seeded: Session) -> None:
+    ids = _acled_scene(seeded)
+    dedupe.cluster_events(seeded, TODAY)
+    cid = seeded.get_one(Event, ids["news"]).cluster_id
+    seeded.execute(delete(Event).where(Event.id == ids["news"]))  # re-extraction
+    dedupe.cluster_events(seeded, TODAY)
+    assert seeded.get(EventCluster, cid) is None
+    assert seeded.get_one(Event, ids["match"]).cluster_id is None
+
+
+def test_analysis_includes_and_cites_acled(seeded: Session) -> None:
+    ids = _acled_scene(seeded)
+    dedupe.cluster_events(seeded, TODAY)
+    seeded.commit()
+    payload = _assessment([ids["doc"]]) | {"cited_acled_event_ids": [ids["match"]]}
+    fake = _sonnet(payload)
+    assert analyze.run_analyze(gateway=Gateway(fake)) == {"assessed": 1, "quarantined": 0}
+    prompt = fake.requests[0]["messages"][0]["content"]
+    assert f"[acled event {ids['match']}]" in prompt
+    assert seeded.scalars(select(ClusterAssessment)).one().cited_event_ids == [ids["match"]]
+
+
+def test_invented_acled_citation_is_quarantined(seeded: Session) -> None:
+    ids = _acled_scene(seeded)
+    dedupe.cluster_events(seeded, TODAY)
+    seeded.commit()
+    payload = _assessment([ids["doc"]]) | {"cited_acled_event_ids": [ids["other_mun"]]}
+    assert analyze.run_analyze(gateway=Gateway(_sonnet(payload))) == {
+        "assessed": 0,
+        "quarantined": 1,
+    }
 
 
 def test_reextraction_prunes_and_invalidates_clusters(seeded: Session) -> None:
@@ -180,6 +264,7 @@ def _assessment(cited: list[int]) -> dict[str, Any]:
         "analytic_confidence": "moderate",
         "resolved": {"fatalities": 3, "municipality": "Culiacán", "event_type": "Battles"},
         "cited_document_ids": cited,
+        "cited_acled_event_ids": [],
     }
 
 
@@ -214,4 +299,4 @@ def test_pipeline_skips_unavailable_ollama(
     seeded.commit()
     results = pipeline.run_pipeline(["dedupe", "filter", "cluster"])
     assert "skipped" in results["filter"]
-    assert results["cluster"] == {"new": 0, "joined": 0, "scored": 0}
+    assert results["cluster"] == {"new": 0, "joined": 0, "acled": 0, "scored": 0}

@@ -60,8 +60,10 @@ documents (new)
   → Haiku extract (extract-v3): English summary, events, seizures, organizations;
       strict JSON schema, one retry, then quarantine; no fields for people
   → geocode against the local INEGI gazetteer / cited U.S. ports of entry; in_aoi flag
-  → cluster (±1 day, 25 km, compatible type) → Admiralty grade per cluster
-  → Sonnet analyze (clusters with conflicting reports): ICD 203 judgment citing record ids
+  → cluster (±1 day, 25 km, compatible type) + attach the matching ACLED event (ADR 0006)
+  → Admiralty grade per cluster
+  → Sonnet analyze (clusters with conflicting reports): ICD 203 judgment citing document
+      and ACLED event ids
 ```
 
 The single Claude gateway (`app/enrich/llm/client.py`) does the following:

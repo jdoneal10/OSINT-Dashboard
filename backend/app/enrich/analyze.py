@@ -1,12 +1,12 @@
 """Sonnet analytic layer: corroboration judgments for clusters with conflicting reports.
 
 Only clusters whose member reports disagree (fatalities, municipality, event type) are
-escalated, newest first, capped per run. Inputs are the cluster's document-derived events and
-their documents' English summaries, declared as provenance so the gateway's ACLED guard
-applies (ACLED events are never clustered or sent; ADR 0003).
+escalated, newest first, capped per run. Inputs are the cluster's news-derived events with
+their documents' English summaries, plus the matched ACLED event when one is attached
+(ACLED's written consent, ADR 0006). Everything is declared as provenance to the gateway.
 
-Output uses ICD 203 estimative language. Every judgment must cite document ids that were
-actually provided; an assessment citing anything else is quarantined, not stored.
+Output uses ICD 203 estimative language. Every judgment must cite document or ACLED event ids
+that were actually provided; an assessment citing anything else is quarantined, not stored.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from app.enrich.llm.pricing import SONNET
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = "analyze-v1"
+PROMPT_VERSION = "analyze-v2"  # v2: ACLED events as corroborating records (ADR 0006)
 ICD203 = Literal[
     "almost no chance",
     "very unlikely",
@@ -57,7 +57,12 @@ likely, very likely, almost certain.
 source quality, independence and corroboration.
 - Distinguish what the reports say from your judgment. Note when sources are official \
 claims, and when apparent agreement could come from one shared origin.
-- Cite the document ids that support each judgment, using only ids given in the input.
+- Some clusters include an [acled event N] record: ACLED (Armed Conflict Location & Event \
+Data) codes events from public reporting after review. Treat it as corroboration from a \
+curated dataset, but it may draw on the same articles as the news reports, so agreement \
+with them is not fully independent.
+- Cite the document ids and ACLED event ids that support each judgment, using only ids \
+given in the input; cite at least one document.
 - Never name individual people; refer to roles.
 - Keep "judgment" under 120 words."""
 
@@ -75,15 +80,35 @@ class AssessmentOut(BaseModel):
     analytic_confidence: Literal["low", "moderate", "high"]
     resolved: Resolved
     cited_document_ids: list[int] = Field(min_length=1)
+    cited_acled_event_ids: list[int] = Field(description="ACLED event ids cited, if any")
 
 
-def build_input(session: Session, cluster: EventCluster) -> tuple[str, list[int], list[int]]:
+def build_input(
+    session: Session, cluster: EventCluster
+) -> tuple[str, list[int], list[int], list[int]]:
+    """Prompt text, document ids, all event ids, and ACLED event ids for a cluster."""
     events = list(
         session.scalars(select(Event).where(Event.cluster_id == cluster.id).order_by(Event.id))
     )
     lines = [f"CLUSTER {cluster.id}: conflicting fields {sorted(cluster.conflicts)}", ""]
     doc_ids: list[int] = []
+    acled_ids: list[int] = []
+    acled = session.scalar(select(Source.id).where(Source.slug == "acled"))
     for ev in events:
+        if ev.source_id == acled:
+            acled_ids.append(ev.id)
+            attrs = ev.attributes or {}
+            actors = ", ".join(
+                a for a in (attrs.get("actor1"), attrs.get("actor2")) if isinstance(a, str) and a
+            )
+            lines.append(
+                f"[acled event {ev.id}] ACLED (reliability B), event {ev.source_key}\n"
+                f"  coded: type={ev.event_type}; sub_type={ev.sub_event_type}; "
+                f"date={ev.event_date}; fatalities={ev.fatalities}; place={ev.location_name}, "
+                f"{ev.admin2_name}, {ev.admin1_name}; actors={actors or 'unknown'}\n"
+                f"  notes: {ev.description or ''}"
+            )
+            continue
         docs = session.execute(
             select(Document, Source.name, Source.reliability)
             .join(event_documents, event_documents.c.document_id == Document.id)
@@ -100,7 +125,7 @@ def build_input(session: Session, cluster: EventCluster) -> tuple[str, list[int]
                 f"fatalities={ev.fatalities}; place={ev.location_name}, {ev.admin2_name}, "
                 f"{ev.admin1_name}\n  summary: {doc.translated_text or doc.title or ''}"
             )
-    return "\n".join(lines), doc_ids, [e.id for e in events]
+    return "\n".join(lines), doc_ids, [e.id for e in events], acled_ids
 
 
 def needs_analysis(session: Session, limit: int) -> list[int]:
@@ -125,7 +150,7 @@ def run_analyze(limit: int = 20, gateway: Gateway | None = None) -> dict[str, in
     for cid in ids:
         with session_factory()() as session:
             cluster = session.get_one(EventCluster, cid)
-            user, doc_ids, event_ids = build_input(session, cluster)
+            user, doc_ids, event_ids, acled_ids = build_input(session, cluster)
         if not doc_ids:
             continue
         try:
@@ -147,7 +172,14 @@ def run_analyze(limit: int = 20, gateway: Gateway | None = None) -> dict[str, in
             break
         with session_factory()() as session, session.begin():
             out = result.parsed
-            bad_cites = sorted(set(out.cited_document_ids) - set(doc_ids)) if out else []
+            bad_cites = (
+                sorted(
+                    (set(out.cited_document_ids) - set(doc_ids))
+                    | (set(out.cited_acled_event_ids) - set(acled_ids))
+                )
+                if out
+                else []
+            )
             if not result.ok or out is None or bad_cites:
                 if out is not None and bad_cites:
                     session.add(
@@ -172,7 +204,7 @@ def run_analyze(limit: int = 20, gateway: Gateway | None = None) -> dict[str, in
                     analytic_confidence=out.analytic_confidence,
                     resolved=out.resolved.model_dump() | {"same_incident": out.same_incident},
                     cited_document_ids=out.cited_document_ids,
-                    cited_event_ids=event_ids,
+                    cited_event_ids=out.cited_acled_event_ids,
                     llm_model=SONNET,
                     prompt_version=PROMPT_VERSION,
                     llm_input_tokens=result.input_tokens,

@@ -11,7 +11,14 @@ from pydantic import BaseModel
 from sqlalchemy import cast, func, select
 from sqlalchemy.orm import Session
 
-from app.api.documents import ClusterRef, DocumentSummary, cluster_ref, summaries, summary_select
+from app.api.documents import (
+    ClusterRef,
+    DocumentSummary,
+    cluster_ref,
+    clusters_with_acled,
+    summaries,
+    summary_select,
+)
 from app.api.events import EventOut, actors_for, documents_for, event_out, event_select
 from app.db.models import ClusterAssessment, Document, Event, EventCluster, event_documents
 from app.db.session import get_session
@@ -79,7 +86,7 @@ def get_cluster(cluster_id: int, session: DB) -> ClusterDetail:
         .order_by(ClusterAssessment.id.desc())
     ).all()
     return ClusterDetail(
-        **cluster_ref(c).model_dump(),
+        **cluster_ref(c, bool(clusters_with_acled(session, [c.id]))).model_dump(),
         first_date=c.first_date,
         last_date=c.last_date,
         event_type=c.event_type,

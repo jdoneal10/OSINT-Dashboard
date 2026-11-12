@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router'
 import { useCluster } from '../api/hooks'
+import AcledAttribution from '../components/news/AcledAttribution'
 import AdmiraltyBadge from '../components/news/AdmiraltyBadge'
 import Panel from '../components/news/Panel'
 import { EventsTable } from '../components/news/RecordTables'
@@ -81,6 +82,12 @@ export default function ClusterPage() {
                           .join(' · ')}
                       </p>
                     )}
+                    {a.cited_event_ids.length > 0 && (
+                      <p className="text-ink-500 text-xs">
+                        Also cites ACLED event{a.cited_event_ids.length > 1 ? 's' : ''}{' '}
+                        {a.cited_event_ids.join(', ')}
+                      </p>
+                    )}
                     <p className="text-ink-500 text-xs">
                       Cites:{' '}
                       {a.cited_document_ids.map((d) => (
@@ -101,6 +108,8 @@ export default function ClusterPage() {
             <Panel title="Member events" aside={`${c.events.length}`}>
               <EventsTable events={c.events} />
             </Panel>
+
+            {c.acled_corroborated && <AcledAttribution />}
 
             <Panel title="Reporting" aside={`${c.documents.length}`}>
               <ul className="divide-ink-700 divide-y text-xs">

@@ -32,6 +32,7 @@ const summary: DocumentSummary = {
       n_documents: 2,
       n_independent_sources: 2,
       has_conflicts: true,
+      acled_corroborated: true,
     },
   ],
   admiralty: 'A2',
@@ -130,6 +131,8 @@ describe('News feed', () => {
       within(feed).getByLabelText(/Admiralty A2: Completely reliable source; probably true/),
     ).toBeInTheDocument()
     expect(within(feed).getByText('conflicting reports')).toBeInTheDocument()
+    expect(within(feed).getByText('ACLED-corroborated')).toBeInTheDocument()
+    expect(within(feed).getByText(/Corroboration includes data from ACLED/)).toBeInTheDocument()
     expect(
       within(feed).getByRole('link', { name: /Cluster 3: 2 independent sources/ }),
     ).toHaveAttribute('href', '/clusters/3')
