@@ -17,7 +17,7 @@ REPROCESS ?=
 FEED ?=
 STAGE ?=
 
-.PHONY: help setup dev db-up db-down db-reset db-migrate seed reference-inegi pipeline basemap \
+.PHONY: help setup dev db-up db-down db-reset db-migrate seed reference-inegi pipeline eval basemap \
         test test-backend test-frontend lint lint-backend lint-frontend fmt ingest
 
 help: ## List targets
@@ -55,6 +55,9 @@ reference-inegi: ## Download (resumable, ~45 min) and load INEGI municipalities 
 
 pipeline: ## Enrichment pass: dedupe, local filter, Haiku extract, cluster, Admiralty, Sonnet
 	$(BACKEND) $(UV) python -m app.enrich.pipeline $(if $(STAGE),--stage $(STAGE),)
+
+eval: ## Precision/recall report from hand labels -> docs/evaluations (MODELS=qwen3:4b,gemma3:4b to compare filters)
+	cd backend && uv run python -m app.enrich.evaluate $(if $(MODELS),--compare-models $(MODELS)) $(if $(PROMPT),--prompt-version $(PROMPT))
 
 basemap: ## One-time: extract the local Protomaps basemap for the AOI
 	./scripts/basemap.sh

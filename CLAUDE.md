@@ -58,6 +58,7 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 - `cd backend && uv run python -m app.enrich.actors --rebuild` — re-run actor normalization over all events
 - `cd backend && uv run python -m app.enrich.llm.check` — verify the stored Anthropic key (free Models API call; never prints the key)
 - `make pipeline [STAGE=...]` — enrichment pass: dedupe, local filter, Haiku extract, cluster/Admiralty, Sonnet analyze
+- `make eval [MODELS=qwen3:4b,gemma3:4b] [PROMPT=extract-v3]` — precision/filter-recall report from the owner's labels into `docs/evaluations/` (model comparison uses local Ollama only)
 
 ## Engineering conventions
 - **Ingesters are idempotent.** Upsert on a stable source key; re-running a pull never duplicates rows. Store every raw pull in `data/raw/<source>/<date>/` before parsing.
