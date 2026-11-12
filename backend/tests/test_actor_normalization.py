@@ -4,8 +4,14 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Actor
-from app.enrich.actors import ActorIndex, actor_type_for, clean_name, split_actors
+from app.db.models import Actor, ActorAlias
+from app.enrich.actors import (
+    ActorIndex,
+    actor_type_for,
+    clean_name,
+    prune_unlinked,
+    split_actors,
+)
 
 
 @pytest.mark.parametrize(
@@ -88,3 +94,68 @@ def test_faction_created_under_parent(seeded: Session) -> None:
         parent.id,
     )
     assert index.resolve("Sinaloa Cartel: Example Faction", None) == faction_id
+
+
+def _ancestors(session: Session, actor_id: int) -> list[str]:
+    chain, actor = [], session.get_one(Actor, actor_id)
+    while actor.parent_id is not None:
+        actor = session.get_one(Actor, actor.parent_id)
+        chain.append(actor.slug)
+    return chain
+
+
+@pytest.mark.parametrize(
+    ("raw", "slug", "ancestors"),
+    [
+        ("Los Chapitos Gang (Mexico)", "los-chapitos", ["cartel-de-sinaloa"]),
+        ("Gente Nueva Gang", "gente-nueva", ["los-chapitos", "cartel-de-sinaloa"]),
+        ("Los Rusos Gang", "los-rusos", ["mayiza", "cartel-de-sinaloa"]),
+        ("La Linea Gang", "la-linea", ["cartel-de-juarez"]),
+        ("Los Metros Gang", "los-metros", ["cartel-del-golfo"]),
+        ("Tropa del Infierno Gang", "tropa-del-infierno", ["cartel-del-noreste"]),
+        # Cited allies / independents carry no parent.
+        ("Los Aztecas Gang", "barrio-azteca", []),
+        ("Los Zetas Vieja Escuela Gang", "zetas-vieja-escuela", []),
+        ("Juarez Cartel", "cartel-de-juarez", []),
+        ("NCDJ: New Juarez Cartel", "nuevo-cartel-de-juarez", []),
+    ],
+)
+def test_resolve_cited_factions(seeded: Session, raw: str, slug: str, ancestors: list[str]) -> None:
+    actor_id = ActorIndex.load(seeded).resolve(raw, "Political militia")
+    assert _slug(seeded, actor_id) == slug
+    assert _ancestors(seeded, actor_id) == ancestors
+
+
+def test_curated_alias_beats_acled_created_actor(seeded: Session) -> None:
+    """An ACLED-created actor that owns the same alias (made before the cited entry existed)
+    must not capture the link; the curated faction wins whatever the row order."""
+    stale = ActorIndex.load(seeded).create("Stale Linea", "Stale Linea", "armed_group")
+    seeded.add(
+        ActorAlias(
+            actor_id=stale,
+            alias="La Linea Gang",
+            alias_normalized="la linea gang",
+            sources=seeded.get_one(Actor, stale).sources,
+        )
+    )
+    seeded.flush()
+    index = ActorIndex.load(seeded)
+    assert _slug(seeded, index.resolve("La Linea Gang", "Political militia")) == "la-linea"
+    assert stale != index.match("La Linea Gang")
+
+
+def test_prune_unlinked_drops_only_orphaned_acled_actors(seeded: Session) -> None:
+    index = ActorIndex.load(seeded)
+    orphan = index.create("Orphan Gang", "Orphan Gang", "armed_group")
+    parent = index.create("Orphan Parent Gang", "Orphan Parent Gang", "armed_group")
+    index.create("Orphan Child Faction", "Orphan Child Faction", "faction", parent_id=parent)
+    seeded.flush()
+    # Child goes first, then its now-childless parent, then nothing.
+    assert prune_unlinked(seeded) == 2
+    assert prune_unlinked(seeded) == 1
+    assert prune_unlinked(seeded) == 0
+    seeded.expire_all()
+    assert seeded.get(Actor, orphan) is None
+    assert seeded.get(Actor, parent) is None
+    # Curated actors with no events (e.g. mayiza) are never pruned.
+    assert seeded.scalars(select(Actor).where(Actor.slug == "mayiza")).one_or_none() is not None

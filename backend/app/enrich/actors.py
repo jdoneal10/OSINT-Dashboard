@@ -16,6 +16,11 @@ Organizations and groups only (CLAUDE.md hard rule 3): ACLED's actor fields code
 and this step never creates person-level records. Roles mirror ACLED's dyad exactly
 (``actor1``, ``actor2``, ``assoc_actor1``, ``assoc_actor2``) with no perpetrator/target claim.
 
+Curated reference actors (``data/reference/actor_aliases.yaml``) win over actors this step
+created: when both own an alias, the curated actor gets the link. A rebuild then deletes
+ACLED-created actors left with no events, children or designations, so adding a cited entry
+for a group ACLED codes separately moves its events onto the curated record.
+
 Re-run everything from stored attributes with ``python -m app.enrich.actors --rebuild``.
 """
 
@@ -28,13 +33,13 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.db.models import Actor, ActorAlias, Event, actor_events
+from app.db.models import Actor, ActorAlias, Event, actor_events, designation_actors
 from app.db.session import session_factory
 from app.reference.normalize import normalize_alias
 
@@ -76,6 +81,8 @@ ACLED_CITATION = {
     "publisher": "ACLED (Armed Conflict Location & Event Data)",
     "url": "https://acleddata.com",
 }
+# Actors this step created cite only ACLED; reference actors cite their own public sources.
+_ACLED_CREATED = Actor.sources[0]["publisher"].astext == ACLED_CITATION["publisher"]
 
 
 def clean_name(raw: str) -> str:
@@ -105,9 +112,13 @@ class ActorIndex:
 
     @classmethod
     def load(cls, session: Session) -> ActorIndex:
-        aliases = dict(
-            session.execute(select(ActorAlias.alias_normalized, ActorAlias.actor_id)).all()
-        )
+        # ACLED-created owners first so a curated owner of the same alias overwrites them.
+        rows_by_owner = session.execute(
+            select(ActorAlias.alias_normalized, ActorAlias.actor_id)
+            .join(Actor, Actor.id == ActorAlias.actor_id)
+            .order_by(_ACLED_CREATED.is_(True).desc(), ActorAlias.actor_id)
+        ).all()
+        aliases = {key: actor_id for key, actor_id in rows_by_owner}
         rows = session.execute(select(Actor.slug, Actor.canonical_name)).all()
         return cls(
             session=session,
@@ -210,12 +221,32 @@ def link_events(session: Session, event_ids: Iterable[int], index: ActorIndex | 
     return len(links)
 
 
+def prune_unlinked(session: Session) -> int:
+    """Delete ACLED-created actors with no event links, child actors or designations."""
+    child = Actor.__table__.alias("child")
+    deleted = session.scalars(
+        delete(Actor)
+        .where(
+            _ACLED_CREATED,
+            ~exists().where(actor_events.c.actor_id == Actor.id),
+            ~exists().where(child.c.parent_id == Actor.id),
+            ~exists().where(designation_actors.c.actor_id == Actor.id),
+        )
+        .returning(Actor.id)
+        .execution_options(synchronize_session=False)
+    ).all()
+    return len(deleted)
+
+
 def rebuild(session: Session, batch: int = 2000) -> int:
     index = ActorIndex.load(session)
     total = 0
     ids = list(session.scalars(select(Event.id).order_by(Event.id)))
     for start in range(0, len(ids), batch):
         total += link_events(session, ids[start : start + batch], index)
+    # Factions are deleted before an orphaned parent is seen as childless; loop to a fixpoint.
+    while (pruned := prune_unlinked(session)) > 0:
+        log.info("pruned %d ACLED-created actors with no remaining links", pruned)
     return total
 
 

@@ -5,6 +5,13 @@
 # Seed: Department of State FTO designations, Public Notice 12672, 90 FR 10030
 # (FR Doc. 2025-02873, published 2025-02-20). Later designations get added only after
 # they are checked against the Federal Register.
+#
+# Factions, armed wings and non-designated cartels (second section) are added so ACLED's
+# separately coded groups link to a parent. `parent:` is set only where the cited source
+# states the group is a faction / armed wing / cell of that parent. Alliances and disputed
+# origins are recorded in `description` with no parent. ACLED aliases are the exact actor
+# strings ACLED codes; canonical names must differ from them (canonical_name is unique and
+# ACLED-created actors already hold those strings until a rebuild prunes them).
 
 version: 1
 actors:
@@ -79,3 +86,352 @@ actors:
     aliases:
       - {alias: LNFM}
     sources: *fto_2025
+
+  # ------------------------------------------------------------------------------------
+  # Factions, armed wings and non-designated cartels. Accessed 2026-11-11.
+
+  # --- Sinaloa Cartel factions ---------------------------------------------------------
+
+  - slug: los-chapitos
+    canonical_name: Los Chapitos
+    actor_type: faction
+    parent: cartel-de-sinaloa
+    country_iso3: MEX
+    description: >-
+      Faction of the Sinaloa Cartel led by sons of its imprisoned co-founder (Treasury,
+      2025-06-09; InSight Crime). At war with the Mayiza faction since September 2024.
+    aliases:
+      - {alias: Chapitos}
+      - {alias: Los Chapitos Gang, language: en}  # ACLED
+    sources:
+      - title: "Treasury Sanctions \"El Chapo's\" Children and Los Chapitos, a Fentanyl-Trafficking Faction of the Sinaloa Cartel (sb0161)"
+        publisher: U.S. Department of the Treasury
+        url: https://home.treasury.gov/news/press-releases/sb0161
+        accessed: 2026-11-11
+      - &ic_chapitos
+        title: "The Chapitos: Who They Are, Where They Operate, and What Changed in 2026"
+        publisher: InSight Crime
+        url: https://insightcrime.org/mexico-organized-crime-news/los-chapitos/
+        accessed: 2026-11-11
+
+  - slug: mayiza
+    canonical_name: La Mayiza
+    actor_type: faction
+    parent: cartel-de-sinaloa
+    country_iso3: MEX
+    description: >-
+      Sinaloa Cartel faction associated with the Zambada family, also known as Los Mayos;
+      rival of Los Chapitos (InSight Crime). ACLED codes no "Mayiza" string in the AOI as of
+      2026-11; its armed wing Los Rusos links here.
+    aliases:
+      - {alias: Mayiza}
+      - {alias: Los Mayos, language: es}
+    sources:
+      - &ic_mayiza
+        title: Mayiza (profile)
+        publisher: InSight Crime
+        url: https://insightcrime.org/mexico-organized-crime-news/mayiza-profile/
+        accessed: 2026-11-11
+
+  - slug: los-rusos
+    canonical_name: Los Rusos
+    actor_type: faction
+    parent: mayiza
+    country_iso3: MEX
+    description: >-
+      Main armed wing of the Mayiza faction of the Sinaloa Cartel; active in Baja California
+      and Sonora (InSight Crime Mayiza profile).
+    aliases:
+      - {alias: Rusos}
+      - {alias: Los Rusos Gang, language: en}  # ACLED
+    sources:
+      - *ic_mayiza
+
+  - slug: los-mayitos
+    canonical_name: Los Mayitos
+    actor_type: faction
+    parent: cartel-de-sinaloa
+    country_iso3: MEX
+    description: >-
+      Described by InSight Crime (2015, citing Zeta) as a cell working for Sinaloa Cartel
+      leader Ismael Zambada in Baja California Sur; affiliations not officially confirmed.
+      Linked to the Sinaloa Cartel, not to the Mayiza faction, because the 2026 Mayiza
+      profile does not use the name and ACLED's usage may be broader.
+    aliases:
+      - {alias: Mayitos}
+      - {alias: Los Mayitos Gang, language: en}  # ACLED
+    sources:
+      - title: Report Highlights Complexity of Mexico's Criminal Networks
+        publisher: InSight Crime
+        url: https://www.insightcrime.org/news/briefs/report-reflects-complexity-mexico-criminal-networks
+        accessed: 2026-11-11
+      - *ic_mayiza
+
+  - slug: gente-nueva
+    canonical_name: Gente Nueva
+    actor_type: faction
+    parent: los-chapitos
+    country_iso3: MEX
+    description: >-
+      Armed branch associated with the Chapitos faction of the Sinaloa Cartel (InSight Crime
+      Sinaloa Cartel profile). Fights La Linea in Chihuahua.
+    aliases:
+      - {alias: Gente Nueva Gang, language: en}  # ACLED
+    sources:
+      - &ic_sinaloa
+        title: "The Sinaloa Cartel: When it Formed, Who's in Charge, Where it Operates and What's New in 2026"
+        publisher: InSight Crime
+        url: https://insightcrime.org/mexico-organized-crime-news/sinaloa-cartel/
+        accessed: 2026-11-11
+
+  - slug: los-salazar
+    canonical_name: Los Salazar
+    actor_type: faction
+    parent: los-chapitos
+    country_iso3: MEX
+    description: >-
+      Armed branch associated with the Chapitos faction of the Sinaloa Cartel (InSight Crime
+      Sinaloa Cartel profile).
+    aliases:
+      - {alias: Los Salazar Gang, language: en}  # ACLED
+    sources:
+      - *ic_sinaloa
+
+  # --- Juarez Cartel and Ciudad Juarez groups --------------------------------------------
+
+  - slug: cartel-de-juarez
+    canonical_name: Cartel de Juarez
+    actor_type: tco
+    country_iso3: MEX
+    description: Also known as the Vicente Carrillo Fuentes Organization (InSight Crime).
+    aliases:
+      - {alias: Juarez Cartel, language: en}  # also ACLED
+      - {alias: Vicente Carrillo Fuentes Organization, language: en}
+      - {alias: VCFO}
+    sources:
+      - &ic_juarez
+        title: Juarez Cartel (profile)
+        publisher: InSight Crime
+        url: https://insightcrime.org/mexico-organized-crime-news/juarez-cartel-profile/
+        accessed: 2026-11-11
+
+  - slug: la-linea
+    canonical_name: La Linea
+    actor_type: faction
+    parent: cartel-de-juarez
+    country_iso3: MEX
+    description: >-
+      Armed / enforcement wing of the Juarez Cartel (InSight Crime). InSight Crime's 2026
+      profile notes it now operates more as an independent criminal network.
+    aliases:
+      - {alias: La Linea Gang, language: en}  # ACLED
+    sources:
+      - *ic_juarez
+      - &ic_linea
+        title: La Linea (profile)
+        publisher: InSight Crime
+        url: https://insightcrime.org/mexico-organized-crime-news/la-linea/
+        accessed: 2026-11-11
+
+  - slug: barrio-azteca
+    canonical_name: Barrio Azteca
+    actor_type: armed_group
+    country_iso3: MEX
+    description: >-
+      Prison and street gang described as a key ally of the Juarez Cartel and La Linea
+      (InSight Crime, 2025). Ally, not a faction: no parent link.
+    aliases:
+      - {alias: Los Aztecas, language: es}
+      - {alias: Los Aztecas Gang, language: en}  # ACLED
+    sources:
+      - &ic_juarez_guard
+        title: In Ciudad Juarez, Mexico, Old Criminal Groups Form New Criminal Guard
+        publisher: InSight Crime
+        url: https://insightcrime.org/news/ciudad-juarez-mexico-old-criminal-groups-new-guard/
+        accessed: 2026-11-11
+
+  - slug: los-mexicles
+    canonical_name: Los Mexicles
+    actor_type: armed_group
+    country_iso3: MEX
+    description: >-
+      Juarez gang that sided with the Sinaloa Cartel in the Juarez war and later operated
+      apart from it (InSight Crime, 2025). Former ally, not a faction: no parent link.
+    aliases:
+      - {alias: Mexicles}
+      - {alias: Los Mexicles Gang, language: en}  # ACLED
+    sources:
+      - *ic_juarez_guard
+
+  - slug: la-empresa
+    canonical_name: La Empresa
+    actor_type: armed_group
+    country_iso3: MEX
+    description: >-
+      Ciudad Juarez group of disputed origin: officials variously call it a breakaway of La
+      Linea or of Barrio Azteca (InSight Crime). Origin unresolved: no parent link.
+    aliases:
+      - {alias: La Empresa Gang, language: en}  # ACLED
+    sources:
+      - *ic_juarez_guard
+      - *ic_linea
+
+  - slug: nuevo-cartel-de-juarez
+    canonical_name: Nuevo Cartel de Juarez
+    actor_type: armed_group
+    country_iso3: MEX
+    description: >-
+      Name used by some La Linea members; InSight Crime says it is unclear whether it is a
+      splinter of La Linea or a change of name, and reports an alleged CJNG alliance. No
+      parent link.
+    aliases:
+      - {alias: New Juarez Cartel, language: en}
+      - {alias: "NCDJ: New Juarez Cartel", language: en}  # ACLED
+    sources:
+      - *ic_linea
+      - *ic_juarez
+
+  # --- Gulf Cartel factions ----------------------------------------------------------------
+
+  - slug: los-metros
+    canonical_name: Los Metros
+    actor_type: faction
+    parent: cartel-del-golfo
+    country_iso3: MEX
+    description: Gulf Cartel faction based in Reynosa (InSight Crime).
+    aliases:
+      - {alias: Metros}
+      - {alias: Los Metros Gang, language: en}  # ACLED
+    sources:
+      - &ic_gulf
+        title: "Gulf Cartel (Cartel del Golfo): Profile and Current Status"
+        publisher: InSight Crime
+        url: https://www.insightcrime.org/mexico-organized-crime-news/gulf-cartel-profile/
+        accessed: 2026-11-11
+      - &ic_tamaulipas
+        title: Cyclones, Scorpions and Old School Killers - The War for Tamaulipas
+        publisher: InSight Crime
+        url: https://insightcrime.org/news/cyclones-scorpions-old-school-killers-war-tamaulipas/
+        accessed: 2026-11-11
+
+  - slug: los-ciclones
+    canonical_name: Los Ciclones
+    actor_type: faction
+    parent: cartel-del-golfo
+    country_iso3: MEX
+    description: Matamoros-based Gulf Cartel faction (InSight Crime).
+    aliases:
+      - {alias: Ciclones}
+      - {alias: Cyclones, language: en}
+      - {alias: Los Ciclones Gang, language: en}  # ACLED
+    sources:
+      - *ic_gulf
+      - *ic_tamaulipas
+
+  - slug: los-escorpiones
+    canonical_name: Los Escorpiones
+    actor_type: faction
+    parent: cartel-del-golfo
+    country_iso3: MEX
+    description: >-
+      Gulf Cartel faction allied with Los Ciclones; some analysts call it the Ciclones' armed
+      wing (InSight Crime). Linked to the Gulf Cartel rather than to Los Ciclones.
+    aliases:
+      - {alias: Escorpiones}
+      - {alias: Scorpions, language: en}
+      - {alias: Los Escorpiones Gang, language: en}  # ACLED
+    sources:
+      - *ic_gulf
+      - *ic_tamaulipas
+
+  # --- Cartel del Noreste armed wings and Zetas splinters -----------------------------------
+
+  - slug: tropa-del-infierno
+    canonical_name: Tropa del Infierno
+    actor_type: faction
+    parent: cartel-del-noreste
+    country_iso3: MEX
+    description: Armed / enforcement wing of the Cartel del Noreste in Nuevo Laredo (InSight Crime).
+    aliases:
+      - {alias: Hell Troop, language: en}
+      - {alias: Tropa del Infierno Gang, language: en}  # ACLED
+    sources:
+      - &ic_cdn
+        title: Northeast Cartel Profile
+        publisher: InSight Crime
+        url: https://insightcrime.org/mexico-organized-crime-news/northeast-cartel/
+        accessed: 2026-11-11
+
+  - slug: los-chukys
+    canonical_name: Los Chukys
+    actor_type: faction
+    parent: cartel-del-noreste
+    country_iso3: MEX
+    description: Armed wing formed by the Cartel del Noreste in 2023 for Nuevo Leon (InSight Crime).
+    aliases:
+      - {alias: Los Chukys Gang, language: en}  # ACLED
+    sources:
+      - *ic_cdn
+
+  - slug: zetas-vieja-escuela
+    canonical_name: Zetas Vieja Escuela
+    actor_type: tco
+    country_iso3: MEX
+    description: >-
+      Zetas splinter group; alternately allied with and fighting the Cartel del Noreste
+      (InSight Crime). Independent: no parent link.
+    aliases:
+      - {alias: Old School Zetas, language: en}
+      - {alias: Los Zetas Vieja Escuela Gang, language: en}  # ACLED
+    sources:
+      - *ic_cdn
+      - *ic_tamaulipas
+
+  # --- Other non-designated cartels ----------------------------------------------------------
+
+  - slug: cartel-de-tijuana
+    canonical_name: Cartel de Tijuana
+    actor_type: tco
+    country_iso3: MEX
+    description: >-
+      Also known as the Arellano Felix Organization. Remnants reportedly allied with CJNG
+      from 2016 (InSight Crime). ACLED's "CTNG: Tijuana New Generation Cartel" is not
+      linked: no checked source uses that name.
+    aliases:
+      - {alias: Tijuana Cartel, language: en}  # also ACLED
+      - {alias: Arellano Felix Organization, language: en}
+      - {alias: AFO}
+    sources:
+      - title: Tijuana Cartel (profile)
+        publisher: InSight Crime
+        url: https://www.insightcrime.org/mexico-organized-crime-news/tijuana-cartel/
+        accessed: 2026-11-11
+
+  - slug: beltran-leyva-organization
+    canonical_name: Beltran Leyva Organization
+    actor_type: tco
+    country_iso3: MEX
+    description: Worked with the Sinaloa Cartel until the two split in 2008 (InSight Crime).
+    aliases:
+      - {alias: BLO}
+      - {alias: Beltran Leyva Cartel, language: en}  # ACLED
+    sources:
+      - title: Beltran Leyva Organization (profile)
+        publisher: InSight Crime
+        url: https://insightcrime.org/mexico-organized-crime-news/beltran-leyva-organization-profile/
+        accessed: 2026-11-11
+
+  - slug: cartel-de-caborca
+    canonical_name: Cartel de Caborca
+    actor_type: tco
+    country_iso3: MEX
+    description: >-
+      Sonora group once led by Rafael Caro Quintero; fights Los Chapitos (InSight Crime,
+      2023). Treated by the source as a separate group, not a Sinaloa faction.
+    aliases:
+      - {alias: Caborca Cartel, language: en}  # also ACLED
+    sources:
+      - title: Caborca Cartel Fends Off Chapitos in Sonora, Mexico
+        publisher: InSight Crime
+        url: https://insightcrime.org/news/caborca-cartel-resists-chapitos-in-battle-for-sonora-mexico/
+        accessed: 2026-11-11
