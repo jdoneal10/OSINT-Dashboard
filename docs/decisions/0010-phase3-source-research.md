@@ -1,44 +1,91 @@
-# ADR 0010: Phase 3 source research — what to add, what to drop
+# ADR 0010: Phase 3 sources — what to add, what to drop
 
 - **Status:** Proposed (awaiting owner approval)
-- **Date:** 2026-11-13
+- **Date:** 2026-11-13 (revised the same day after owner review)
 - **Decision owner:** project owner
 - **Relates to:** ADR 0008 §2 and §6 (outbound calls, sources); ADR 0009 §3 (sources to research); ADR 0004 (news pipeline)
 
 ## Context
-ADR 0009 named four source groups to research for unmanned systems (UxS) and electricity theft. Each was checked on 2026-11-13 against its robots.txt and published terms. Nothing has been ingested.
+ADR 0009 named four source groups to research for unmanned systems (UxS) and electricity theft. Each was checked on 2026-11-13 against its robots.txt and published terms. The owner then:
+- supplied three Pixtoday.net exports and reported explicit permission to use them;
+- pointed to a Telegram update of 2026-11-09;
+- asked for a free search option that reaches blogs and forums;
+- asked for as many outlets as possible.
+
+Nothing has been ingested.
 
 ## Findings
 
-| Source | robots.txt | Terms | Finding |
+### Official bulletins
+| Source | Finding |
+|---|---|
+| gob.mx press listings: Guardia Nacional, Defensa (SEDENA), SSPC | **Usable.** robots.txt has no `*` group. The [gob.mx terms](https://www.gob.mx/terminos) allow personal, non-commercial viewing and downloading, with no public display, redistribution or transfer, which is the same handling as the SEMAR and FGR feeds. FGR's listing returned HTTP 500 on 2026-11-13. |
+| CFE bulletins (`app.cfe.mx`) | **Not automated.** The bulletin app sits behind bot protection. The owner accepts GDELT and press coverage of CFE cases instead. |
+
+### Pixtoday.net
+`pixtoday.net` disallows every agent in robots.txt, so nothing is fetched automatically. The owner exports files while signed in and imports them, as for SESNSP. The owner reports explicit permission to use this data. The three files of 2026-11-13 were profiled locally. A case-sensitive scan for control markings (FOUO, CUI, LES, NOFORN, classification words) found none.
+
+| File | Content | Relevance | Handling |
 |---|---|---|---|
-| gob.mx press listings: Guardia Nacional, Defensa (SEDENA), SSPC | No `*` group, so generic clients are allowed | [gob.mx terms](https://www.gob.mx/terminos): personal, non-commercial viewing and downloading; no public display, redistribution or transfer to third parties | **Usable.** Same terms as the SEMAR and FGR feeds already registered. Listing pages expose `/<agency>/prensa/<slug>` links. FGR's listing returned HTTP 500 on 2026-11-13; watch its ingest runs. |
-| CFE bulletins (`app.cfe.mx/.../Boletines`) | `cfe.gob.mx` has none (404) | [CFE terms](https://www.cfe.gob.mx/Pages/TerminosyCondiciones.aspx): general acceptance terms, no explicit automation clause found | **Not automated.** The bulletin app sits behind bot protection (Incapsula), which counts as automated access being refused, as with SESNSP. CFE theft cases reach the dashboard through press and GDELT coverage. |
-| The War Zone (twz.com) | Allows; declares `Content-Signal: ai-input=yes` | Not yet read | **Candidate.** Terms check before activation. |
-| DroneDJ | Allows generic clients; blocks AI training crawlers only | Not yet read | **Candidate.** Terms check before activation. |
-| El Economista (energy coverage) | Allows article paths | Not yet read | **Candidate.** Terms check before activation. |
-| Energía a Debate | Disallows `ClaudeBot`, `Claude-User` and `/feed/` | — | **Excluded.** It refuses Claude agents and feed access. |
-| Pixtoday.net | `Disallow: /` for every agent; site returns 403 to automated fetches | Terms not readable without signing in | **No automated access.** Only an owner-driven route is possible (see decision 4). |
-| Telegram (official MTProto API) | — | [API Terms](https://core.telegram.org/api/terms) §1.5 and [content licensing](https://telegram.org/tos/content-licensing) prohibit using or aggregating platform data to deploy AI or ML, with no public-channel exception | **Excluded.** The pipeline runs every document through a local model and Claude, which those terms forbid. Unofficial-client accounts are also placed under observation. |
-| Brave Search API | — | [Brave API ToS](https://api-dashboard.search.brave.com/terms-of-service) §3(b)(i): no storing, caching or databases of results beyond transient use; storage rights need a custom paid plan | **Deferred.** Incompatible with "store every raw pull", and storage rights are paid data. |
-| Google Custom Search JSON API | — | Closed to new customers; discontinued 2027-01-01 | **Not viable.** |
-| Bing Web Search API | — | Retired 2025-08-11 | **Not viable.** |
-| GDELT DOC 2.0 | Already approved (ADR 0004) | Free for any use with citation | **Use for search.** Keyword and phrase search with `sourcelang:spanish`, a rolling 3-month window, up to 250 results per query. |
+| `PiX_MEX_ActiveCartels_Events_<date>.csv` | 295 geocoded events, 2026-11-01 to 11-12. PiX-written summaries of X posts, each with the post URL and cartel attribution | **High for UxS:** 7 drone events in 12 days, including a drone-dropped explosive attack, a CJNG gunman with an anti-drone gun, and 7 seized drone-launched explosive devices. **Electricity theft:** 1 relevant event (130 crypto-mining rigs seized in Culiacán). Also high for violence and territory | Low Admiralty grade: social-media claims compiled by an aggregator, single source unless corroborated. Rule 4: the 16 "Government / Military Operations" rows are dropped, and from "Security Operations" rows only the TCO action is kept. Victims and bystanders named in summaries never become person records |
+| `dataset_693_export_<date>.csv` | 167 Mexican criminal-organization profiles: aliases, parent organization, factions, allies, enemies, areas, equipment and `UAV_Use`. Each row has up to 10 cited sources (Infobae, InSight Crime, Milenio and others) | **High** as cited reference data. It extends `actor_aliases.yaml` and alliances, and `UAV_Use` gives 11 cited baselines for UxS PIR 1 | Reference data under rule 2, with each row's citations carried over. Organizations only, so no person issues |
+| `PiX_MEX_PrecursorEntities_<date>.xlsx` | 700 organizations (482 Mexico, 151 China, 499 OFAC-designated), 966 locations, 177 events and 1,012 fentanyl supply-chain rows, 2015–2026 | **Phase 4** (precursors). Not used in Phase 3 | Rule 3 applies when imported: phone numbers and email addresses are dropped, affiliated individuals become person records only with the safeguards, U.S. entries are flagged `us_person`, and business addresses are kept only for businesses reported as fronts or designated. Working sheets (form responses with contributor initials, link lists, cover sheets) are skipped |
+
+### Telegram
+**Still excluded.** The 2026-11-09 change is Bot API 10.4: HTML widgets, ephemeral replies and gifts. Its "queries" are widget queries, not channel reads. The current terms go the other way:
+- [Bot developer terms](https://telegram.org/tos/bot-developers) §4.3 lists "scraping public group or channel contents" among always-prohibited uses.
+- The [content-licensing terms](https://telegram.org/tos/content-licensing) still prohibit using platform data for AI. Their only bot exception covers data needed to operate the bot.
+- Technically, bots receive posts only from channels they are members of.
+
+Cartel material first posted to Telegram still arrives through press reporting and through PiX's compilations of reposts on X.
+
+### Search for blogs, forums and non-news sites
+| Option | Cost | Terms | Finding |
+|---|---|---|---|
+| [Marginalia Search API](https://about.marginalia-search.com/article/api/) | Free non-commercial key, requested by email; no card | Data under CC BY-NC-SA 4.0; no storage or AI restriction found | **Recommended.** An independent index with a strong lean to blogs and small sites. Its quota and Spanish coverage are unpublished, so a trial query set is run first |
+| [Mojeek API](https://www.mojeek.com/about/legal/api-terms.html) | ~£3 per 1,000 queries (about £4.50 a month at our volume); card required | §6.1 explicitly allows AI applications. Storage only on the Business plan | **Best terms, but paid.** Revisit under a paid-data ADR |
+| Exa | Free tier, no card | Terms clause (j) bars automated queries "to monitor, extract, copy or collect" data, and grant Exa a perpetual licence to our queries | **Excluded.** Scheduled monitoring is what we would do |
+| Tavily | Free tier, no card | Limited to "internal business purposes"; lists surveillance as a prohibited use | **Excluded.** Poor fit for personal use |
+| Brave | Paid for storage | ToS §3(b)(i): no storing results | **Deferred.** Paid data |
+| Common Crawl | Free | Open; AI use is an indemnity trigger | **Not now.** URL index only, no keyword search |
+| Reddit, Stack Exchange | — | Terms could not be read | **Unverified.** Needs the owner to read them before any ADR |
+| SearXNG, Google CSE, Bing, DuckDuckGo | — | Scrapes engines, closed, retired, or no API | **Not viable** |
+
+Blogs with their own feeds (Borderland Beat, Small Wars Journal) are registered directly instead of found through search.
+
+### Outlets
+robots.txt was checked on 2026-11-13 for our client (`cartel-osint/0.1`) and for Claude agents. Each outlet's terms are read and recorded in `feeds.yaml` when its feed is added, as in Phase 2.
+
+| Group | Pass robots.txt |
+|---|---|
+| Mexican national and security press | El Financiero, Infobae, La Jornada, OEM (El Sol de México and regional titles), El Sol de México, Aristegui Noticias, Latinus, La Silla Rota, Eje Central, Emeequis, Expansión, El Economista, Contramuro |
+| Regional press | **Sinaloa:** Noroeste, Línea Directa. **Sonora:** El Imparcial, Expreso. **Michoacán** (drone hotspot): Quadratín, MiMorelia (`ai-input=yes`), Changoonga |
+| Blogs and analysis | Borderland Beat, Small Wars Journal |
+| Energy | Energía Estratégica, Energía Hoy, pv magazine México |
+| Drone and defense | The War Zone (`ai-input=yes`), DroneDJ, DroneLife, sUAS News, Unmanned Airspace, Infodefensa, Defensa.com, Zona Militar, Defense News, Breaking Defense, Army Recognition |
+| U.S. border | Texas Tribune, KGNS (Laredo), KTSM (El Paso) |
+
+**Excluded or pending:**
+- **Disallow our client:** El Diario de Chihuahua, Radio Fórmula, Reporte Índigo.
+- **Block Claude agents:** El País, Energía a Debate.
+- **robots.txt unreadable (403, 504 or connection error):** SinEmbargo, Narco Chronicles, Crisis Group, Oil & Gas Magazine, Animal Político. These are rechecked once and dropped if still unreadable.
 
 ## Decision
-1. **Official bulletins.** Register the Guardia Nacional, Defensa and SSPC press listings in `data/reference/feeds.yaml`, under the same handling as SEMAR and FGR: personal use, never displayed publicly or redistributed. Official claims stay self-reported and need corroboration. CFE bulletins are not automated.
-2. **Trade and energy press.** The War Zone, DroneDJ and El Economista are activated only after their terms are read and recorded per feed. Energía a Debate is excluded.
-3. **Search.** No paid search API now. The framework's taxonomy (§3) becomes a set of GDELT DOC queries, Spanish and English, run every 3 hours with the existing job. Brave is revisited only under a future paid-data ADR that buys storage rights.
-4. **Pixtoday.net.** No automated collection: its robots.txt disallows everything. Two owner-driven options remain, chosen after the owner reads its terms while signed in:
-   - the owner saves items they select and imports them with a manual file import (`make ingest SOURCE=pixtoday FILE=path`), as for SESNSP;
-   - or the owner gets written permission from the operator for automated access, recorded in a follow-up ADR, as ACLED's was in ADR 0006.
-
-   Either way the terms must permit storage and AI processing, or Pixtoday items stay out of the pipeline.
-5. **Telegram.** Not collected. Its terms prohibit the AI processing the pipeline depends on. Cartel claims first published on Telegram still reach the dashboard when press outlets report them, graded by the reporting outlet.
-6. **Outbound allowlist.** The first new host added under this ADR comes with the config allowlist that ADR 0008 §2 requires, listing every destination in `docs/data-sources.md`.
+1. **Official bulletins.** Register the Guardia Nacional, Defensa and SSPC listings with SEMAR and FGR handling. CFE cases come through GDELT and press.
+2. **Pixtoday.net by owner export.** Build file importers for the event export (`make ingest SOURCE=pixtoday FILE=path`) and the organization dataset (reference data). The precursor workbook waits for Phase 4.
+   - Raw files go to `data/raw/pixtoday/<date>/` and are never committed.
+   - Every record cites PiX and the underlying source URL.
+   - The owner's permission is recorded here. It must cover processing with Claude. If it does not, PiX records skip the LLM stages and use their own categories only.
+3. **Telegram.** Not collected.
+4. **Search.**
+   - The owner requests a free non-commercial Marginalia key and stores it in Keychain.
+   - The framework taxonomy runs against Marginalia (blogs and small sites) and GDELT (news).
+   - Mojeek is the first candidate if a paid-data ADR is ever written.
+5. **Outlets.** Add the robots-cleared outlets above in batches, reading and recording each one's terms first. Michoacán, Sinaloa and drone-press feeds go first, because they carry the most UxS reporting.
+6. **Outbound allowlist.** The first new host comes with the config allowlist that ADR 0008 §2 requires.
 
 ## Consequences
-- Phase 3 adds no social media and no paid service. Coverage of cartel drone footage depends on press reporting it, which lowers recall for the earliest, single-source claims.
-- PLAN.md's Telegram and search-API rows change to "excluded" and "GDELT taxonomy queries".
-- Pixtoday.net stays open until the owner reads its terms.
-- Each new feed still gets a fixture test and an entry in `feeds.yaml` with its terms note.
+- Phase 3 gains a high-yield UxS stream from PiX. It is social-media-derived, so its Admiralty grades stay low until press or official sources corroborate it.
+- About 40 new feeds raise volume, so the local relevance filter carries more load and Haiku spend rises. Each batch is checked against the $75 budget cap before the next is added.
+- No Telegram and no paid search. Coverage of the earliest single-source claims depends on PiX and the press.
+- The `UAV_Use` and alliance fields bring cited reference data in faster than news extraction would.

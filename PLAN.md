@@ -47,10 +47,10 @@ IRs 4 and 5 form one supply chain (ports → labs → corridors → crossings) a
 | RSS / press releases | InSight Crime, Border Report, CTC Sentinel, CRS, Mexican outlets, DOJ, DEA, USCG, SEMAR, FGR | All | 2 | Free; honor robots.txt and rate limits |
 | State Dept FTO list, OFAC SDN list | Designations and sanctions | 6 | 2 | Free; SDN available as XML/CSV |
 | SESNSP | Mexican municipal crime incidence | 1, 2 | 2 | Free downloads |
-| Official bulletins: Guardia Nacional, Defensa, SSPC (with SEMAR and FGR); drone, defense and energy press | UxS and electricity-theft cases, seizures, prosecutions | 8, 9 | 3 | Listing pages and RSS; CFE bulletins not automated (bot protection); per-feed terms check (ADR 0010) |
-| Pixtoday.net | Open-source aggregation | 8, 9 | 3 | robots.txt disallows all automation; owner-driven file import or written permission only, after the owner reads its terms (ADR 0010) |
+| Official bulletins (Guardia Nacional, Defensa, SSPC with SEMAR and FGR) and ~40 robots-cleared outlets: Mexican national and regional press, drone, defense and energy press, blogs | UxS and electricity-theft cases, seizures, prosecutions | 8, 9 | 3 | Listing pages and RSS; terms recorded per feed; CFE via GDELT and press (ADR 0010) |
+| Pixtoday.net exports (events, organization profiles; precursor entities in Phase 4) | Geocoded cartel events incl. drone use; cited organization profiles | 8, 9, 1 | 3 | Owner exports and file import; owner-reported permission; low Admiralty for social-media-derived events (ADR 0010) |
 | ~~Telegram public channels~~ | — | — | — | Excluded: Telegram's terms prohibit AI processing of platform data (ADR 0010) |
-| GDELT taxonomy queries (in place of a search API) | Framework taxonomy queries | 8, 9 | 3 | Free and already approved; Brave deferred (its terms forbid storing results) (ADR 0010) |
+| Marginalia Search API + GDELT taxonomy queries | Framework taxonomy over blogs, small sites and news | 8, 9 | 3 | Free non-commercial key; Mojeek is the paid fallback (ADR 0010) |
 | UN Comtrade | Monthly Mexico imports by HS code and partner (precursors; drones and mining hardware) | 4, 8, 9 | 4 | Free tier with registration |
 | DEA Special Surveillance List, INCB precursor tables, InSight Crime precursor research | Build the chemical watchlist and HS mapping | 4 | 4 | Reference only |
 | USCG / JIATF-South releases, Central American press | Maritime interdictions, CA seizures | 5 | 5 | Free |
@@ -147,7 +147,7 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 **Exit criteria:** pipeline runs unattended daily; extraction precision ≥ 85% on a 100-article hand-labeled test set; spend inside budget.
 
 ### Phase 3 — Unmanned systems, electricity theft and people (~3–4 weeks; ADR 0009)
-- Sources (ADR 0010): add the Guardia Nacional, Defensa and SSPC listings and vetted trade press; GDELT taxonomy queries; Pixtoday.net by owner import only; no Telegram; outbound allowlist enforced in config
+- Sources (ADR 0010): Guardia Nacional, Defensa and SSPC listings; outlets added in vetted batches; PiX event and organization importers; Marginalia and GDELT taxonomy queries; no Telegram; outbound allowlist enforced in config
 - Prompts `filter-v3` and `extract-v6` with the tiered priority; UxS fields (platform, mission, payload, activity) and an `energy_theft` event type (method, powered activity, facilitator, reported scale) from the owner framework
 - Person records under ADR 0008: `persons`, person–organization and person–event links, every attribute cited and graded, `us_person` flag hidden by default, dispute/delete
 - Views: UxS and electricity-theft panels (map, trend, escalation ladder), person view, labeling fields for the new categories and the person safeguards
