@@ -1,0 +1,4 @@
+{"datos": [
+ {"cvegeo": "029990001", "cve_ent": "02", "cve_mun": "999", "cve_loc": "0001", "nomgeo": "Pueblo Sintético", "ambito": "URBANO", "latitud": "31.86", "longitud": "-116.6", "pob_total": "9000"},
+ {"cvegeo": "029990042", "cve_ent": "02", "cve_mun": "999", "cve_loc": "0042", "nomgeo": "Valentina [Rancho]", "ambito": "RURAL", "latitud": "31.7", "longitud": "-116.5", "pob_total": "-"}
+]}

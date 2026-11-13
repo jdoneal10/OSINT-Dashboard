@@ -13,8 +13,11 @@ SINCE   ?=
 FILE    ?=
 ALL     ?=
 DELETED ?=
+REPROCESS ?=
+FEED ?=
+STAGE ?=
 
-.PHONY: help setup dev db-up db-down db-reset db-migrate seed basemap \
+.PHONY: help setup dev db-up db-down db-reset db-migrate seed reference-inegi pipeline reextract eval basemap \
         test test-backend test-frontend lint lint-backend lint-frontend fmt ingest
 
 help: ## List targets
@@ -46,6 +49,19 @@ db-migrate: ## Apply Alembic migrations
 seed: ## Load cited reference data from data/reference (idempotent)
 	$(BACKEND) $(UV) python -m app.reference.load
 
+reference-inegi: ## Download (resumable, ~45 min) and load INEGI municipalities + gazetteer
+	$(BACKEND) $(UV) python -m app.reference.inegi download
+	$(BACKEND) $(UV) python -m app.reference.inegi load
+
+pipeline: ## Enrichment pass: dedupe, local filter, Haiku extract, cluster, Admiralty, Sonnet
+	$(BACKEND) $(UV) python -m app.enrich.pipeline $(if $(STAGE),--stage $(STAGE),)
+
+reextract: ## Queue documents extracted under an older prompt; the pipeline sends them as a Batch API job
+	cd backend && uv run python -m app.enrich.extract --reextract
+
+eval: ## Precision/recall report from hand labels -> docs/evaluations (MODELS=qwen3:4b,gemma3:4b to compare filters)
+	cd backend && uv run python -m app.enrich.evaluate $(if $(MODELS),--compare-models $(MODELS)) $(if $(PROMPT),--prompt-version $(PROMPT)) $(if $(HAIKU),--haiku)
+
 basemap: ## One-time: extract the local Protomaps basemap for the AOI
 	./scripts/basemap.sh
 
@@ -76,4 +92,4 @@ fmt: ## Auto-format backend and frontend
 
 ingest: ## Run one ingester: make ingest SOURCE=acled SINCE=2026-01-01 (see app/ingest/__main__.py)
 	$(BACKEND) $(UV) python -m app.ingest $(SOURCE) $(if $(SINCE),--since $(SINCE),) \
-		$(if $(FILE),--file "$(CURDIR)/$(FILE)",) $(if $(ALL),--all,) $(if $(DELETED),--deleted,)
+		$(if $(FILE),--file "$(CURDIR)/$(FILE)",) $(if $(ALL),--all,) $(if $(DELETED),--deleted,) $(if $(REPROCESS),--reprocess,) $(if $(FEED),--feed $(FEED),)

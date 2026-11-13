@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<channel><title>Test Full-Text Outlet</title><link>https://full.example.org</link>
+<item><title>Enfrentamiento sintético en Culiacán</title><link>https://full.example.org/2026/11/enfrentamiento?utm_source=rss</link>
+<pubDate>Tue, 10 Nov 2026 14:00:00 +0000</pubDate><description>Resumen sintético.</description>
+<content:encoded><![CDATA[<p>TEXTO SINTÉTICO DE PRUEBA. Un enfrentamiento entre grupos armados dejó tres muertos en Culiacán, Sinaloa, según autoridades estatales.</p><p>No es una noticia real.</p>]]></content:encoded></item>
+</channel></rss>

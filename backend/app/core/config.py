@@ -35,8 +35,29 @@ class Settings(BaseSettings):
     llm_monthly_budget_usd: float = 75.0
     llm_budget_alert_fraction: float = 0.8
 
+    # Local relevance filter (Ollama on loopback only; ADR 0004).
+    ollama_url: str = "http://127.0.0.1:11434"
+    # Chosen on the owner's labels (docs/evaluations/2026-11-11-extraction-extract-v3.md):
+    # at 0.2 gemma3:4b passed all 14 relevant documents (qwen3:4b missed about 3 in 10).
+    # It passes most documents, so Haiku's relevance check does the real filtering; that
+    # costs < $0.001 per document, and recall matters more than the extra calls.
+    relevance_model: str = "gemma3:4b"
+    # Low on purpose (recall over precision): a borderline article costs < $0.001 at Haiku.
+    relevance_threshold: float = 0.2
+
+    # ACLED's written consent (2026-11-11, ADR 0006) allows sending ACLED data to Claude for
+    # this project. Set OSINT_ACLED_LLM_CONSENT=false if that consent is withdrawn: the
+    # gateway then refuses any ACLED-derived input again (EULA s.7.1).
+    acled_llm_consent: bool = True
+
+    # Extraction backlogs at or above this size go through the Message Batches API (50%).
+    llm_batch_threshold: int = 25
+    llm_batch_max_requests: int = 2000
+
     worker_heartbeat_minutes: int = 5
     scheduled_ingest: bool = True
+    # ACLED coverage: 1 = six Mexican border states (Phase 1), 2 = all of Mexico (Phase 2).
+    acled_aoi_phase: int = 2
 
     repo_root: Path = REPO_ROOT
     # Raw source snapshots (gitignored). Overridable so tests never write into the repo.

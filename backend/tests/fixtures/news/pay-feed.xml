@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Paywalled</title><link>https://pay.example.org</link>
+<item><title>Titular sintético de pago</title><link>https://pay.example.org/nota/1</link><description>Avance sintético.</description></item>
+</channel></rss>

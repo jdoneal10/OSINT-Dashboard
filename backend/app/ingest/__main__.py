@@ -17,7 +17,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.ingest import acled, cbp
+from app.ingest import acled, cbp, designations, news, sesnsp
 
 
 def _cbp(args: argparse.Namespace) -> int:
@@ -29,10 +29,30 @@ def _cbp(args: argparse.Namespace) -> int:
 def _acled(args: argparse.Namespace) -> int:
     if args.deleted:
         return acled.run_deleted()
+    if args.reprocess:
+        return acled.run_reprocess()
     return acled.run_events(since=args.since)
 
 
-INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {"cbp": _cbp, "acled": _acled}
+def _news(args: argparse.Namespace) -> int:
+    return news.run_news(args.feed or None)
+
+
+def _sesnsp(args: argparse.Namespace) -> int:
+    if not args.file:
+        print("sesnsp imports a downloaded file: pass FILE=... (SharePoint blocks automation)")
+        return 2
+    through = dt.date.fromisoformat(f"{args.through}-01") if args.through else None
+    return sesnsp.run_file(Path(args.file), through=through, snapshot=args.snapshot_date)
+
+
+INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {
+    "cbp": _cbp,
+    "acled": _acled,
+    "news": _news,
+    "designations": lambda _args: designations.run_designations(),
+    "sesnsp": _sesnsp,
+}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -43,6 +63,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--snapshot-date", type=dt.date.fromisoformat, help="override (cbp --file)")
     parser.add_argument("--all", action="store_true", help="every allowed file series (cbp)")
     parser.add_argument("--deleted", action="store_true", help="deleted-events pull (acled)")
+    parser.add_argument("--feed", action="append", help="news feed slug (repeatable)")
+    parser.add_argument("--through", help="last month with real data, YYYY-MM (sesnsp)")
+    parser.add_argument(
+        "--reprocess", action="store_true", help="re-apply raw pages on disk (acled)"
+    )
     args = parser.parse_args(argv)
 
     if not args.source:
