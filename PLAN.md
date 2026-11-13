@@ -22,6 +22,10 @@ A personal, unclassified OSINT workspace that collects, geolocates, and analyzes
 5. **Smuggling route shifts.** How are drugs, people, and precursors moving along land, maritime, and air corridors, and when does flow measurably shift away from established routes?
 6. **U.S. legal and policy actions.** What FTO designations, OFAC sanctions, and DOJ indictments target these groups, and when?
 7. **Indications and warning.** What new indicators should trigger an alert?
+8. **Unmanned systems (top priority).** Which cartels use drones, UGVs and USVs, for what missions, acquired and adapted how, and is their use escalating (from camera drones to FPV and weaponized systems, coordinated operations)? Seven PIRs are listed in `docs/framework/uxs-and-electricity-theft.md` §1 (ADR 0009).
+9. **Electricity theft (top priority).** Which criminal organizations and facilitators steal electricity, by what methods, to power what (crypto mining, cultivation, labs, storage), where and at what scale? Seven PIRs are listed in framework §2 (ADR 0009).
+
+Priority tiers (ADR 0009): IRs 8 and 9 first; human smuggling and border threats (ADR 0007) second; all other IRs third.
 
 IRs 4 and 5 form one supply chain (ports → labs → corridors → crossings) and are modeled as a connected graph.
 
@@ -30,10 +34,10 @@ IRs 4 and 5 form one supply chain (ports → labs → corridors → crossings) a
 | Phase | AOI |
 |---|---|
 | 1 | U.S.–Mexico border: 6 Mexican border states (BC, SON, CHIH, COAH, NL, TAMPS), 4 U.S. border states, 9 USBP sectors, SW land ports of entry |
-| 2–3 | All of Mexico, including interior production regions (Sinaloa, Jalisco, Michoacán, Guerrero) and seaports (Manzanillo, Lázaro Cárdenas, Veracruz, others) |
-| 4 | Central American transit corridor (GT, BZ, HN, SV, NI, CR, PA) and Eastern Pacific / Caribbean maritime approaches |
+| 2–4 | All of Mexico, including interior production regions (Sinaloa, Jalisco, Michoacán, Guerrero) and seaports (Manzanillo, Lázaro Cárdenas, Veracruz, others) |
+| 5 | Central American transit corridor (GT, BZ, HN, SV, NI, CR, PA) and Eastern Pacific / Caribbean maritime approaches |
 
-## 4. Data sources (fully open-source)
+## 4. Data sources (open source; ADR 0008)
 
 | Source | Use | IRs | Phase | Access notes |
 |---|---|---|---|---|
@@ -43,12 +47,16 @@ IRs 4 and 5 form one supply chain (ports → labs → corridors → crossings) a
 | RSS / press releases | InSight Crime, Border Report, CTC Sentinel, CRS, Mexican outlets, DOJ, DEA, USCG, SEMAR, FGR | All | 2 | Free; honor robots.txt and rate limits |
 | State Dept FTO list, OFAC SDN list | Designations and sanctions | 6 | 2 | Free; SDN available as XML/CSV |
 | SESNSP | Mexican municipal crime incidence | 1, 2 | 2 | Free downloads |
-| UN Comtrade | Monthly Mexico imports by HS code and partner | 4 | 3 | Free tier with registration |
-| DEA Special Surveillance List, INCB precursor tables, InSight Crime precursor research | Build the chemical watchlist and HS mapping | 4 | 3 | Reference only |
-| USCG / JIATF-South releases, Central American press | Maritime interdictions, CA seizures | 5 | 4 | Free |
-| AIS, Sentinel-2 | Port calls, imagery | 4, 5 | 5 (optional) | Free tiers limited; decision required |
+| Official bulletins: CFE, FGR, Guardia Nacional, SEDENA, SEMAR; Mexican energy press; drone and defense trade press | UxS and electricity-theft cases, seizures, prosecutions | 8, 9 | 3 | RSS or listing pages; terms check and ADR each |
+| Pixtoday.net | Open-source aggregation | 8, 9 | 3 | Owner's account; terms check and ADR before automated use |
+| Telegram public channels | Cartel-published claims and footage descriptions | 8, 9, 1 | 3 | Official API, text only, low Admiralty grade; ADR first |
+| Search API (e.g. Brave) | Framework taxonomy queries | 8, 9 | 3 | Sanctioned API in place of search-engine scraping; ADR first |
+| UN Comtrade | Monthly Mexico imports by HS code and partner (precursors; drones and mining hardware) | 4, 8, 9 | 4 | Free tier with registration |
+| DEA Special Surveillance List, INCB precursor tables, InSight Crime precursor research | Build the chemical watchlist and HS mapping | 4 | 4 | Reference only |
+| USCG / JIATF-South releases, Central American press | Maritime interdictions, CA seizures | 5 | 5 | Free |
+| AIS, Sentinel-2, owner's commercial imagery account | Port calls, imagery supporting reported cases | 4, 5, 8, 9 | 6 (optional) | Licence terms recorded in an ADR first |
 
-Paid trade data (Panjiva, ImportGenius, Sayari, Altana) is **out of scope** by decision; the schema leaves a slot for it.
+Paid trade data (Panjiva, ImportGenius, Sayari, Altana) is out of scope for now. The owner may revisit it later through an ADR (ADR 0008), and the schema leaves a slot for it.
 
 ## 5. Architecture
 
@@ -104,6 +112,9 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 6. **Route view** — corridor graph map (edge weight = volume, color = change), Sankey, route-shift alerts
 7. **Alerts** — spike detection, new actor names, new designations, route shifts
 8. **INTSUM export** — draft summary for a selected window and AOI, every judgment linked to source records
+9. **UxS panel** — map and trend of reported drone, UGV and USV activity by platform, mission and actor; escalation-ladder view; procurement and training reporting
+10. **Electricity-theft panel** — reported cases by method, powered activity and facilitator; map and trend; no suspect-site inference
+11. **Person view** — people as open sources link them to TCO activity, every attribute cited and graded; U.S. persons hidden by default (ADR 0008)
 
 ## 9. Phased roadmap
 
@@ -135,7 +146,16 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 
 **Exit criteria:** pipeline runs unattended daily; extraction precision ≥ 85% on a 100-article hand-labeled test set; spend inside budget.
 
-### Phase 3 — Precursors and routes (~3 weeks)
+### Phase 3 — Unmanned systems, electricity theft and people (~3–4 weeks; ADR 0009)
+- Sources: research and ADR each of official bulletins, Pixtoday.net, Telegram public channels and a search API; outbound allowlist enforced in config
+- Prompts `filter-v3` and `extract-v6` with the tiered priority; UxS fields (platform, mission, payload, activity) and an `energy_theft` event type (method, powered activity, facilitator, reported scale) from the owner framework
+- Person records under ADR 0008: `persons`, person–organization and person–event links, every attribute cited and graded, `us_person` flag hidden by default, dispute/delete
+- Views: UxS and electricity-theft panels (map, trend, escalation ladder), person view, labeling fields for the new categories and the person safeguards
+- Re-extraction through the Batch API
+
+**Exit criteria:** IRs 8 and 9 answerable from the dashboard with cited records; ≥ 85% precision on the new fields over a labeled UxS/energy sample; zero labeled person-safeguard violations (contact details, victims or journalists recorded as persons, uncited attributes).
+
+### Phase 4 — Precursors and routes (~3 weeks)
 - `chemical_watchlist.yaml` with HS-code mapping (DEA SSL, INCB, InSight Crime)
 - Comtrade ingester; seizure extraction from SEMAR/FGR/ANAM/Guardia Nacional reporting
 - Corridor graph (`nodes`/`edges`); route-shift detection on share-of-flow with change-point methods
@@ -143,14 +163,14 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 
 **Exit criteria:** IR 4 and IR 5 answerable from the dashboard with documented confidence and caveats.
 
-### Phase 4 — Central America + analysis and alerts (2–3 weeks)
+### Phase 5 — Central America + analysis and alerts (2–3 weeks)
 - AOI expands to Central America and maritime approaches; USCG/JIATF-South interdictions
 - Actor profiles; alert rules with local macOS notifications
 - INTSUM export using ICD 203 estimative language with record-level citations
 
 **Exit criteria:** a weekly INTSUM is generated where every judgment traces to source records.
 
-### Phase 5 — Portfolio polish and expansion (ongoing)
+### Phase 6 — Polish and expansion (ongoing)
 - Public demo mode on synthetic or aggregated data (no raw ACLED)
 - README with screenshots, architecture write-up, short case study
 - Optional, with an ADR for each: AIS port calls, Sentinel-2 imagery, social media
@@ -179,3 +199,4 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 | 5 | Fully open-source data; no paid trade data for now | 2026-11-11 |
 | 6 | IRs 4 (precursors) and 5 (route shifts) added | 2026-11-11 |
 | 7 | Hard rules revised: open-source (not only published) inputs; people linked to criminal activity may be recorded with safeguards; outbound calls by allowlist; paid data by ADR. Supersedes decisions 1 and 5 (ADR 0008) | 2026-11-13 |
+| 8 | UxS and electricity theft are top priority; Phase 3 becomes UxS, electricity theft and people; later phases shift by one (ADR 0009) | 2026-11-13 |
