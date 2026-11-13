@@ -39,7 +39,9 @@ from app.ingest.runs import RunContext, ingest_run, last_successful_params, sour
 log = logging.getLogger(__name__)
 
 GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
-GDELT_MIN_INTERVAL = 6.0  # GDELT asks for roughly one request every 5 seconds
+GDELT_MIN_INTERVAL = 20.0  # GDELT asks for one request per 5 s; it still answered 429 at ~15 s
+# GDELT's 429s outlast short retries (observed 2026-11-12/13): wait 30 s, 1, 2, then 4 min.
+GDELT_BACKOFF_INITIAL = 30.0
 GDELT_LOOKBACK = dt.timedelta(days=3)  # first run / gap cap
 # Spanish + English terms for organized-crime reporting; the local relevance filter refines.
 GDELT_TERMS = (
@@ -230,7 +232,13 @@ def run_news(slugs: list[str] | None = None, client: PoliteClient | None = None)
         feed_registry.sync_sources(session)
     owns = client is None
     client = client or PoliteClient(min_interval=1.0, timeout=30)
-    gdelt_client = client if not owns else PoliteClient(min_interval=GDELT_MIN_INTERVAL, timeout=60)
+    gdelt_client = (
+        client
+        if not owns
+        else PoliteClient(
+            min_interval=GDELT_MIN_INTERVAL, timeout=60, backoff_initial=GDELT_BACKOFF_INITIAL
+        )
+    )
     failures = 0
     try:
         for feed in feeds:
