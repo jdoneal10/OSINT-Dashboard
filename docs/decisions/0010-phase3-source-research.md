@@ -23,7 +23,7 @@ Nothing has been ingested.
 | CFE bulletins (`app.cfe.mx`) | **Not automated.** The bulletin app sits behind bot protection. The owner accepts GDELT and press coverage of CFE cases instead. |
 
 ### Pixtoday.net
-`pixtoday.net` disallows every agent in robots.txt, so nothing is fetched automatically. The owner exports files while signed in and imports them, as for SESNSP. The owner reports explicit permission to use this data. The three files of 2026-11-13 were profiled locally. A case-sensitive scan for control markings (FOUO, CUI, LES, NOFORN, classification words) found none.
+`pixtoday.net` disallows every agent in robots.txt, so nothing is fetched automatically. The owner exports files while signed in and imports them, as for SESNSP. The owner reports explicit permission to use this data, including processing with Claude (confirmed 2026-11-13). The three files of 2026-11-13 were profiled locally. A case-sensitive scan for control markings (FOUO, CUI, LES, NOFORN, classification words) found none.
 
 | File | Content | Relevance | Handling |
 |---|---|---|---|
@@ -75,7 +75,7 @@ robots.txt was checked on 2026-11-13 for our client (`cartel-osint/0.1`) and for
 2. **Pixtoday.net by owner export.** Build file importers for the event export (`make ingest SOURCE=pixtoday FILE=path`) and the organization dataset (reference data). The precursor workbook waits for Phase 4.
    - Raw files go to `data/raw/pixtoday/<date>/` and are never committed.
    - Every record cites PiX and the underlying source URL.
-   - The owner's permission is recorded here. It must cover processing with Claude. If it does not, PiX records skip the LLM stages and use their own categories only.
+   - The owner's permission is recorded here. The owner confirmed on 2026-11-13 that it covers processing with Claude, so PiX records go through the normal LLM stages.
 3. **Telegram.** Not collected.
 4. **Search.**
    - The owner requests a free non-commercial Marginalia key and stores it in Keychain.
