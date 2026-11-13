@@ -1,6 +1,6 @@
 # ADR 0010: Phase 3 sources — what to add, what to drop
 
-- **Status:** Proposed (awaiting owner approval)
+- **Status:** Accepted (2026-11-13)
 - **Date:** 2026-11-13 (revised the same day after owner review)
 - **Decision owner:** project owner
 - **Relates to:** ADR 0008 §2 and §6 (outbound calls, sources); ADR 0009 §3 (sources to research); ADR 0004 (news pipeline)

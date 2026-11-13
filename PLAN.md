@@ -200,3 +200,4 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 | 6 | IRs 4 (precursors) and 5 (route shifts) added | 2026-11-11 |
 | 7 | Hard rules revised: open-source (not only published) inputs; people linked to criminal activity may be recorded with safeguards; outbound calls by allowlist; paid data by ADR. Supersedes decisions 1 and 5 (ADR 0008) | 2026-11-13 |
 | 8 | UxS and electricity theft are top priority; Phase 3 becomes UxS, electricity theft and people; later phases shift by one (ADR 0009) | 2026-11-13 |
+| 9 | Phase 3 sources: Guardia Nacional, Defensa and SSPC bulletins; ~40 robots-cleared outlets in vetted batches; Pixtoday.net by owner export (permission covers Claude); Marginalia and GDELT for search; Telegram excluded by its terms (ADR 0010) | 2026-11-13 |
