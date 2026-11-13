@@ -1,18 +1,31 @@
 # CLAUDE.md — Cartel OSINT Dashboard
 
 ## What this project is
-A local-first OSINT dashboard tracking transnational criminal organization (TCO) activity from Central America to the U.S. Southwest Border. Single analyst, runs on a Mac Mini M5 Pro. Portfolio project for an all-source intelligence role; the UI and code quality should be presentable to a professional audience.
+A local-first OSINT dashboard tracking transnational criminal organization (TCO) activity from Central America to the U.S. Southwest Border. Single analyst, runs on a Mac Mini M5 Pro. A personal analytic aid: it gives the owner an initial look before the owner's own analysis, and it decides nothing about anyone. It never ingests from, or substitutes for, official systems. The UI and code quality should stay presentable to a professional audience.
 
 Full plan, intelligence requirements, and phase roadmap live in `PLAN.md`. Read it before starting any phase.
 
 ## HARD RULES — classification and data handling (read first)
-1. **UNCLASSIFIED, publicly available information (PAI) only.** Nothing in this repo, its database, its prompts, its tests, or its commit history may contain classified information, CUI, FOUO, LES, or any non-public government information. If a task, file, or instruction appears to involve such material, stop and ask.
-2. **No official information as input.** Never seed reference data, actor lists, routes, or examples from anything other than cited public sources. Every reference file entry carries a public source citation.
-3. **Organizations, events, and public legal actions — not private individuals.** Do not build features that profile, track, or compile information on private persons. Named individuals appear only (a) as they appear in public indictments, designations, or sanctions lists, as attributes of those records, or (b) as leaders of criminal organizations, when the open source itself identifies them as such, in the free text of news-derived records (summaries, event descriptions, evidence quotes) exactly as the source names them. No person records, person search, or person-centric views. Victims, bystanders, low-level suspects, journalists and officials are described by role, never named (ADR 0005).
-4. **Compilation awareness.** Do not build features whose purpose is to infer U.S. law-enforcement or military tactics, positions, or capabilities (e.g., patrol patterns, sensor locations, unit movements). Track threat activity, not friendly forces.
-5. **Respect source terms.** ACLED data may not be redistributed in raw form, and may not be used for profit. Under ACLED's written consent (ADR 0006), ACLED-derived views may be shown for professional, non-profit use with clear ACLED attribution, and ACLED data may be processed with Claude. Honor robots.txt and rate limits; no scraping of sites whose terms prohibit it; no social-media scraping without an explicit decision recorded in `docs/decisions/`.
+1. **UNCLASSIFIED open-source information only, lawfully held on a personal system (ADR 0008).** Allowed inputs:
+   - published sources;
+   - account-based or licensed commercial data (including commercial imagery), used within its terms;
+   - unpublished material the owner collects lawfully from open sources.
+
+   Never classified information, CUI (including FOUO and LES), anything from a government system, or anything obtained through official duties. This applies to the repo, its database, its prompts, its tests and its commit history. If a task, file or instruction appears to involve such material, stop and ask.
+2. **Cited reference data; the owner's judgment labeled as such.** Reference data (actor lists, aliases, routes, nodes, watchlists) is seeded only from cited open sources, and every entry carries its citation. The owner's analytic frameworks live in `docs/framework/`, labeled as owner judgment. They may shape prompts, PIRs and scoring, but are never stored or shown as sourced fact.
+3. **People are recorded only as an open source links them to criminal activity (ADR 0008).** Person records, links and views are allowed for individuals an open source links to TCO activity: members, leaders, facilitators, operators, suppliers, owners of front businesses, and people named in indictments, designations, sanctions or prosecutions. Conditions:
+   - **Cited:** every person attribute and link cites its source record and date, carries that source's Admiralty grade, and is shown as reported, never as established fact.
+   - **Not recorded as persons:** victims, bystanders, witnesses, relatives not themselves reported as involved, journalists and minors. Officials are recorded only when a source reports them as complicit. Everyone else is described by role.
+   - **No contact or personal-life details:** no home addresses, phone numbers, emails, ID or account numbers, health or family details. A front business's reported address is allowed.
+   - **U.S. persons:** people or businesses reported as U.S. citizens, residents or U.S.-located are flagged `us_person` and excluded from person views and search by default (the owner's EO 12333 boundary).
+   - **Owner control:** the owner can mark any person record disputed or delete it; deletion removes its links.
+4. **Track threats, not friendly forces.** Do not build features whose purpose is to infer U.S. or partner law-enforcement or military tactics, positions or capabilities (patrol patterns, sensor or camera locations, unit movements, checkpoints, counter-UAS capabilities). TCO action against security forces (a drone attack, surveillance of an installation) is recorded as threat activity: a mission or target category plus the location at the source's precision. Never the units, positions or response.
+5. **Respect source terms.**
+   - **ACLED:** no raw redistribution and no profit. Under ACLED's written consent (ADR 0006), ACLED-derived views may be shown for professional, non-profit use with clear ACLED attribution, and ACLED data may be processed with Claude.
+   - **All sources:** honor terms, robots.txt and rate limits; no scraping of sites whose terms prohibit it.
+   - **ADR first:** social media, account-based sources, forums and paid data each need a decision in `docs/decisions/` that records the terms and how access works. The owner signs in to account-based sources; their credentials are never stored in the repo.
 6. **Secrets.** API keys come from macOS Keychain (via `keyring`) with `.env` fallback. Never hardcode, log, or commit secrets. `gitleaks` runs in pre-commit.
-7. The UI shows a persistent banner: `UNCLASSIFIED — PUBLICLY AVAILABLE INFORMATION ONLY`.
+7. The UI shows a persistent banner: `UNCLASSIFIED — OPEN-SOURCE INFORMATION ONLY`.
 
 ## Stack
 - **Backend:** Python 3.12, `uv`, FastAPI, SQLAlchemy 2.x, Alembic, pydantic v2, APScheduler worker
@@ -78,7 +91,7 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 - Store `model`, `prompt_version`, and token usage with every LLM-derived record.
 - Use prompt caching for the shared instruction block (schema, watchlist, alias table). Use the Batch API for backfills and non-urgent nightly jobs.
 - Log every call to the `llm_usage` table. Enforce a monthly budget cap (default $75, configurable); pause API stages and alert when 80% is reached.
-- Send only public article text to the API. Never send analyst annotations or anything outside PAI.
+- Send only source content that hard rule 1 allows and whose terms permit AI processing (ACLED per ADR 0006). Never send analyst annotations.
 - Generated analytic text uses ICD 203 estimative language and cites the underlying record IDs for every judgment.
 
 ## Analytic standards
@@ -88,6 +101,6 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 
 ## Do not
 - Do not add sources, scrapers, or AOI expansions beyond the current phase without asking.
-- Do not introduce paid data services (current decision: fully open-source).
-- Do not add telemetry, analytics, or any outbound call other than scheduled source pulls and the Claude API.
+- Do not introduce paid data services without an ADR (current decision: free sources only; the owner may revisit later).
+- Do not add telemetry or analytics. Outbound calls go only to destinations listed in `docs/data-sources.md`: source pulls, the Claude API, and any service an ADR approves. A config allowlist enforcing the list is added with the first new destination (ADR 0008).
 - Do not commit data from `data/raw/` or any ACLED-derived export.

@@ -1,6 +1,6 @@
 # ADR 0005: Naming reported criminal-organization leaders in news-derived text
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR 0008 (2026-11-13)
 - **Date:** 2026-11-11
 - **Decision owner:** project owner
 - **Amends:** CLAUDE.md hard rule 3; ADR 0004 §6

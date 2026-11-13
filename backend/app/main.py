@@ -26,7 +26,7 @@ from app.api import (
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 
-CLASSIFICATION = "UNCLASSIFIED — PUBLICLY AVAILABLE INFORMATION ONLY"
+CLASSIFICATION = "UNCLASSIFIED — OPEN-SOURCE INFORMATION ONLY"
 
 
 @asynccontextmanager

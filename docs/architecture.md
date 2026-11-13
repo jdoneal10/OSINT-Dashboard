@@ -1,6 +1,6 @@
 # Architecture
 
-> UNCLASSIFIED — publicly available information only.
+> UNCLASSIFIED — open-source information only.
 
 ## Target pipeline (PLAN.md §5)
 
@@ -33,7 +33,7 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 
 At runtime the browser talks only to `127.0.0.1:5173`. The basemap, glyphs and sprites are all local, so no third-party tile or font requests are made. Ollama runs on `127.0.0.1:11434`.
 
-The only outbound calls are scheduled source pulls and the Claude API (CLAUDE.md "Do not"). Every source pull respects robots.txt and per-host rate limits.
+Outbound calls go only to destinations listed in `docs/data-sources.md`: scheduled source pulls, the Claude API, and services an ADR approves (ADR 0008). Every source pull respects robots.txt and per-host rate limits.
 
 ### Worker schedule (UTC)
 

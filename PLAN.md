@@ -1,17 +1,17 @@
 # PLAN.md — Cartel OSINT Dashboard
 
 **Owner:** Justin O'Neal
-**Classification of this workspace:** UNCLASSIFIED — publicly available information only
+**Classification of this workspace:** UNCLASSIFIED — open-source information only
 **Platform:** Mac Mini M5 Pro, local-first
-**Last updated:** 2026-11-11
+**Last updated:** 2026-11-13
 
 ---
 
 ## 1. Purpose
 
-A portfolio-grade, unclassified OSINT workspace that collects, geolocates, and analyzes open-source reporting on transnational criminal organizations (TCOs) operating between Central America and the U.S. Southwest Border. It is meant to complement, never substitute for or ingest, classified all-source work done on appropriate systems.
+A personal, unclassified OSINT workspace that collects, geolocates, and analyzes open-source reporting on transnational criminal organizations (TCOs) operating between Central America and the U.S. Southwest Border. It gives the owner an initial look before their own analysis. It complements, and never substitutes for or ingests from, official systems (ADR 0008).
 
-**Audience:** the owner as primary analyst; prospective colleagues and hiring audiences as reviewers of the portfolio build.
+**Audience:** the owner, for personal use. Code and UI stay presentable to a professional audience.
 
 ## 2. Intelligence requirements (IRs)
 
@@ -159,12 +159,13 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 
 | Risk | Mitigation |
 |---|---|
-| Classification spillage or compilation sensitivity | CLAUDE.md hard rules; PAI-only inputs; no friendly-force tracking; review the project with the security office and ethics counselor before any public release |
+| Classification spillage or compilation sensitivity | CLAUDE.md hard rules; unclassified open-source inputs only, never CUI or government-system data; no friendly-force tracking; review the project with the security office and ethics counselor before any public release |
 | Noisy or manipulated reporting (narco-propaganda, recycled claims) | Admiralty scoring, corroboration logic, confidence shown on every record |
 | ACLED licensing | Private build only uses raw data; public demo uses synthetic or aggregated data |
 | Mexican government data opacity on ports | Combine Comtrade aggregates with seizure reporting; state the gaps explicitly in the UI |
 | Precursor mislabeling and re-routing | Watch essential chemicals as well as controlled precursors; monitor Atlantic ports and transshipment points; display caveats |
 | GDELT noise drives API cost | Local filter first; budget cap; Batch API |
+| Misattribution of named people | Person attributes only as an open source reports them, each cited and Admiralty-graded and shown as "reported"; no contact details; U.S. persons excluded from person views by default; owner can dispute or delete (ADR 0008) |
 | Scope creep | Phase gates with exit criteria; ADRs for any expansion |
 
 ## 11. Decisions log
@@ -177,3 +178,4 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 | 4 | Phase 1 AOI limited to the U.S.–Mexico border | 2026-11-11 |
 | 5 | Fully open-source data; no paid trade data for now | 2026-11-11 |
 | 6 | IRs 4 (precursors) and 5 (route shifts) added | 2026-11-11 |
+| 7 | Hard rules revised: open-source (not only published) inputs; people linked to criminal activity may be recorded with safeguards; outbound calls by allowlist; paid data by ADR. Supersedes decisions 1 and 5 (ADR 0008) | 2026-11-13 |

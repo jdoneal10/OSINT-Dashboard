@@ -1,6 +1,6 @@
 # Data sources and terms of use
 
-> UNCLASSIFIED — publicly available information only. Every source here is public and free (PLAN.md decision 5: no paid data).
+> UNCLASSIFIED — open-source information only. Every source here is public and free (PLAN.md decision 5: no paid data).
 
 **Rules that apply to every source (CLAUDE.md):**
 - Store every raw pull under `data/raw/<source>/<date>/`, which is gitignored and never committed.

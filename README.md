@@ -1,6 +1,6 @@
 # Cartel OSINT Dashboard
 
-> **UNCLASSIFIED — PUBLICLY AVAILABLE INFORMATION ONLY**
+> **UNCLASSIFIED — OPEN-SOURCE INFORMATION ONLY**
 
 A local-first open-source intelligence workspace that tracks transnational criminal organization (TCO) activity from Central America to the U.S. Southwest Border. It collects, geolocates and analyzes **publicly available** reporting, and every record carries its source and a confidence score.
 
@@ -70,9 +70,9 @@ The Claude stages stop when spend reaches 80% of the monthly cap ($75 by default
 
 ## Data handling
 
-- Publicly available information only. No classified, CUI, FOUO or LES material.
-- Organizations, events and public legal actions only. No profiling of private individuals.
-- No tracking of U.S. law-enforcement or military positions or tactics.
+- Unclassified open-source information only, lawfully held on a personal system. No classified, CUI, FOUO or LES material, and nothing from government systems (ADR 0008).
+- People appear only as an open source links them to criminal activity, always cited and graded. No contact details, and no records of victims, bystanders, journalists or minors. U.S. persons are flagged and excluded from person views by default (ADR 0008).
+- Threat activity only: no tracking of U.S. or partner law-enforcement or military positions, tactics or capabilities.
 - Source terms are honored. ACLED data is never redistributed in raw form or used for profit; it is processed with Claude only under ACLED's written consent (ADR 0006).
 - Only public article text is sent to the Claude API. Analyst labels and notes stay local.
 
