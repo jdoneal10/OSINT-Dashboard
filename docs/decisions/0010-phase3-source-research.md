@@ -1,6 +1,6 @@
 # ADR 0010: Phase 3 sources — what to add, what to drop
 
-- **Status:** Accepted (2026-11-13)
+- **Status:** Accepted (2026-11-13); amended the same day for Telegram (see Amendment 1)
 - **Date:** 2026-11-13 (revised the same day after owner review)
 - **Decision owner:** project owner
 - **Relates to:** ADR 0008 §2 and §6 (outbound calls, sources); ADR 0009 §3 (sources to research); ADR 0004 (news pipeline)
@@ -76,7 +76,7 @@ robots.txt was checked on 2026-11-13 for our client (`cartel-osint/0.1`) and for
    - Raw files go to `data/raw/pixtoday/<date>/` and are never committed.
    - Every record cites PiX and the underlying source URL.
    - The owner's permission is recorded here. The owner confirmed on 2026-11-13 that it covers processing with Claude, so PiX records go through the normal LLM stages.
-3. **Telegram.** Not collected.
+3. **Telegram.** Not collected until a collection method is approved (Amendment 1).
 4. **Search.**
    - The owner requests a free non-commercial Marginalia key and stores it in Keychain.
    - The framework taxonomy runs against Marginalia (blogs and small sites) and GDELT (news).
@@ -89,3 +89,12 @@ robots.txt was checked on 2026-11-13 for our client (`cartel-osint/0.1`) and for
 - About 40 new feeds raise volume, so the local relevance filter carries more load and Haiku spend rises. Each batch is checked against the $75 budget cap before the next is added.
 - No Telegram and no paid search. Coverage of the earliest single-source claims depends on PiX and the press.
 - The `UAV_Use` and alliance fields bring cited reference data in faster than news extraction would.
+
+## Amendment 1 (2026-11-13): Telegram written agreement
+The owner reports a written agreement from Telegram that authorizes incorporating Telegram data into this dashboard, given its private use and unclassified content. The agreement is held by the owner and is not stored in the repo.
+
+- **Effect:** the terms barrier above is lifted for this project, within the agreement's scope. The findings above stay as the record of the public terms.
+- **Still open:**
+  - **Collection method.** No method is approved. ScrapeAtlas was offered and declined by the owner (paid service). The owner is evaluating an alternative for social media content, which needs its own decision before any code is written.
+- **Claude processing:** the owner confirmed on 2026-11-13 that the agreement covers processing with Claude, so Telegram content goes through the normal LLM stages once collected.
+- **Handling once collected:** social-media grade (low Admiralty, single source unless corroborated); narco-propaganda stays low; rule 3 person safeguards and rule 4 (no friendly-force data) apply; raw pulls go to `data/raw/telegram/` and are never committed.
