@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 
 import httpx
@@ -8,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Document, IngestRun, Source
+from app.db.models import Alert, Document, IngestRun, Source
 from app.ingest import feeds as feed_registry
 from app.ingest import news
 from app.ingest.articles import canonical_url
@@ -193,6 +194,72 @@ def test_gdelt_filters_domain_and_tracks_watermark(seeded: Session) -> None:
     _run(site, "test-gdelt")
     second = [c for c in site.calls if "gdeltproject" in c][-1]
     assert f"startdatetime={run.params['until'][:4]}" in second  # resumes from last run
+
+
+def _gdelt_refusing(site: Site) -> None:
+    original = site.handler
+
+    def refuse(req: httpx.Request) -> httpx.Response:
+        if req.url.host == "api.gdeltproject.org":
+            site.calls.append(str(req.url))
+            return httpx.Response(429)
+        return original(req)
+
+    site.handler = refuse  # type: ignore[method-assign]
+
+
+def _gdelt_runs(session: Session) -> list[tuple[str, str | None]]:
+    session.expire_all()
+    rows = session.execute(
+        select(IngestRun.status, IngestRun.error)
+        .where(IngestRun.job == "news-test-gdelt")
+        .order_by(IngestRun.id)
+    ).all()
+    return [(r.status, r.error) for r in rows]
+
+
+def test_gdelt_429_without_prior_success_is_an_error(seeded: Session) -> None:
+    site = Site()
+    _gdelt_refusing(site)
+    _run(site, "test-gdelt")
+    ((status, error),) = _gdelt_runs(seeded)
+    assert status == "error"
+    assert error is not None
+    assert "429" in error
+
+
+def test_gdelt_429_within_lookback_is_deferred_and_alerts_once_per_streak(
+    seeded: Session,
+) -> None:
+    site = Site()
+    _run(site, "test-gdelt")  # success sets the watermark
+    _gdelt_refusing(site)
+    for _ in range(3):
+        _run(site, "test-gdelt")
+    statuses = [s for s, _ in _gdelt_runs(seeded)]
+    assert statuses == ["ok", "deferred", "deferred", "deferred"]
+    alerts = seeded.scalars(select(Alert).where(Alert.rule == "feed_stalled")).all()
+    assert len(alerts) == 1  # at the second miss, not again at the third
+    assert alerts[0].linked_records == {"job": "news-test-gdelt", "misses": 2}
+
+    site.handler = Site().handler  # type: ignore[method-assign]
+    _run(site, "test-gdelt")  # recovery resumes from the last success's watermark
+    _gdelt_refusing(site)
+    _run(site, "test-gdelt")
+    _run(site, "test-gdelt")
+    assert len(seeded.scalars(select(Alert).where(Alert.rule == "feed_stalled")).all()) == 2
+
+
+def test_gdelt_429_beyond_lookback_is_an_error(
+    seeded: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    site = Site()
+    _run(site, "test-gdelt")
+    # the next run (6 h on) would start past a 1-hour lookback, so the gap is not covered
+    monkeypatch.setattr(news, "GDELT_LOOKBACK", dt.timedelta(hours=1))
+    _gdelt_refusing(site)
+    _run(site, "test-gdelt")
+    assert [s for s, _ in _gdelt_runs(seeded)] == ["ok", "error"]
 
 
 def test_summary_policy_never_fetches_pages(seeded: Session) -> None:

@@ -5,7 +5,8 @@
 - acled-deleted: Sundays 11:30; ACLED deleted-events reconciliation (weekly upstream)
 - cbp: daily 12:00; two page checks, ingests only when a new CBP file appears
 - news-feeds: hourly at :05; RSS and listing-page feeds in data/reference/feeds.yaml
-- news-gdelt: every 3 hours at :20; GDELT DOC queries for outlets without RSS
+- news-gdelt: every 6 hours at :20; GDELT DOC queries for outlets without RSS, one feed
+  every 30 minutes (GDELT refused back-to-back feeds with 429s; 48-hour run 2026-11-16)
 - pipeline: every 30 minutes at :10/:40; dedupe, local filter, Haiku extract, cluster,
   Admiralty, Sonnet analyze. The Claude gateway checks the monthly budget before every call
   and pauses the API stages at the threshold; the local stages keep running.
@@ -23,6 +24,7 @@ import contextlib
 import datetime as dt
 import logging
 import signal
+import time
 from collections.abc import Callable
 from types import FrameType
 
@@ -66,9 +68,17 @@ def news_feeds() -> int:
     return news.run_news([f.slug for f in feeds.active() if f.discovery != "gdelt"])
 
 
-def news_gdelt() -> int:
-    slugs = [f.slug for f in feeds.active("gdelt")]
-    return news.run_news(slugs) if slugs else 0
+GDELT_FEED_SPACING_S = 30 * 60
+
+
+def news_gdelt(sleep: Callable[[float], None] = time.sleep) -> int:
+    """One GDELT feed at a time, ``GDELT_FEED_SPACING_S`` apart."""
+    rc = 0
+    for i, slug in enumerate(f.slug for f in feeds.active("gdelt")):
+        if i:
+            sleep(GDELT_FEED_SPACING_S)
+        rc |= news.run_news([slug])
+    return rc
 
 
 def run_pipeline() -> dict[str, object]:
@@ -116,7 +126,7 @@ SCHEDULED_JOBS: list[tuple[str, Callable[[], object], CronTrigger]] = [
     ),
     ("cbp", cbp.run_remote, CronTrigger(hour=12, minute=0, timezone="UTC")),
     ("news-feeds", news_feeds, CronTrigger(minute=5, timezone="UTC")),
-    ("news-gdelt", news_gdelt, CronTrigger(hour="*/3", minute=20, timezone="UTC")),
+    ("news-gdelt", news_gdelt, CronTrigger(hour="*/6", minute=20, timezone="UTC")),
     ("pipeline", run_pipeline, CronTrigger(minute="10,40", timezone="UTC")),
     ("designations", designations.run_designations, CronTrigger(hour=13, minute=0, timezone="UTC")),
     ("sesnsp-reminder", sesnsp_reminder, CronTrigger(day=26, hour=14, minute=0, timezone="UTC")),

@@ -22,7 +22,7 @@ def test_scheduler_registers_source_jobs() -> None:
     assert "hour='11'" in str(jobs["acled-events"].trigger)
     assert "day_of_week='sun'" in str(jobs["acled-deleted"].trigger)
     assert "minute='10,40'" in str(jobs["pipeline"].trigger)
-    assert "hour='*/3'" in str(jobs["news-gdelt"].trigger)
+    assert "hour='*/6'" in str(jobs["news-gdelt"].trigger)
 
 
 def test_scheduled_ingest_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -42,11 +42,14 @@ def test_failing_job_is_logged_not_raised(caplog: pytest.LogCaptureFixture) -> N
 def test_news_jobs_split_feeds_by_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[list[str]] = []
     monkeypatch.setattr(worker.news, "run_news", lambda slugs: calls.append(slugs) or 0)
+    sleeps: list[float] = []
     worker.news_feeds()
-    worker.news_gdelt()
-    rss, gdelt = calls
-    assert gdelt
+    worker.news_gdelt(sleep=sleeps.append)
+    rss, *gdelt_calls = calls
+    gdelt = [slug for call in gdelt_calls for slug in call]
+    assert all(len(call) == 1 for call in gdelt_calls)  # one GDELT feed per call
     assert set(gdelt) == {f.slug for f in worker.feeds.active("gdelt")}
+    assert sleeps == [worker.GDELT_FEED_SPACING_S] * (len(gdelt) - 1)
     assert rss
     assert not set(rss) & set(gdelt)
 

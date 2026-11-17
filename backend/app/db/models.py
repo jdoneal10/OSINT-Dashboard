@@ -560,7 +560,7 @@ class LLMUsage(Base):
     request_id: Mapped[str | None] = mapped_column(String(128))
 
 
-INGEST_STATUSES = ("running", "ok", "error")
+INGEST_STATUSES = ("running", "ok", "deferred", "error")
 
 
 class IngestRun(Base):

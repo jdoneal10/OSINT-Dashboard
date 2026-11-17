@@ -61,7 +61,7 @@ Open <http://localhost:5173>.
 | `make eval [MODELS=…]` | Precision and filter-recall report from hand labels into `docs/evaluations/` |
 
 The worker (started by `make dev`) runs the following on schedule:
-- feeds hourly and GDELT every 3 hours
+- feeds hourly and GDELT every 6 hours (one feed every 30 minutes)
 - the enrichment pipeline every 30 minutes
 - designations daily
 - ACLED daily, and CBP daily

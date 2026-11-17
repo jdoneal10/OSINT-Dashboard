@@ -41,7 +41,7 @@ Outbound calls go only to destinations listed in `docs/data-sources.md`: schedul
 |---|---|---|
 | `heartbeat` | every 5 min | liveness row in `ingest_runs` (shown in `/health`) |
 | `news-feeds` | hourly :05 | RSS and listing-page feeds |
-| `news-gdelt` | every 3 h :20 | GDELT DOC queries for outlets without RSS |
+| `news-gdelt` | every 6 h :20, feeds 30 min apart | GDELT DOC queries for outlets without RSS; a 429 the next run covers is recorded `deferred`, and two misses in a row raise a `feed_stalled` alert |
 | `pipeline` | :10 and :40 | dedupe → local filter → Haiku extract → cluster/Admiralty → Sonnet analyze |
 | `acled-events` | daily 11:00 | ACLED incremental pull |
 | `acled-deleted` | Sun 11:30 | ACLED deletion reconciliation |

@@ -21,6 +21,7 @@ from urllib.parse import urljoin, urlsplit
 import feedparser
 from lxml import html as lxml_html
 
+from app.db.models import Alert
 from app.db.session import session_factory
 from app.ingest import feeds as feed_registry
 from app.ingest.articles import (
@@ -34,7 +35,14 @@ from app.ingest.articles import (
 from app.ingest.feeds import Feed
 from app.ingest.http import PoliteClient
 from app.ingest.raw import write_raw
-from app.ingest.runs import RunContext, ingest_run, last_successful_params, source_id
+from app.ingest.runs import (
+    DeferredRun,
+    RunContext,
+    ingest_run,
+    last_successful_params,
+    misses_since_success,
+    source_id,
+)
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +51,11 @@ GDELT_MIN_INTERVAL = 20.0  # GDELT asks for one request per 5 s; it still answer
 # GDELT's 429s outlast short retries (observed 2026-11-12/13): wait 30 s, 1, 2, then 4 min.
 GDELT_BACKOFF_INITIAL = 30.0
 GDELT_LOOKBACK = dt.timedelta(days=3)  # first run / gap cap
+# The worker queries GDELT every 6 hours; a refused run is deferred (not an error) while the
+# next run's window would still reach back to the last success.
+GDELT_SCHEDULE_INTERVAL = dt.timedelta(hours=6)
+# Alert once a feed has missed this many runs in a row (owner decision 2026-11-15).
+STALL_ALERT_MISSES = 2
 # Spanish + English terms for organized-crime reporting; the local relevance filter refines.
 GDELT_TERMS = (
     '(cártel OR cartel OR narco OR narcotráfico OR "crimen organizado" OR sicarios OR '
@@ -158,6 +171,10 @@ def discover(
         start = max(start, dt.datetime.fromisoformat(last["until"]) - dt.timedelta(hours=1))
     run.params["until"] = now.isoformat()
     resp = gdelt_client.get(GDELT_URL, params=gdelt_params(feed.domain, start, now), crawl=False)
+    if resp.status_code == 429 and _next_run_covers(last, now):
+        raise DeferredRun(
+            f"GDELT 429 after retries; next run resumes from {last['until']} (within lookback)"
+        )
     resp.raise_for_status()
     run.raw_paths.append(str(write_raw(feed.slug, run.id, "gdelt.json", resp.content).path))
     if not resp.content.strip():
@@ -167,6 +184,38 @@ def discover(
     except ValueError:  # GDELT answers malformed queries with plain-text errors
         raise RuntimeError(f"GDELT returned non-JSON: {resp.text[:200]!r}") from None
     return parse_gdelt(payload, feed.domain)
+
+
+def _next_run_covers(last: dict[str, Any], now: dt.datetime) -> bool:
+    """True if the next scheduled run would still reach back to the last success."""
+    until = last.get("until")
+    if not until:
+        return False
+    gap = now + GDELT_SCHEDULE_INTERVAL - dt.datetime.fromisoformat(until)
+    return gap <= GDELT_LOOKBACK
+
+
+def _alert_if_stalled(feed: Feed) -> None:
+    """One alert per streak, when a feed reaches ``STALL_ALERT_MISSES`` deferred or failed
+    runs in a row."""
+    job = f"news-{feed.slug}"
+    misses = misses_since_success(job)
+    if misses != STALL_ALERT_MISSES:
+        return
+    with session_factory()() as session, session.begin():
+        session.add(
+            Alert(
+                rule="feed_stalled",
+                severity=1,
+                summary=(
+                    f"{feed.name} ({job}) has missed {misses} runs in a row. For GDELT feeds "
+                    "no articles are lost while the lookback covers the gap; check the run "
+                    "errors if it continues."
+                ),
+                linked_records={"job": job, "misses": misses},
+            )
+        )
+    log.warning("feed %s stalled: %d misses in a row", feed.slug, misses)
 
 
 # --------------------------------------------------------------------------- ingest
@@ -247,6 +296,7 @@ def run_news(slugs: list[str] | None = None, client: PoliteClient | None = None)
             except Exception:
                 failures += 1
                 log.exception("feed %s failed (recorded in ingest_runs)", feed.slug)
+            _alert_if_stalled(feed)
     finally:
         if owns:
             client.close()
