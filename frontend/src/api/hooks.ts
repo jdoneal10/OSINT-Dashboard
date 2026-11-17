@@ -66,6 +66,29 @@ export const useEventTimeseries = (params: Record<string, unknown>, enabled = tr
     enabled,
   })
 
+export const useAcledWeekly = (params: Record<string, unknown>, enabled = true) =>
+  useQuery({
+    queryKey: ['acled', 'weekly', params],
+    queryFn: ({ signal }) => api.acledWeekly(params, { signal }),
+    placeholderData: keepPreviousData,
+    enabled,
+  })
+
+export const useAcledWeeklyMeta = (enabled = true) =>
+  useQuery({
+    queryKey: ['acled', 'weekly', 'meta'],
+    queryFn: ({ signal }) => api.acledWeeklyMeta({ signal }),
+    enabled,
+  })
+
+export const useAcledWeeklyStates = (params: Record<string, unknown>, enabled = true) =>
+  useQuery({
+    queryKey: ['acled', 'weekly', 'states', params],
+    queryFn: ({ signal }) => api.acledWeeklyStates(params, { signal }),
+    placeholderData: keepPreviousData,
+    enabled,
+  })
+
 export const useActorSearch = (q: string) =>
   useQuery({
     queryKey: ['actors', q],

@@ -1,5 +1,8 @@
 import { toQuery } from '../lib/query'
 import type {
+  AcledStateTotals,
+  AcledWeeklyMeta,
+  AcledWeeklySeries,
   ActorSummary,
   Adjacency,
   AreaProps,
@@ -83,6 +86,11 @@ export const api = {
   event: (id: number, init?: RequestInit) => getJson<EventDetail>(`/events/${id}`, init),
   eventTimeseries: (params: Record<string, unknown>, init?: RequestInit) =>
     getJson<MonthCount[]>(`/events/timeseries${toQuery(params)}`, init),
+  acledWeekly: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<AcledWeeklySeries>(`/acled/weekly${toQuery(params)}`, init),
+  acledWeeklyMeta: (init?: RequestInit) => getJson<AcledWeeklyMeta>('/acled/weekly/meta', init),
+  acledWeeklyStates: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<AcledStateTotals>(`/acled/weekly/states${toQuery(params)}`, init),
   actors: (params: Record<string, unknown>, init?: RequestInit) =>
     getJson<ActorSummary[]>(`/actors${toQuery(params)}`, init),
   borderMetrics: (params: Record<string, unknown>, init?: RequestInit) =>

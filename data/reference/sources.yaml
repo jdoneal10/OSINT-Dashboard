@@ -81,6 +81,25 @@ sources:
         url: https://www.gob.mx/sesnsp/acciones-y-programas/datos-abiertos-de-incidencia-delictiva
         accessed: 2026-11-11
 
+  - slug: acled-weekly
+    name: ACLED weekly aggregates (Latin America and the Caribbean)
+    source_type: dataset
+    # B: ACLED's own published counts from the same coding as the event data (see acled).
+    reliability: B
+    homepage_url: https://acleddata.com
+    terms_url: https://acleddata.com/eula
+    redistribution_allowed: false
+    license_notes: >-
+      ACLED's published weekly aggregate file, downloaded by the owner while signed in and
+      imported locally. Same terms as acled, with the owner's written consent (ADR 0006):
+      Claude processing allowed; professional non-profit display with ACLED attribution; no
+      raw redistribution. Joined with ACLED events into one weekly admin1 series (ADR 0011).
+    sources:
+      - title: ACLED End User License Agreement
+        publisher: ACLED
+        url: https://acleddata.com/eula
+        accessed: 2026-11-16
+
   - slug: natural-earth
     name: Natural Earth
     source_type: reference

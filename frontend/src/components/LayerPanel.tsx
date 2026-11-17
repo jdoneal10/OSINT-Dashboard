@@ -12,6 +12,8 @@ interface Props {
   children?: ReactNode
   /** Crime-type/month picker and legend, shown under the crime toggle when it is on. */
   crimeControls?: ReactNode
+  /** ACLED-by-state controls and legend, shown under its toggle when it is on. */
+  acledStateControls?: ReactNode
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -57,6 +59,7 @@ export default function LayerPanel({
   onToggle,
   children,
   crimeControls,
+  acledStateControls,
 }: Props) {
   const states = aoi?.features ?? []
   const poes = nodes?.features.filter((f) => f.properties.node_type === 'poe') ?? []
@@ -93,6 +96,13 @@ export default function LayerPanel({
           onChange={() => onToggle('crime')}
         />
         {visibility.crime && crimeControls}
+        <Toggle
+          label="ACLED by state (weekly)"
+          swatch="linear-gradient(90deg,#3b0764,#db2777,#fda4af)"
+          on={visibility.acledStates}
+          onChange={() => onToggle('acledStates')}
+        />
+        {visibility.acledStates && acledStateControls}
         <div className="text-ink-500 mt-2 flex gap-3 text-xs">
           <span>
             <span className="text-amber-500">■</span> Mexico

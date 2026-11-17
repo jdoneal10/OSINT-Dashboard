@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  useAcledWeeklyMeta,
+  useAcledWeeklyStates,
   useAoi,
   useCrime,
   useCrimeMeta,
@@ -9,6 +11,7 @@ import {
   useMunicipalities,
   useNodes,
 } from '../api/hooks'
+import AcledStateControls, { type AcledStateSelection } from '../components/map/AcledStateControls'
 import CrimeControls, { type CrimeSelection } from '../components/map/CrimeControls'
 import LayerPanel from '../components/LayerPanel'
 import AcledLegend from '../components/map/AcledLegend'
@@ -19,8 +22,10 @@ import OperationalMap, {
   type CrimeLayer,
   type EventMode,
   type LayerVisibility,
+  type StateLayer,
 } from '../components/map/OperationalMap'
 import { useDebounced } from '../hooks/useDebounced'
+import { addDays, joinStates, weekStart } from '../lib/acledWeekly'
 import { crimeWindow, joinValues, quantileBreaks } from '../lib/choropleth'
 import {
   describeFilters,
@@ -45,6 +50,7 @@ export default function MapPage() {
     poe: true,
     events: true,
     crime: false,
+    acledStates: false,
   })
   const [mode, setMode] = useState<EventMode>('heat')
   const [selected, setSelected] = useState<number | null>(null)
@@ -95,6 +101,33 @@ export default function MapPage() {
     }
   }, [municipalities.data, crime.data])
 
+  // ACLED by state: combined weekly series (ADR 0011).
+  const weeklyMeta = useAcledWeeklyMeta(visibility.acledStates).data
+  const lastWeek = weeklyMeta
+    ? weekStart(weeklyMeta.aggregate_last_week ?? weeklyMeta.horizon_week_end ?? '2025-01-04')
+    : null
+  const [stateSel, setStateSel] = useState<AcledStateSelection | null>(null)
+  const stateActive: AcledStateSelection | null =
+    stateSel ?? (lastWeek ? { eventType: '', week: lastWeek, span: 13 } : null)
+  const stateEnd = stateActive ? weekStart(stateActive.week) : null
+  const stateStart = stateActive && stateEnd ? addDays(stateEnd, -7 * (stateActive.span - 1)) : null
+  const stateTotals = useAcledWeeklyStates(
+    {
+      start: stateStart ?? undefined,
+      end: stateEnd ?? undefined,
+      event_type: stateActive?.eventType || undefined,
+    },
+    visibility.acledStates && stateStart !== null,
+  )
+  const stateLayer: StateLayer | undefined = useMemo(() => {
+    if (!aoi.data || !stateTotals.data) return undefined
+    return {
+      data: joinStates(aoi.data, stateTotals.data),
+      breaks: quantileBreaks(stateTotals.data.items.map((i) => i.events)),
+      label: 'ACLED events by state',
+    }
+  }, [aoi.data, stateTotals.data])
+
   useEffect(() => {
     let live = true
     basemapAvailable().then((ok) => live && setBasemap(ok))
@@ -140,6 +173,23 @@ export default function MapPage() {
             </p>
           )
         }
+        acledStateControls={
+          weeklyMeta && stateActive && stateStart && stateEnd ? (
+            <AcledStateControls
+              meta={weeklyMeta}
+              value={stateActive}
+              onChange={setStateSel}
+              breaks={stateLayer?.breaks ?? []}
+              period={`Weeks of ${stateStart} to ${stateEnd} (to ${addDays(stateEnd, 6)})`}
+              origins={stateTotals.data?.origins ?? []}
+              states={stateTotals.data?.items.filter((i) => i.events > 0).length ?? null}
+              loading={stateTotals.isFetching}
+              error={stateTotals.error?.message ?? null}
+            />
+          ) : (
+            <p className="text-ink-500 pl-6 text-xs">Loading ACLED series…</p>
+          )
+        }
       >
         {noEvents ? (
           <p className="text-ink-500 text-xs leading-relaxed">
@@ -166,6 +216,7 @@ export default function MapPage() {
             nodes={nodes.data}
             events={points.data}
             crime={visibility.crime ? crimeLayer : undefined}
+            acledStates={visibility.acledStates ? stateLayer : undefined}
             eventMode={mode}
             basemap={basemap}
             visibility={visibility}

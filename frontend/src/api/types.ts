@@ -122,6 +122,39 @@ export interface EventTypeCount {
   events: number
 }
 
+/** Combined weekly ACLED series (ADR 0011): events up to the horizon, aggregates after. */
+export type AcledOrigin = 'events' | 'aggregate'
+
+export interface AcledWeeklyMeta {
+  events_through: string | null
+  horizon_week_end: string | null
+  aggregate_snapshot: string | null
+  aggregate_first_week: string | null
+  aggregate_last_week: string | null
+  events_accessed: string | null
+  aggregate_accessed: string | null
+}
+
+export interface AcledWeekPoint {
+  week: string
+  events: number
+  fatalities: number
+  origin: AcledOrigin
+}
+
+export interface AcledWeeklySeries {
+  meta: AcledWeeklyMeta
+  points: AcledWeekPoint[]
+}
+
+export interface AcledStateTotals {
+  meta: AcledWeeklyMeta
+  start: string | null
+  end: string | null
+  origins: AcledOrigin[]
+  items: { admin1_code: string; events: number; fatalities: number }[]
+}
+
 export interface MonthCount {
   month: string
   admin1_code: string | null

@@ -18,6 +18,7 @@ export interface LayerVisibility {
   poe: boolean
   events: boolean
   crime: boolean
+  acledStates: boolean
 }
 
 /** SESNSP municipal choropleth: polygons with value ``v`` and class breaks. */
@@ -27,6 +28,9 @@ export interface CrimeLayer {
   label: string
 }
 
+/** ACLED-by-state choropleth (combined weekly series, ADR 0011): states with value ``v``. */
+export type StateLayer = CrimeLayer
+
 export type EventMode = 'heat' | 'points'
 
 interface Props {
@@ -34,6 +38,7 @@ interface Props {
   nodes?: ReferenceCollection<NodeProps>
   events?: EventPoints
   crime?: CrimeLayer
+  acledStates?: StateLayer
   eventMode: EventMode
   basemap: boolean
   visibility: LayerVisibility
@@ -193,8 +198,42 @@ function addCrimeLayers(map: maplibregl.Map) {
   })
 }
 
+function addAcledStateLayers(map: maplibregl.Map) {
+  map.addSource('acled-states', {
+    type: 'geojson',
+    data: EMPTY,
+    attribution: 'Violence: ACLED (acleddata.com); boundaries: Natural Earth',
+  })
+  map.addLayer({
+    id: 'acled-states-fill',
+    type: 'fill',
+    source: 'acled-states',
+    filter: ['>', ['get', 'v'], 0],
+    paint: { 'fill-color': CHOROPLETH_COLORS[0], 'fill-opacity': 0.55 },
+  })
+  map.addLayer({
+    id: 'acled-states-line',
+    type: 'line',
+    source: 'acled-states',
+    paint: { 'line-color': '#0b0f14', 'line-width': 0.6, 'line-opacity': 0.7 },
+  })
+  const popup = new maplibregl.Popup({ closeButton: false, className: 'osint-popup' })
+  map.on('click', 'acled-states-fill', (e) => {
+    const above = map.queryRenderedFeatures(e.point, { layers: ['events-points', 'poe-hit'] })
+    const f = e.features?.[0]
+    if (!f || above.length) return
+    const el = document.createElement('div')
+    el.className = 'text-xs'
+    el.innerHTML = '<strong></strong><div></div>'
+    el.children[0].textContent = String(f.properties?.name ?? f.properties?.code)
+    el.children[1].textContent = `${Number(f.properties?.v).toLocaleString()} ACLED events`
+    popup.setLngLat(e.lngLat).setDOMContent(el).addTo(map)
+  })
+}
+
 function addOverlays(map: maplibregl.Map) {
   addCrimeLayers(map)
+  addAcledStateLayers(map)
   map.addSource('aoi', { type: 'geojson', data: EMPTY, attribution: 'Boundaries: Natural Earth' })
   map.addSource('poe', { type: 'geojson', data: EMPTY, attribution: 'Ports: BTS / CBP' })
 
@@ -296,6 +335,7 @@ export default function OperationalMap({
   nodes,
   events,
   crime,
+  acledStates,
   eventMode,
   basemap,
   visibility,
@@ -373,6 +413,7 @@ export default function OperationalMap({
     set(['events-heat'], visibility.events && eventMode === 'heat')
     set(['events-points'], visibility.events && eventMode === 'points')
     set(['crime-fill', 'crime-line'], visibility.crime)
+    set(['acled-states-fill', 'acled-states-line'], visibility.acledStates)
   }, [ready, visibility, eventMode])
 
   useEffect(() => {
@@ -389,6 +430,13 @@ export default function OperationalMap({
     ;(map.getSource('crime') as GeoJSONSource).setData(crime?.data ?? EMPTY)
     map.setPaintProperty('crime-fill', 'fill-color', crimeColor(crime?.breaks ?? []))
   }, [ready, crime])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
+    ;(map.getSource('acled-states') as GeoJSONSource).setData(acledStates?.data ?? EMPTY)
+    map.setPaintProperty('acled-states-fill', 'fill-color', crimeColor(acledStates?.breaks ?? []))
+  }, [ready, acledStates])
 
   return (
     <div ref={container} className="h-full w-full" aria-label="Operational map" role="region" />

@@ -655,6 +655,44 @@ class LLMQuarantine(TimestampMixin, Base):
     resolved: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class AcledWeekly(TimestampMixin, Base):
+    """ACLED's published weekly aggregates: week x admin1 x sub-event type (ADR 0011).
+
+    ``week`` is the Saturday that starts ACLED's Saturday-to-Friday week. Each imported file
+    is a snapshot; the combined series (app.analytics.acled_series) reads the newest one.
+    """
+
+    __tablename__ = "acled_weekly"
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_date",
+            "week",
+            "admin1_code",
+            "event_type",
+            "sub_event_type",
+            name="uq_acled_weekly_snapshot",
+        ),
+        Index("ix_acled_weekly_week", "week"),
+        Index("ix_acled_weekly_admin1", "admin1_code"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    retrieved_at: Mapped[dt.datetime]
+    snapshot_date: Mapped[dt.date] = mapped_column(Date)
+    week: Mapped[dt.date] = mapped_column(Date)
+    country_iso3: Mapped[str] = mapped_column(String(3))
+    admin1_code: Mapped[str] = mapped_column(String(16))
+    admin1_name: Mapped[str] = mapped_column(String(128))
+    event_type: Mapped[str] = mapped_column(String(64))
+    sub_event_type: Mapped[str] = mapped_column(String(128))
+    disorder_type: Mapped[str | None] = mapped_column(String(64))
+    events: Mapped[int] = mapped_column(Integer)
+    fatalities: Mapped[int] = mapped_column(Integer)
+    population_exposure: Mapped[int | None] = mapped_column(Integer)
+
+
 class CrimeIncidence(TimestampMixin, Base):
     """SESNSP municipal crime incidence. Methodology 2015-2025 and 2026+ are not comparable."""
 

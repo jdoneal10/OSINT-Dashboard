@@ -11,6 +11,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from app import __version__
 from app.api import (
+    acled_weekly,
     actors,
     border,
     clusters,
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(reference.router)
     app.include_router(events.router)
+    app.include_router(acled_weekly.router)
     app.include_router(border.router)
     app.include_router(actors.router)
     for module in (documents, clusters, designations, crime, llm, labels):

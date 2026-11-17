@@ -5,6 +5,7 @@ make ingest SOURCE=cbp ALL=1                # every robots-allowed CBP series
 make ingest SOURCE=cbp FILE=data/raw/cbp/manual/nationwide-drugs-fy20-fy23.csv
 make ingest SOURCE=acled SINCE=2018-01-01   # ACLED backfill (incremental without SINCE)
 make ingest SOURCE=acled DELETED=1          # ACLED deleted-events reconciliation
+make ingest SOURCE=acled-weekly FILE=...    # ACLED weekly aggregate workbook (ADR 0011)
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.ingest import acled, cbp, designations, news, sesnsp
+from app.ingest import acled, acled_weekly, cbp, designations, news, sesnsp
 
 
 def _cbp(args: argparse.Namespace) -> int:
@@ -46,9 +47,17 @@ def _sesnsp(args: argparse.Namespace) -> int:
     return sesnsp.run_file(Path(args.file), through=through, snapshot=args.snapshot_date)
 
 
+def _acled_weekly(args: argparse.Namespace) -> int:
+    if not args.file:
+        print("acled-weekly imports a downloaded workbook: pass FILE=...")
+        return 2
+    return acled_weekly.run_file(Path(args.file), snapshot=args.snapshot_date)
+
+
 INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "cbp": _cbp,
     "acled": _acled,
+    "acled-weekly": _acled_weekly,
     "news": _news,
     "designations": lambda _args: designations.run_designations(),
     "sesnsp": _sesnsp,
@@ -59,8 +68,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.ingest")
     parser.add_argument("source", nargs="?", help="source slug: " + ", ".join(INGESTERS))
     parser.add_argument("--since", type=dt.date.fromisoformat, help="YYYY-MM-DD (backfill start)")
-    parser.add_argument("--file", help="import a manually downloaded file (cbp)")
-    parser.add_argument("--snapshot-date", type=dt.date.fromisoformat, help="override (cbp --file)")
+    parser.add_argument(
+        "--file", help="import a manually downloaded file (cbp, sesnsp, acled-weekly)"
+    )
+    parser.add_argument(
+        "--snapshot-date",
+        type=dt.date.fromisoformat,
+        help="override (cbp, sesnsp, acled-weekly --file)",
+    )
     parser.add_argument("--all", action="store_true", help="every allowed file series (cbp)")
     parser.add_argument("--deleted", action="store_true", help="deleted-events pull (acled)")
     parser.add_argument("--feed", action="append", help="news feed slug (repeatable)")

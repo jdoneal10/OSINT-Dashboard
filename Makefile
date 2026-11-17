@@ -92,4 +92,4 @@ fmt: ## Auto-format backend and frontend
 
 ingest: ## Run one ingester: make ingest SOURCE=acled SINCE=2026-01-01 (see app/ingest/__main__.py)
 	$(BACKEND) $(UV) python -m app.ingest $(SOURCE) $(if $(SINCE),--since $(SINCE),) \
-		$(if $(FILE),--file "$(CURDIR)/$(FILE)",) $(if $(ALL),--all,) $(if $(DELETED),--deleted,) $(if $(REPROCESS),--reprocess,) $(if $(FEED),--feed $(FEED),)
+		$(if $(FILE),--file "$(if $(filter /%,$(FILE)),$(FILE),$(CURDIR)/$(FILE))",) $(if $(ALL),--all,) $(if $(DELETED),--deleted,) $(if $(REPROCESS),--reprocess,) $(if $(FEED),--feed $(FEED),)
