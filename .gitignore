@@ -38,3 +38,6 @@ frontend/coverage/
 .idea/
 .vscode/
 *.swp
+
+# local dev-stack logs (Terminal.app runs)
+logs/
