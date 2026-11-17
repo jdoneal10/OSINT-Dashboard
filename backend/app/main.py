@@ -14,6 +14,7 @@ from app.api import (
     acled_weekly,
     actors,
     border,
+    charts,
     clusters,
     crime,
     designations,
@@ -48,7 +49,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET", "PUT", "DELETE"],  # writes: /labels only
+        allow_methods=["GET", "POST", "PUT", "DELETE"],  # writes: /labels; POST: /charts/render
         allow_headers=["*"],
     )
     app.include_router(health.router)
@@ -57,7 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(acled_weekly.router)
     app.include_router(border.router)
     app.include_router(actors.router)
-    for module in (documents, clusters, designations, crime, llm, labels):
+    for module in (documents, clusters, designations, crime, llm, labels, charts):
         app.include_router(module.router)
     return app
 

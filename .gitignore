@@ -41,3 +41,6 @@ frontend/coverage/
 
 # local dev-stack logs (Terminal.app runs)
 logs/
+
+# Rendered chart samples (notional data; regenerate with the charts demo)
+data/chart_samples/

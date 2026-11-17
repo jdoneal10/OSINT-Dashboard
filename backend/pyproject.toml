@@ -12,6 +12,7 @@ dependencies = [
     "geoalchemy2>=0.21.0",
     "httpx>=0.28.1",
     "keyring>=25.7.0",
+    "matplotlib>=3.11.2",
     "openpyxl>=3.1.5",
     "psycopg[binary]>=3.3.8",
     "pydantic>=2.14.3",
