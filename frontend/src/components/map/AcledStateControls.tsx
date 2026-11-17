@@ -1,6 +1,6 @@
 import type { AcledOrigin, AcledWeeklyMeta } from '../../api/types'
-import { ACLED_EVENT_TYPES } from '../../lib/acledWeekly'
-import { CHOROPLETH_COLORS, breakLabels } from '../../lib/choropleth'
+import { ACLED_EVENT_TYPES, ACLED_STATE_COLORS } from '../../lib/acledWeekly'
+import { breakLabels } from '../../lib/choropleth'
 
 export interface AcledStateSelection {
   eventType: string // '' = all types
@@ -80,7 +80,7 @@ export default function AcledStateControls({ meta, value, onChange, breaks, ...s
               <li key={label} className="flex items-center gap-2">
                 <span
                   className="h-2.5 w-4 rounded-sm"
-                  style={{ background: CHOROPLETH_COLORS[i] }}
+                  style={{ background: ACLED_STATE_COLORS[i] }}
                 />
                 <span className="text-ink-300 tabular-nums">{label} events</span>
               </li>

@@ -98,7 +98,7 @@ export default function LayerPanel({
         {visibility.crime && crimeControls}
         <Toggle
           label="ACLED by state (weekly)"
-          swatch="linear-gradient(90deg,#3b0764,#db2777,#fda4af)"
+          swatch="linear-gradient(90deg,#fecaca,#ef4444,#7f1d1d)"
           on={visibility.acledStates}
           onChange={() => onToggle('acledStates')}
         />

@@ -9,6 +9,7 @@ import type {
   NodeProps,
   ReferenceCollection,
 } from '../../api/types'
+import { ACLED_STATE_COLORS } from '../../lib/acledWeekly'
 import { CHOROPLETH_COLORS } from '../../lib/choropleth'
 import { EVENT_TYPE_COLORS, OTHER_EVENT_COLOR } from './eventColors'
 import { basemapStyle, fallbackStyle } from './basemap'
@@ -152,15 +153,10 @@ function addEventLayers(map: maplibregl.Map) {
   })
 }
 
-function crimeColor(breaks: number[]): ExpressionSpecification {
-  if (breaks.length < 2) return CHOROPLETH_COLORS[0] as unknown as ExpressionSpecification
-  const stops = breaks.slice(1).flatMap((b, i) => [b, CHOROPLETH_COLORS[i + 1]])
-  return [
-    'step',
-    ['get', 'v'],
-    CHOROPLETH_COLORS[0],
-    ...stops,
-  ] as unknown as ExpressionSpecification
+function crimeColor(breaks: number[], colors = CHOROPLETH_COLORS): ExpressionSpecification {
+  if (breaks.length < 2) return colors[0] as unknown as ExpressionSpecification
+  const stops = breaks.slice(1).flatMap((b, i) => [b, colors[i + 1]])
+  return ['step', ['get', 'v'], colors[0], ...stops] as unknown as ExpressionSpecification
 }
 
 function addCrimeLayers(map: maplibregl.Map) {
@@ -209,7 +205,7 @@ function addAcledStateLayers(map: maplibregl.Map) {
     type: 'fill',
     source: 'acled-states',
     filter: ['>', ['get', 'v'], 0],
-    paint: { 'fill-color': CHOROPLETH_COLORS[0], 'fill-opacity': 0.55 },
+    paint: { 'fill-color': ACLED_STATE_COLORS[0], 'fill-opacity': 0.7 },
   })
   map.addLayer({
     id: 'acled-states-line',
@@ -435,7 +431,11 @@ export default function OperationalMap({
     const map = mapRef.current
     if (!ready || !map) return
     ;(map.getSource('acled-states') as GeoJSONSource).setData(acledStates?.data ?? EMPTY)
-    map.setPaintProperty('acled-states-fill', 'fill-color', crimeColor(acledStates?.breaks ?? []))
+    map.setPaintProperty(
+      'acled-states-fill',
+      'fill-color',
+      crimeColor(acledStates?.breaks ?? [], ACLED_STATE_COLORS),
+    )
   }, [ready, acledStates])
 
   return (

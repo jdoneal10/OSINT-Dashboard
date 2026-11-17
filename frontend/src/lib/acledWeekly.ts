@@ -6,6 +6,9 @@ import type {
   ReferenceCollection,
 } from '../api/types'
 
+/** ACLED-by-state ramp: light red = fewer events, dark red = more (owner choice 2026-11-16). */
+export const ACLED_STATE_COLORS = ['#fecaca', '#fca5a5', '#ef4444', '#b91c1c', '#7f1d1d']
+
 export const ACLED_EVENT_TYPES = [
   'Battles',
   'Explosions/Remote violence',
