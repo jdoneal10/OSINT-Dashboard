@@ -51,6 +51,8 @@ IRs 4 and 5 form one supply chain (ports → labs → corridors → crossings) a
 | Pixtoday.net exports (events, organization profiles; precursor entities in Phase 4) | Geocoded cartel events incl. drone use; cited organization profiles | 8, 9, 1 | 3 | Owner exports and file import; owner-reported permission; low Admiralty for social-media-derived events (ADR 0010) |
 | Telegram public channels | — | — | — | Owner holds a written agreement from Telegram (ADR 0010, Amendment 1); collection method pending |
 | Marginalia Search API + GDELT taxonomy queries | Framework taxonomy over blogs, small sites and news | 8, 9 | 3 | Free non-commercial key; Mojeek is the paid fallback (ADR 0010) |
+| ACLED weekly aggregates (owner download) | Weekly event and fatality counts by admin1 and sub-event type, covering the event-level release lag | 1, 2, 3, 7 | 2 | Joined with ACLED events into one weekly series; ADR 0006 terms (ADR 0011) |
+| Strategic-competition sites (owner download; Pixtoday-compiled, cited) | Chinese, Russian and Iranian ports, logistics, drone retail and installations in MX/CA | 4, 8 | 4 | Context layer only; partner security sites dropped under rule 4 (ADR 0011) |
 | UN Comtrade | Monthly Mexico imports by HS code and partner (precursors; drones and mining hardware) | 4, 8, 9 | 4 | Free tier with registration |
 | DEA Special Surveillance List, INCB precursor tables, InSight Crime precursor research | Build the chemical watchlist and HS mapping | 4 | 4 | Reference only |
 | USCG / JIATF-South releases, Central American press | Maritime interdictions, CA seizures | 5 | 5 | Free |
@@ -158,6 +160,7 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 ### Phase 4 — Precursors and routes (~3 weeks)
 - `chemical_watchlist.yaml` with HS-code mapping (DEA SSL, INCB, InSight Crime)
 - Comtrade ingester; seizure extraction from SEMAR/FGR/ANAM/Guardia Nacional reporting
+- Strategic-competition context layer: ports, logistics and drone-supply sites joined to route and UxS views (ADR 0011)
 - Corridor graph (`nodes`/`edges`); route-shift detection on share-of-flow with change-point methods
 - Precursor panel and route view, with caveats shown in the UI
 
@@ -201,3 +204,4 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 | 7 | Hard rules revised: open-source (not only published) inputs; people linked to criminal activity may be recorded with safeguards; outbound calls by allowlist; paid data by ADR. Supersedes decisions 1 and 5 (ADR 0008) | 2026-11-13 |
 | 8 | UxS and electricity theft are top priority; Phase 3 becomes UxS, electricity theft and people; later phases shift by one (ADR 0009) | 2026-11-13 |
 | 9 | Phase 3 sources: Guardia Nacional, Defensa and SSPC bulletins; ~40 robots-cleared outlets in vetted batches; Pixtoday.net by owner export (permission covers Claude); Marginalia and GDELT for search; Telegram excluded by its public terms, then allowed under the owner's written agreement pending a collection method (ADR 0010, Amendment 1) | 2026-11-13 |
+| 10 | ACLED weekly aggregates (owner download) joined with historical ACLED events into one weekly admin1 series; Chinese, Russian and Iranian sites as a cited Phase 4 context layer, partner security sites dropped (ADR 0011) | 2026-11-16 |
