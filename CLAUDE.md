@@ -71,6 +71,7 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 - `make ingest SOURCE=designations` — OFAC SDN (regional programs) and Federal Register FTO/SDGT notices
 - `make ingest SOURCE=sesnsp FILE=path` — SESNSP municipal crime file (manual download; automated access is blocked)
 - `make ingest SOURCE=acled-weekly FILE=path` — ACLED weekly aggregate workbook (owner download); joined with ACLED events into one weekly series (ADR 0011)
+- `make ingest SOURCE=dataminr [FILE=path]` — Dataminr First Alert digests from `data/raw/dataminr/inbox/` (owner's Gmail connector drops them there; the worker also runs this every 30 min; ADR 0012)
 - `make reference-inegi` — one-time INEGI municipalities + local gazetteer (resumable, ~45 min)
 - `cd backend && uv run python -m app.core.secrets set ACLED_USERNAME` — store a secret in Keychain (owner runs this; never pass secrets on the command line)
 - `cd backend && uv run python -m app.enrich.actors --rebuild` — re-run actor normalization over all events
