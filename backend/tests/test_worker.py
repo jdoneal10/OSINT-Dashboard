@@ -17,7 +17,7 @@ def test_scheduler_registers_source_jobs() -> None:
     jobs = {j.id: j for j in scheduler.get_jobs()}
     assert set(jobs) == {
         "heartbeat", "acled-events", "acled-deleted", "cbp", "news-feeds", "news-gdelt",
-        "pipeline", "designations", "sesnsp-reminder",
+        "dataminr", "pipeline", "designations", "sesnsp-reminder",
     }  # fmt: skip
     assert "hour='11'" in str(jobs["acled-events"].trigger)
     assert "day_of_week='sun'" in str(jobs["acled-deleted"].trigger)

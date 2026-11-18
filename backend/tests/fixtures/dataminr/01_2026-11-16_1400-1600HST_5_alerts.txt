@@ -1,0 +1,108 @@
+[First Alert]
+
+Interval Digest
+5 total alerts
+
+Top Event Captions
+
+[https://cdn2.dataminr.com/email/icons/watchlist/topic-black.png] Southern Border | November 16, 14:00 - November 16, 16:00 (HST)
+
+•
+Laser strike reported against aircraft near the border crossing in Nogales, Sonora, Mexico: Reporter via X.
+
+•
+Armed men set fire to vehicles to block access roads in Culiacan, Sinaloa, Mexico: Local News Outlet Photo via Facebook.
+
+•
+Protest by teachers planned for November 17 at the state congress in Hermosillo, Mexico: Local Source via X.
+
+•
+Group claims leak of customer data from an unidentified Mexican utility: Blog via Public Telegram Board.
+
+•
+Fuel theft tap found on pipeline near Salamanca, Guanajuato, Mexico: Local News Outlet via Ejemplo Noticias.
+
+[https://cdn2.dataminr.com/email/icons/watchlist/topic-white.png]
+Southern Border
+5 new alerts | 1 Urgent, 4 Alert
+
+Alert
+
+03:53pm November 16, 2026 HST
+
+[https://cdn2.dataminr.com/email/location_pin_icon.png]
+
+Nogales, Sonora, Mexico
+
+Laser strike reported against aircraft near the border crossing in Nogales, Sonora, Mexico: Reporter via X.
+
+Original Public Post (03:52pm November 16, 2026 HST)
+
+A laser was aimed at an aircraft near the Nogales crossing tonight, according to
+
+Translated From SPANISH:
+
+Un láser fue apuntado contra una aeronave cerca del cruce de Nogales esta noche, según
+
+  Open in First Alert <https://redirect.dataminr.com/1/mobile/redirect?key=00000000&hash=SYNTHETICHASH1&guid=int-0-html-1&alertId=1000000001-1794880378000-3&view=alert&alertId=1000000001-1794880378000-3>
+  View on X <https://x.com/example_reporter/status/1000000000000000001>
+
+[https://cdn2.dataminr.com/email/alert-badge.png] Urgent
+
+03:41pm November 16, 2026 HST
+
+[https://cdn2.dataminr.com/email/location_pin_icon.png] Culiacán, Sinaloa, Mexico
+
+Armed men set fire to vehicles to block access roads in Culiacan, Sinaloa, Mexico: Local News Outlet Photo via Facebook.
+
+  Open in First Alert <https://redirect.dataminr.com/1/mobile/redirect?key=00000000&hash=SYNTHETICHASH2&guid=int-0-html-1&alertId=2000000002-1794879638812-1&view=alert&alertId=2000000002-1794879638812-1>
+  View on Facebook <https://www.facebook.com/story.php?story_fbid=1&id=2>
+
+Alert
+
+03:40pm November 16, 2026 HST
+
+[https://cdn2.dataminr.com/email/location_pin_icon.png]
+
+Hermosillo, Sonora, Mexico
+
+Protest by teachers planned for November 17 at the state congress in Hermosillo, Mexico: Local Source via X.
+
+  Open in First Alert <https://redirect.dataminr.com/1/mobile/redirect?key=00000000&hash=SYNTHETICHASH3&guid=int-0-html-1&alertId=3000000003-1794878926000-3&view=alert&alertId=3000000003-1794878926000-3>
+  View on X <https://x.com/example_source/status/1000000000000000003>
+
+Alert Update
+[https://cdn2.dataminr.com/email/ReGenAI%20sparkle_light%20mode.png]
+
+03:30pm November 16, 2026 HST
+
+[https://cdn2.dataminr.com/email/location_pin_icon.png]
+
+Mexico
+
+Group claims leak of customer data from an unidentified Mexican utility: Blog via Public Telegram Board.
+
+Excerpt From Public Telegram Board:
+
+Alleged leak of an unidentified utility. The group claims 10,000 customer records. Event Category: Data Breach
+
+[https://alertmedia.dataminr.com/Prod/cyber/image/2026/11/17/synthetic.png?Expires=1&Signature=SYNTHETIC&Key-Pair-Id=SYNTHETIC]
+
+[https://cdn2.dataminr.com/email/ReGenAI%20sparkle_light%20mode.png] View ReGenAI <https://redirect.dataminr.com/1/mobile/redirect?key=00000000&hash=SYNTHETICHASH4&guid=int-0-html-1&alertId=4000000004-1794880276366-1&view=alert&alertId=4000000004-1794880276366-1&src=view_regenai>
+  Open in First Alert <https://redirect.dataminr.com/1/mobile/redirect?key=00000000&hash=SYNTHETICHASH4&guid=int-0-html-1&alertId=4000000004-1794880276366-1&view=alert&alertId=4000000004-1794880276366-1>
+Open in First Alert to view link to original public source
+
+Alert
+
+02:13pm November 16, 2026 HST
+
+[https://cdn2.dataminr.com/email/location_pin_icon.png]
+
+Salamanca, Guanajuato, Mexico
+
+Fuel theft tap found on pipeline near Salamanca, Guanajuato, Mexico: Local News Outlet via Ejemplo Noticias.
+
+  Open in First Alert <https://redirect.dataminr.com/1/mobile/redirect?key=00000000&hash=SYNTHETICHASH5&guid=int-0-html-1&alertId=5000000005-1794867600000-3&view=alert&alertId=5000000005-1794867600000-3>
+  View on Ejemplo Noticias <https://noticias.example.com/local/toma-clandestina-salamanca.html?utm_source=dataminr>
+
+- - - - -

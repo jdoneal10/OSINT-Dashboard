@@ -37,7 +37,7 @@ from app.core.logging import configure_logging
 from app.db.models import Alert, CrimeIncidence, IngestRun
 from app.db.session import session_factory
 from app.enrich import pipeline
-from app.ingest import acled, cbp, designations, feeds, news
+from app.ingest import acled, cbp, dataminr, designations, feeds, news
 
 log = logging.getLogger("app.worker")
 
@@ -127,6 +127,9 @@ SCHEDULED_JOBS: list[tuple[str, Callable[[], object], CronTrigger]] = [
     ("cbp", cbp.run_remote, CronTrigger(hour=12, minute=0, timezone="UTC")),
     ("news-feeds", news_feeds, CronTrigger(minute=5, timezone="UTC")),
     ("news-gdelt", news_gdelt, CronTrigger(hour="*/6", minute=20, timezone="UTC")),
+    # Dataminr digests land in data/raw/dataminr/inbox/ from the owner's Gmail connector
+    # (every 6 h); checking every 30 min picks them up before the next pipeline pass.
+    ("dataminr", dataminr.run_inbox, CronTrigger(minute="5,35", timezone="UTC")),
     ("pipeline", run_pipeline, CronTrigger(minute="10,40", timezone="UTC")),
     ("designations", designations.run_designations, CronTrigger(hour=13, minute=0, timezone="UTC")),
     ("sesnsp-reminder", sesnsp_reminder, CronTrigger(day=26, hour=14, minute=0, timezone="UTC")),

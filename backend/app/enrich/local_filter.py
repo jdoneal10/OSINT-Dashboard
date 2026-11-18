@@ -10,6 +10,11 @@ lost. The model and threshold are chosen on the owner's labeled set (Step 6).
 
 Documents ingested before the filter existed, or whose text is empty, are handled too:
 empty -> ``skipped``.
+
+Critical-infrastructure rule (ADR 0012, owner decision): a document the model scores below
+the threshold is still kept (``relevant``) when it reports criminal or deliberate harm to
+critical infrastructure (see ``app.enrich.infrastructure``); its ``relevance_model`` then
+ends in ``+infra-v2``. The model's score is stored unchanged.
 """
 
 from __future__ import annotations
@@ -26,6 +31,8 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.models import Document, LLMQuarantine
 from app.db.session import session_factory
+from app.enrich.infrastructure import RULE_VERSION as INFRA_RULE
+from app.enrich.infrastructure import keep_for_infrastructure
 
 log = logging.getLogger(__name__)
 
@@ -123,7 +130,7 @@ def run_filter(limit: int = 500, local: LocalFilter | None = None) -> dict[str, 
     """Score up to ``limit`` new documents. Returns counts by outcome."""
     local = local or LocalFilter()
     threshold = Decimal(str(get_settings().relevance_threshold))
-    counts = {"relevant": 0, "filtered_out": 0, "skipped": 0, "error": 0}
+    counts = {"relevant": 0, "filtered_out": 0, "skipped": 0, "error": 0, "infra_kept": 0}
     with session_factory()() as session:
         ids = list(
             session.scalars(
@@ -161,6 +168,10 @@ def run_filter(limit: int = 500, local: LocalFilter | None = None) -> dict[str, 
             doc.relevance_score = score
             doc.relevance_model = f"{local.model}/{PROMPT_VERSION}"
             doc.pipeline_status = "relevant" if score >= threshold else "filtered_out"
+            if doc.pipeline_status == "filtered_out" and keep_for_infrastructure(text):
+                doc.pipeline_status = "relevant"
+                doc.relevance_model = f"{local.model}/{PROMPT_VERSION}+{INFRA_RULE}"[:64]
+                counts["infra_kept"] += 1
             counts[doc.pipeline_status] += 1
     log.info("local filter (%s): %s", local.model, counts)
     return counts

@@ -73,7 +73,7 @@ def _gist(table: str, column: str) -> Index:
 # --------------------------------------------------------------------------- sources
 
 
-SOURCE_TYPES = ("api", "dataset", "rss", "web", "reference")
+SOURCE_TYPES = ("api", "dataset", "rss", "web", "reference", "email")
 
 
 class Source(TimestampMixin, Base):

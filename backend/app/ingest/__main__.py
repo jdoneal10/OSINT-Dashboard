@@ -6,6 +6,8 @@ make ingest SOURCE=cbp FILE=data/raw/cbp/manual/nationwide-drugs-fy20-fy23.csv
 make ingest SOURCE=acled SINCE=2018-01-01   # ACLED backfill (incremental without SINCE)
 make ingest SOURCE=acled DELETED=1          # ACLED deleted-events reconciliation
 make ingest SOURCE=acled-weekly FILE=...    # ACLED weekly aggregate workbook (ADR 0011)
+make ingest SOURCE=dataminr                 # First Alert digests in data/raw/dataminr/inbox/
+make ingest SOURCE=dataminr FILE=...        # one digest .txt from elsewhere (left in place)
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.ingest import acled, acled_weekly, cbp, designations, news, sesnsp
+from app.ingest import acled, acled_weekly, cbp, dataminr, designations, news, sesnsp
 
 
 def _cbp(args: argparse.Namespace) -> int:
@@ -54,10 +56,15 @@ def _acled_weekly(args: argparse.Namespace) -> int:
     return acled_weekly.run_file(Path(args.file), snapshot=args.snapshot_date)
 
 
+def _dataminr(args: argparse.Namespace) -> int:
+    return dataminr.run_inbox([Path(args.file)] if args.file else None)
+
+
 INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "cbp": _cbp,
     "acled": _acled,
     "acled-weekly": _acled_weekly,
+    "dataminr": _dataminr,
     "news": _news,
     "designations": lambda _args: designations.run_designations(),
     "sesnsp": _sesnsp,
@@ -69,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("source", nargs="?", help="source slug: " + ", ".join(INGESTERS))
     parser.add_argument("--since", type=dt.date.fromisoformat, help="YYYY-MM-DD (backfill start)")
     parser.add_argument(
-        "--file", help="import a manually downloaded file (cbp, sesnsp, acled-weekly)"
+        "--file", help="import a manually downloaded file (cbp, sesnsp, acled-weekly, dataminr)"
     )
     parser.add_argument(
         "--snapshot-date",

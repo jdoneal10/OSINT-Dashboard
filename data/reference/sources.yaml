@@ -100,6 +100,30 @@ sources:
         url: https://acleddata.com/eula
         accessed: 2026-11-16
 
+  - slug: dataminr
+    name: Dataminr First Alert — interval digests (Southern Border watchlist)
+    source_type: email
+    # D: an aggregator of mostly unverified social-media and local posts; single alerts stay
+    # low until press or official reporting corroborates them (ADR 0012).
+    reliability: D
+    homepage_url: https://www.dataminr.com/products/first-alert
+    terms_url: https://www.dataminr.com/legal/firstalert-tos
+    redistribution_allowed: false
+    license_notes: >-
+      Owner's personal First Alert licence. Dataminr's written permission (2026-11-17) covers
+      all First Alert data in this dashboard, Claude processing and indefinite retention.
+      Digests arrive by email; the owner's Gmail connector saves them to
+      data/raw/dataminr/inbox/ (no API, no outbound call). X content: no monitoring of
+      protests or rallies (First Alert third-party notice); such alerts are dropped at ingest.
+    sources:
+      - title: First Alert third-party terms notice
+        publisher: Dataminr
+        url: https://www.dataminr.com/legal/firstalert-tos
+        accessed: 2026-11-16
+        note: >-
+          Use in this dashboard rests on the owner's written permission from Dataminr
+          (2026-11-17), held by the owner and recorded in ADR 0012.
+
   - slug: natural-earth
     name: Natural Earth
     source_type: reference
