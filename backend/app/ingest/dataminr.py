@@ -15,7 +15,7 @@ Rules applied here (ADR 0012):
 - X-sourced alerts about protests, rallies, marches, strikes or sit-ins are dropped (First
   Alert third-party notice). Blockades are kept: cartel blockades are threat activity.
 - First Alert redirect links (they carry an account key) and alert images are never stored.
-- A missing 2-hour digest window between received digests raises a ``feed_gap`` alert; no
+- A missing digest window between received digests raises a ``feed_gap`` alert; no
   new digest for ``STALL_HOURS`` raises ``feed_stalled``.
 """
 
@@ -47,7 +47,10 @@ log = logging.getLogger(__name__)
 
 SOURCE = "dataminr"
 JOB = "dataminr"
-STALL_HOURS = 12  # the connector delivers every 6 h; two missed deliveries raise an alert
+# Digests cover 12-hour windows (00:00-12:00 and 12:00-24:00 HST) and the owner's connector
+# saves them at 00:45 and 12:45 HST, so a healthy feed is at most ~13 h behind. 15 h flags one
+# missed delivery about two hours late without firing just before each on-time delivery.
+STALL_HOURS = 15
 GAP_LOOKBACK_DAYS = 14
 
 # Time-zone abbreviations First Alert may print, mapped to IANA zones.

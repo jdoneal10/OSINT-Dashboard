@@ -167,7 +167,10 @@ def test_explicit_file_is_left_in_place(seeded: Session, tmp_path: Path) -> None
 def test_stalled_digests_raise_one_alert(seeded: Session, raw_dir: Path) -> None:
     _inbox(raw_dir, SECOND)
     dataminr.run_inbox()  # may itself raise the alert, depending on today's clock
-    late = dt.datetime(2026, 11, 17, 6, tzinfo=UTC) + dt.timedelta(hours=dataminr.STALL_HOURS)
+    newest = dt.datetime(2026, 11, 17, 6, tzinfo=UTC)
+    # Twice-daily delivery: the next file lands ~12 h 45 min after a window ends; no alert yet.
+    assert dataminr._check_stalled(now=newest + dt.timedelta(hours=12, minutes=50)) is False
+    late = newest + dt.timedelta(hours=dataminr.STALL_HOURS)
     dataminr._check_stalled(now=late)
     dataminr._check_stalled(now=late + dt.timedelta(hours=1))
     stalled = seeded.scalars(select(Alert).where(Alert.rule == "feed_stalled")).all()
