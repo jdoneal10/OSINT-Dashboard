@@ -34,11 +34,13 @@ from app.db.models import (
     seizure_documents,
 )
 from app.db.session import get_session
+from app.enrich.extract import PROMPT_VERSION as EXTRACT_VERSION
 
 router = APIRouter(prefix="/labels", tags=["labels"])
 DB = Annotated[Session, Depends(get_session)]
 
 QUEUE_STATUSES = ("extracted", "filtered_out")
+RECORD_TABLES = ("events", "seizures")
 
 
 class LabelIn(BaseModel):
@@ -127,6 +129,7 @@ class QueueItem(BaseModel):
     n_labeled_records: int
     relevance_labeled: bool
     done: bool
+    top_up: bool = False
 
 
 class LabelQueue(BaseModel):
@@ -139,6 +142,58 @@ def _stable_rank(doc_id: int) -> str:
     return hashlib.sha256(f"label-sample:{doc_id}".encode()).hexdigest()
 
 
+Row = tuple[int, str, str, str | None]
+
+
+def _round_robin(rows: list[Row]) -> list[list[Row]]:
+    """Per-source queues in stable hash order, sources sorted by slug."""
+    strata: dict[str, list[Row]] = defaultdict(list)
+    for r in sorted(rows, key=lambda r: _stable_rank(r[0])):
+        strata[r[1]].append(r)
+    return [strata[k] for k in sorted(strata)]
+
+
+def _record_top_up(session: Session, rows: list[Row], picked: list[Row], target: int) -> list[Row]:
+    """Extracted documents with current-prompt records, appended after the base sample until
+    ``target`` documents with records are labeled or queued (the evaluation's sample gate).
+
+    Documents already labeled count toward the target, so labeling a top-up item never
+    changes which items are shown.
+    """
+    current: set[int] = set()
+    for model, link, col in (
+        (Event, event_documents, event_documents.c.event_id),
+        (Seizure, seizure_documents, seizure_documents.c.seizure_id),
+    ):
+        current.update(
+            session.scalars(
+                select(link.c.document_id)
+                .join(model, model.id == col)
+                .where(model.prompt_version == EXTRACT_VERSION)
+            )
+        )
+    covered = set(
+        session.scalars(
+            select(Label.document_id).where(
+                Label.target_table.in_(RECORD_TABLES), Label.prompt_version == EXTRACT_VERSION
+            )
+        )
+    )
+    in_sample = {p[0] for p in picked}
+    covered |= in_sample & current
+    queues = _round_robin(
+        [r for r in rows if r[2] == "extracted" and r[0] in current and r[0] not in in_sample]
+    )
+    extra: list[Row] = []
+    while len(covered) < target and any(queues):
+        for q in queues:
+            if q and len(covered) < target:
+                r = q.pop(0)
+                extra.append(r)
+                covered.add(r[0])
+    return extra
+
+
 @router.get("/queue", response_model=LabelQueue)
 def label_queue(
     session: DB,
@@ -146,35 +201,44 @@ def label_queue(
     filtered_share: Annotated[
         float, Query(ge=0, le=1, description="share of filtered-out documents (filter recall)")
     ] = 0.2,
+    record_documents: Annotated[
+        int, Query(ge=0, le=500, description="top up until this many documents have records")
+    ] = 0,
 ) -> LabelQueue:
     """Deterministic stratified sample: round-robin across sources within each status.
 
     The same documents come back on every call (stable hash order), so progress persists;
-    new documents only enter while the sample is not yet full.
+    new documents only enter while the sample is not yet full. With ``record_documents``,
+    documents that have extracted records are appended (``top_up``) until that many documents
+    with records are labeled or queued, because documents with no records add nothing to
+    record precision.
     """
-    rows = session.execute(
-        select(Document.id, Source.slug, Document.pipeline_status, Document.title)
-        .join(Source, Source.id == Document.source_id)
-        .where(
-            Document.pipeline_status.in_(QUEUE_STATUSES),
-            Document.duplicate_of_id.is_(None),
-            Document.relevance_score.is_not(None),
+    rows: list[Row] = [
+        (r[0], r[1], r[2], r[3])
+        for r in session.execute(
+            select(Document.id, Source.slug, Document.pipeline_status, Document.title)
+            .join(Source, Source.id == Document.source_id)
+            .where(
+                Document.pipeline_status.in_(QUEUE_STATUSES),
+                Document.duplicate_of_id.is_(None),
+                Document.relevance_score.is_not(None),
+            )
         )
-    ).all()
+    ]
     quota = {"filtered_out": round(size * filtered_share)}
     quota["extracted"] = size - quota["filtered_out"]
-    picked: list[tuple[int, str, str, str | None]] = []
+    picked: list[Row] = []
     for status in QUEUE_STATUSES:
-        strata: dict[str, list[tuple[int, str, str, str | None]]] = defaultdict(list)
-        for r in sorted((r for r in rows if r[2] == status), key=lambda r: _stable_rank(r[0])):
-            strata[r[1]].append(tuple(r))  # type: ignore[arg-type]
-        queues = [strata[k] for k in sorted(strata)]
+        queues = _round_robin([r for r in rows if r[2] == status])
         taken = 0
         while taken < quota[status] and any(queues):
             for q in queues:
                 if q and taken < quota[status]:
                     picked.append(q.pop(0))
                     taken += 1
+    n_base = len(picked)
+    if record_documents:
+        picked += _record_top_up(session, rows, picked, record_documents)
     ids = [p[0] for p in picked]
     records: dict[int, set[tuple[str, int]]] = defaultdict(set)
     for doc_id, ev_id in session.execute(
@@ -201,7 +265,7 @@ def label_queue(
         else:
             labeled[doc_id].add((table, target))
     items = []
-    for doc_id, slug, status, title in picked:
+    for n, (doc_id, slug, status, title) in enumerate(picked):
         n_labeled = len(records[doc_id] & labeled[doc_id])
         items.append(
             QueueItem(
@@ -213,6 +277,7 @@ def label_queue(
                 n_labeled_records=n_labeled,
                 relevance_labeled=doc_id in relevance,
                 done=doc_id in relevance and n_labeled == len(records[doc_id]),
+                top_up=n >= n_base,
             )
         )
     return LabelQueue(size=len(items), done=sum(i.done for i in items), items=items)

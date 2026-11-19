@@ -179,10 +179,11 @@ export const useLLMUsage = () =>
     retry: false,
   })
 
-export const useLabelQueue = (size = 100) =>
+export const useLabelQueue = (size = 100, recordDocuments = 0) =>
   useQuery({
-    queryKey: ['labels', 'queue', size],
-    queryFn: ({ signal }) => api.labelQueue({ size }, { signal }),
+    queryKey: ['labels', 'queue', size, recordDocuments],
+    queryFn: ({ signal }) =>
+      api.labelQueue({ size, record_documents: recordDocuments || undefined }, { signal }),
   })
 
 /** Save (create or replace) or delete a label; refreshes the document and the queue. */

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api import labels
 from app.db.models import (
     CrimeIncidence,
     Designation,
@@ -323,6 +324,32 @@ def test_label_queue_is_stratified_and_tracks_progress(
     item = next(i for i in q["items"] if i["document_id"] == doc)
     assert (item["relevance_labeled"], item["n_records"], item["done"]) == (True, 0, True)
     assert q["done"] == 1
+
+
+def test_label_queue_tops_up_documents_with_records(
+    client: TestClient, news: dict[str, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(labels, "EXTRACT_VERSION", "extract-v1")  # the fixture's records
+    params = {"size": 1, "filtered_share": 1, "record_documents": 2}
+    q = client.get("/labels/queue", params=params).json()
+    base, *top = q["items"]
+    assert (base["document_id"], base["top_up"]) == (news["doc_filtered"], False)
+    with_records = {news["doc_in"], news["doc_corr"], news["doc_out"]}
+    assert len(top) == 2
+    assert all(i["top_up"] and i["n_records"] for i in top)
+    assert {i["document_id"] for i in top} <= with_records
+    # Labeling a top-up record keeps the same items (labeled documents count toward the target).
+    doc = top[0]["document_id"]
+    rec = next(r for r in ("ev_in", "ev_corr", "ev_out") if news["doc" + r[2:]] == doc)
+    client.put("/labels", json={"document_id": doc, "target_table": "events",
+                                "target_id": news[rec], "verdict": "correct"})  # fmt: skip
+    again = client.get("/labels/queue", params=params).json()
+    assert [i["document_id"] for i in again["items"]] == [base["document_id"]] + [
+        i["document_id"] for i in top
+    ]
+    everything = client.get("/labels/queue", params=params | {"record_documents": 10}).json()
+    assert {i["document_id"] for i in everything["items"][1:]} == with_records
+    assert client.get("/labels/queue", params={"size": 1, "filtered_share": 1}).json()["size"] == 1
 
 
 # --------------------------------------------------------------------------- reference

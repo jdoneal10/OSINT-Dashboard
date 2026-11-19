@@ -8,6 +8,8 @@ import Panel from '../components/news/Panel'
 import { EventsTable, SeizuresTable } from '../components/news/RecordTables'
 
 const SAMPLE_SIZE = 100
+/** The evaluation's gate: documents with labeled records (docs/evaluations). */
+const RECORD_DOCUMENTS = 100
 
 function recordLabel(doc: DocumentDetail, table: LabelTarget, id: number): LabelRecord | undefined {
   return doc.labels.find(
@@ -131,7 +133,7 @@ function Workbench({ doc }: { doc: DocumentDetail }) {
 export default function LabelingPage() {
   const params = useParams()
   const navigate = useNavigate()
-  const queue = useLabelQueue(SAMPLE_SIZE)
+  const queue = useLabelQueue(SAMPLE_SIZE, RECORD_DOCUMENTS)
   const items = queue.data?.items ?? []
   const fromUrl = params.id ? Number(params.id) : null
   const currentId = fromUrl ?? items.find((i) => !i.done)?.document_id ?? null
@@ -154,13 +156,15 @@ export default function LabelingPage() {
               <div className="bg-ink-700 h-1.5 overflow-hidden rounded">
                 <div
                   className="h-full bg-sky-500"
-                  style={{ width: `${(queue.data.done / Math.max(SAMPLE_SIZE, 1)) * 100}%` }}
+                  style={{ width: `${(queue.data.done / Math.max(queue.data.size, 1)) * 100}%` }}
                 />
               </div>
               <p className="text-ink-500 text-xs">
                 {queue.data.done} of {queue.data.size} documents done
                 {queue.data.size < SAMPLE_SIZE &&
                   ` (sample target ${SAMPLE_SIZE}; more as feeds run)`}
+                {items.some((i) => i.top_up) &&
+                  ` (incl. a top-up so ${RECORD_DOCUMENTS} documents have records)`}
               </p>
             </>
           )}
@@ -168,6 +172,11 @@ export default function LabelingPage() {
         <ol className="flex-1 overflow-y-auto py-1 text-xs">
           {items.map((i, n) => (
             <li key={i.document_id}>
+              {i.top_up && !items[n - 1]?.top_up && (
+                <p className="text-ink-500 border-ink-700 mt-1 border-t px-4 pt-2 pb-1 text-[11px] tracking-wide uppercase">
+                  Top-up: documents with records
+                </p>
+              )}
               <Link
                 to={`/labeling/${i.document_id}`}
                 className={`flex items-start gap-2 px-4 py-1.5 ${

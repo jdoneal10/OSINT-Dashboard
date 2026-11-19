@@ -423,6 +423,8 @@ export interface LabelQueueItem {
   n_labeled_records: number
   relevance_labeled: boolean
   done: boolean
+  /** Appended so enough documents with records get labeled (record_documents). */
+  top_up?: boolean
 }
 
 export interface LabelQueue {
