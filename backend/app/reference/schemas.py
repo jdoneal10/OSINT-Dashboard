@@ -160,7 +160,7 @@ class SourceEntry(BaseModel):
 
     slug: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
     name: str
-    source_type: Literal["api", "dataset", "rss", "web", "reference"]
+    source_type: Literal["api", "dataset", "rss", "web", "reference", "email"]
     reliability: Literal["A", "B", "C", "D", "E", "F"]
     homepage_url: HttpUrl | None = None
     terms_url: HttpUrl | None = None

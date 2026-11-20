@@ -37,6 +37,7 @@ class Base(DeclarativeBase):
         dict[str, Any]: JSONB,
         list[dict[str, Any]]: JSONB,
         list[str]: JSONB,
+        list[int]: JSONB,
         dt.datetime: DateTime(timezone=True),
     }
 

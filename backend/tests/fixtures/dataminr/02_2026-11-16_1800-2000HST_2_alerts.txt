@@ -1,0 +1,38 @@
+[First Alert]
+
+Interval Digest 2 total alerts
+
+        Top Event Captions
+
+[https://cdn2.dataminr.com/email/icons/watchlist/topic-black.png] Southern Border | November 16, 18:00 - November 16, 20:00 (HST)
+
+        • Fuel theft tap found on pipeline near Salamanca, Guanajuato, Mexico: Local News Outlet via Ejemplo Noticias.
+
+        • Two explosions heard in a rural area of Buena Vista, Nuevo Leon, Mexico: Local Source via Facebook.
+
+[https://cdn2.dataminr.com/email/icons/watchlist/topic-white.png] Southern Border
+2 new alerts | 0 Urgent, 2 Alert
+
+[https://cdn2.dataminr.com/email/alert-badge.png] Alert
+
+07:05pm November 16, 2026 HST
+
+[https://cdn2.dataminr.com/email/location_pin_icon.png] Salamanca, Guanajuato, Mexico
+
+Fuel theft tap found on pipeline near Salamanca, Guanajuato, Mexico: Local News Outlet via Ejemplo Noticias.
+
+Open in First Alert <https://redirect.dataminr.com/1/mobile/redirect?key=00000000&hash=SYNTHETICHASH5&guid=int-0-html-2&alertId=5000000005-1794867600000-3&view=alert&alertId=5000000005-1794867600000-3>
+  View on Ejemplo Noticias <https://noticias.example.com/local/toma-clandestina-salamanca.html>
+
+[https://cdn2.dataminr.com/email/alert-badge.png] Alert
+
+06:20pm November 16, 2026 HST
+
+[https://cdn2.dataminr.com/email/location_pin_icon.png] Buena Vista, Nuevo León, Mexico
+
+Two explosions heard in a rural area of Buena Vista, Nuevo Leon, Mexico: Local Source via Facebook.
+
+Open in First Alert <https://redirect.dataminr.com/1/mobile/redirect?key=00000000&hash=SYNTHETICHASH6&guid=int-0-html-2&alertId=6000000006-1794891858000-3&view=alert&alertId=6000000006-1794891858000-3>
+  View on Facebook <https://www.facebook.com/story.php?story_fbid=3&id=4>
+
+- - - - -

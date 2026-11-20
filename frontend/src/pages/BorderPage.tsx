@@ -1,15 +1,9 @@
 import { useMemo, useState } from 'react'
-import {
-  useAdjacency,
-  useAoi,
-  useBorderMetrics,
-  useEventTimeseries,
-  useEventsMeta,
-  useSeizures,
-} from '../api/hooks'
+import { useAdjacency, useAoi, useAcledWeekly, useBorderMetrics, useSeizures } from '../api/hooks'
 import type { MetricSeries } from '../api/types'
 import Chart, { type ChartOption } from '../components/charts/Chart'
-import { pivot, snapshotNote, violenceTotals, type Value } from '../lib/borderSeries'
+import { weeklyColumns } from '../lib/acledWeekly'
+import { pivot, snapshotNote, type Value } from '../lib/borderSeries'
 import { localDate } from '../lib/dates'
 import { firstDay, monthLabel, toMonth } from '../lib/months'
 
@@ -76,7 +70,6 @@ function Empty({ what }: { what: string }) {
 export default function BorderPage() {
   const adjacency = useAdjacency()
   const aoi = useAoi(1)
-  const meta = useEventsMeta()
   const [sectorSlug, setSectorSlug] = useState<string | null>(null)
   const [scope, setScope] = useState<SeizureScope>('sector')
 
@@ -109,10 +102,11 @@ export default function BorderPage() {
     { aor: seizureAors.filter(Boolean), start: firstDay(START) },
     enabled && seizureAors.every(Boolean),
   )
-  const violence = useEventTimeseries(
+  const violence = useAcledWeekly(
     { admin1: sector?.adjacent_admin1, start: firstDay(START) },
     enabled,
   )
+  const weekly = violence.data?.meta
 
   const encounterChart = useMemo(() => {
     const p = pivot(encounters.data?.series ?? [], RANGE)
@@ -123,14 +117,31 @@ export default function BorderPage() {
     return p.series.length ? stackedBars(p.months, p.series, 'lbs') : null
   }, [seizures.data])
   const violenceChart = useMemo((): ChartOption | null => {
-    const v = violenceTotals(violence.data ?? [], RANGE, meta.data?.max_date)
-    if (!v.events.some((x) => x !== null && x > 0)) return null
+    const data = violence.data
+    if (!data) return null
+    const v = weeklyColumns(data.points, firstDay(START), data.meta.horizon_week_end)
+    if (!v.events.some((x) => x > 0)) return null
+    const labels = v.weeks.map((w) => `wk ${w}`)
+    const aggregateBand =
+      v.firstAggregate >= 0
+        ? {
+            silent: true,
+            itemStyle: { color: 'rgba(56, 189, 248, 0.14)' },
+            label: { show: true, position: 'insideTop', fontSize: 10, color: '#94a3b8' },
+            data: [
+              [
+                { name: 'ACLED weekly aggregates', xAxis: v.firstAggregate },
+                { xAxis: labels.length - 1 },
+              ],
+            ],
+          }
+        : undefined
     return {
       grid: { left: 48, right: 48, top: 36, bottom: 48 },
       legend: { top: 0 },
       tooltip: { trigger: 'axis' },
       dataZoom: [{ type: 'slider', height: 14, bottom: 8 }],
-      xAxis: { type: 'category', data: v.months.map(monthLabel) },
+      xAxis: { type: 'category', data: labels },
       yAxis: [
         { type: 'value', name: 'events', nameTextStyle: { fontSize: 10 } },
         { type: 'value', name: 'fatalities', nameTextStyle: { fontSize: 10 } },
@@ -140,13 +151,13 @@ export default function BorderPage() {
           name: 'Events',
           type: 'bar',
           data: v.events,
-          barMaxWidth: 14,
+          barMaxWidth: 6,
           itemStyle: { color: '#f59e0b' },
+          markArea: aggregateBand,
         },
         {
           name: 'Fatalities',
           type: 'line',
-          connectNulls: false,
           yAxisIndex: 1,
           data: v.fatalities,
           symbol: 'none',
@@ -155,7 +166,7 @@ export default function BorderPage() {
         },
       ],
     }
-  }, [violence.data, meta.data?.max_date])
+  }, [violence.data])
 
   const cbp: MetricSeries | undefined = encounters.data ?? seizures.data?.weight
 
@@ -243,15 +254,27 @@ export default function BorderPage() {
 
         <Card
           title="Violence in adjacent Mexican states"
-          subtitle={`${stateNames.length ? stateNames.join(', ') : '…'}${
-            meta.data?.max_date
-              ? ` · ACLED events available through ${meta.data.max_date} (licence-tier lag); later months left blank`
+          subtitle={`${stateNames.length ? stateNames.join(', ') : '…'} · weekly, Saturday to Friday${
+            weekly?.horizon_week_end
+              ? ` · ACLED events through the week ending ${weekly.horizon_week_end}`
+              : ''
+          }${
+            weekly?.aggregate_snapshot && weekly.aggregate_last_week
+              ? `; ACLED weekly aggregates (state totals, no individual events) through the week of ${weekly.aggregate_last_week}`
               : ''
           }`}
-          note={meta.data?.accessed ? `ACLED accessed ${localDate(meta.data.accessed)}` : null}
+          note={
+            weekly?.events_accessed
+              ? `ACLED accessed ${localDate(weekly.events_accessed)}${
+                  weekly.aggregate_accessed
+                    ? `; aggregates imported ${localDate(weekly.aggregate_accessed)}`
+                    : ''
+                }`
+              : null
+          }
         >
           {violenceChart ? (
-            <Chart option={violenceChart} label="ACLED events and fatalities by month" />
+            <Chart option={violenceChart} label="ACLED events and fatalities by week" />
           ) : (
             <Empty what="ACLED events" />
           )}
@@ -276,9 +299,10 @@ export default function BorderPage() {
             >
               acleddata.com
             </a>
-            {meta.data?.accessed && `, accessed ${localDate(meta.data.accessed)}`}. Filtered to{' '}
-            {stateNames.join(', ') || 'the adjacent states'}, all event types, aggregated to monthly
-            counts.
+            {weekly?.events_accessed && `, accessed ${localDate(weekly.events_accessed)}`}. Filtered
+            to {stateNames.join(', ') || 'the adjacent states'}, all event types, counted by ACLED
+            week. Weeks after the event-data horizon use ACLED&apos;s published weekly aggregates
+            {weekly?.aggregate_snapshot && ` (file of ${weekly.aggregate_snapshot})`}.
           </p>
           {sector?.method && <p>Adjacency method: {sector.method}</p>}
         </footer>

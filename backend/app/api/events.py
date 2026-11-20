@@ -1,4 +1,7 @@
-"""Event endpoints (ACLED-derived; internal use only, ADR 0003)."""
+"""Event endpoints: ACLED (internal use only, ADR 0003) and news-derived events (ADR 0004).
+
+News-derived events outside the AOI are hidden unless ``include_out_of_aoi=true``.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import Select, cast, func, select, tuple_
 from sqlalchemy.orm import Session
 
-from app.db.models import Actor, Event, Source, actor_events
+from app.db.models import BORDER_THREATS, Actor, Event, Source, actor_events, event_documents
 from app.db.session import get_session
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -27,6 +30,14 @@ class EventFilters(BaseModel):
     actor: list[int] | None = None
     admin1: list[str] | None = None
     bbox: tuple[float, float, float, float] | None = None
+    source: list[str] | None = None
+    include_out_of_aoi: bool = False
+    border_threat: list[str] | None = None
+
+
+def threat_clause(column: Any, threats: list[str]) -> Any:
+    """``any`` matches every border-threat category; otherwise the listed ones (ADR 0007)."""
+    return column.is_not(None) if "any" in threats else column.in_(threats)
 
 
 def event_filters(
@@ -36,6 +47,14 @@ def event_filters(
     actor: Annotated[list[int] | None, Query(description="actor ids; factions included")] = None,
     admin1: Annotated[list[str] | None, Query(description="e.g. MX-BCN")] = None,
     bbox: Annotated[str | None, Query(description="minLon,minLat,maxLon,maxLat")] = None,
+    source: Annotated[list[str] | None, Query(description="source slugs, e.g. acled, doj")] = None,
+    include_out_of_aoi: Annotated[
+        bool, Query(description="include news-derived events outside the AOI")
+    ] = False,
+    border_threat: Annotated[
+        list[str] | None,
+        Query(description=f"border-threat categories, or 'any' (ADR 0007): {BORDER_THREATS}"),
+    ] = None,
 ) -> EventFilters:
     box = None
     if bbox:
@@ -47,7 +66,15 @@ def event_filters(
             raise HTTPException(422, "bbox must be minLon,minLat,maxLon,maxLat")
         box = (parts[0], parts[1], parts[2], parts[3])
     return EventFilters(
-        start=start, end=end, event_type=event_type, actor=actor, admin1=admin1, bbox=box
+        start=start,
+        end=end,
+        event_type=event_type,
+        actor=actor,
+        admin1=admin1,
+        bbox=box,
+        source=source,
+        include_out_of_aoi=include_out_of_aoi,
+        border_threat=border_threat,
     )
 
 
@@ -70,6 +97,12 @@ def _with_descendants(session: Session, ids: list[int]) -> list[int]:
 
 
 def apply_filters[T: Any](stmt: Select[T], f: EventFilters, session: Session) -> Select[T]:
+    if not f.include_out_of_aoi:
+        stmt = stmt.where(Event.in_aoi.is_(True))
+    if f.source:
+        stmt = stmt.where(Event.source_id.in_(select(Source.id).where(Source.slug.in_(f.source))))
+    if f.border_threat:
+        stmt = stmt.where(threat_clause(Event.border_threat, f.border_threat))
     if f.start:
         stmt = stmt.where(Event.event_date >= f.start)
     if f.end:
@@ -90,7 +123,7 @@ def apply_filters[T: Any](stmt: Select[T], f: EventFilters, session: Session) ->
     return stmt
 
 
-def _actors_for(session: Session, event_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+def actors_for(session: Session, event_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
     out: dict[int, list[dict[str, Any]]] = {}
     if not event_ids:
         return out
@@ -110,6 +143,20 @@ def _actors_for(session: Session, event_ids: list[int]) -> dict[int, list[dict[s
         out.setdefault(event_id, []).append(
             {"id": actor_id, "name": name, "type": actor_type, "role": role}
         )
+    return out
+
+
+def documents_for(session: Session, event_ids: list[int]) -> dict[int, list[int]]:
+    out: dict[int, list[int]] = {}
+    if not event_ids:
+        return out
+    rows = session.execute(
+        select(event_documents.c.event_id, event_documents.c.document_id)
+        .where(event_documents.c.event_id.in_(event_ids))
+        .order_by(event_documents.c.document_id)
+    )
+    for event_id, document_id in rows:
+        out.setdefault(event_id, []).append(document_id)
     return out
 
 
@@ -133,7 +180,13 @@ class EventOut(BaseModel):
     admin2_name: str | None
     location_name: str | None
     description: str | None
+    credibility: int | None
+    cluster_id: int | None
+    in_aoi: bool
+    border_threat: str | None
+    evidence: str | None  # supporting quote from the source text (news-derived only)
     actors: list[dict[str, Any]]
+    document_ids: list[int]  # documents this event was derived from (empty for ACLED)
 
 
 class EventPage(BaseModel):
@@ -141,14 +194,16 @@ class EventPage(BaseModel):
     next_cursor: str | None
 
 
-def _event_select() -> Select[Any]:
+def event_select() -> Select[Any]:
     point = cast(Event.geom, Geometry)
     return select(Event, Source.slug, func.ST_X(point), func.ST_Y(point)).join(
         Source, Source.id == Event.source_id
     )
 
 
-def _to_out(row: Any, actors: dict[int, list[dict[str, Any]]]) -> EventOut:
+def event_out(
+    row: Any, actors: dict[int, list[dict[str, Any]]], docs: dict[int, list[int]]
+) -> EventOut:
     ev, slug, lon, lat = row
     return EventOut(
         id=ev.id,
@@ -170,7 +225,13 @@ def _to_out(row: Any, actors: dict[int, list[dict[str, Any]]]) -> EventOut:
         admin2_name=ev.admin2_name,
         location_name=ev.location_name,
         description=ev.description,
+        credibility=ev.credibility,
+        cluster_id=ev.cluster_id,
+        in_aoi=ev.in_aoi,
+        border_threat=ev.border_threat,
+        evidence=(ev.attributes or {}).get("evidence"),
         actors=actors.get(ev.id, []),
+        document_ids=docs.get(ev.id, []),
     )
 
 
@@ -182,7 +243,7 @@ def list_events(
     cursor: Annotated[str | None, Query(description="opaque; from next_cursor")] = None,
 ) -> EventPage:
     """Newest first, keyset-paginated, with full provenance and linked actors."""
-    stmt = apply_filters(_event_select(), filters, session)
+    stmt = apply_filters(event_select(), filters, session)
     if cursor:
         try:
             date_s, id_s = cursor.split("_", 1)
@@ -194,8 +255,9 @@ def list_events(
         stmt.order_by(Event.event_date.desc(), Event.id.desc()).limit(limit + 1)
     ).all()
     page = rows[:limit]
-    actors = _actors_for(session, [r[0].id for r in page])
-    items = [_to_out(r, actors) for r in page]
+    ids = [r[0].id for r in page]
+    actors, docs = actors_for(session, ids), documents_for(session, ids)
+    items = [event_out(r, actors, docs) for r in page]
     nxt = f"{page[-1][0].event_date}_{page[-1][0].id}" if len(rows) > limit else None
     return EventPage(items=items, next_cursor=nxt)
 
@@ -218,7 +280,7 @@ def event_types(session: DB) -> list[EventTypeCount]:
 @router.get("/geojson")
 def events_geojson(session: DB, filters: Filters) -> dict[str, Any]:
     """Compact points for the map. Properties: id, d (date), t (type), f (fatalities),
-    gp (geo precision), a (actor ids)."""
+    gp (geo precision), a (actor ids), bt (border-threat category or null)."""
     point = cast(Event.geom, Geometry)
     actor_ids = (
         select(func.array_agg(func.distinct(actor_events.c.actor_id)))
@@ -235,6 +297,7 @@ def events_geojson(session: DB, filters: Filters) -> dict[str, Any]:
         func.ST_X(point),
         func.ST_Y(point),
         actor_ids,
+        Event.border_threat,
     ).where(Event.geom.is_not(None))
     stmt = apply_filters(stmt, filters, session).order_by(Event.event_date).limit(MAX_POINTS + 1)
     rows = session.execute(stmt).all()
@@ -251,9 +314,10 @@ def events_geojson(session: DB, filters: Filters) -> dict[str, Any]:
                 "f": f or 0,
                 "gp": gp,
                 "a": a or [],
+                "bt": bt,
             },
         }
-        for eid, d, t, f, gp, x, y, a in rows[:MAX_POINTS]
+        for eid, d, t, f, gp, x, y, a, bt in rows[:MAX_POINTS]
     ]
     return {"type": "FeatureCollection", "features": features, "truncated": truncated}
 
@@ -317,7 +381,7 @@ def events_meta(session: DB) -> EventsMeta:
 
 @router.get("/{event_id}", response_model=EventOut)
 def get_event(event_id: int, session: DB) -> EventOut:
-    row = session.execute(_event_select().where(Event.id == event_id)).one_or_none()
+    row = session.execute(event_select().where(Event.id == event_id)).one_or_none()
     if row is None:
         raise HTTPException(404, "event not found")
-    return _to_out(row, _actors_for(session, [event_id]))
+    return event_out(row, actors_for(session, [event_id]), documents_for(session, [event_id]))

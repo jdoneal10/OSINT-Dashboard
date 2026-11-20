@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.logging import redact
@@ -27,6 +27,12 @@ class UnknownSourceError(LookupError):
     """The source slug is not in the ``sources`` table (run ``make seed``)."""
 
 
+class DeferredRun(Exception):  # noqa: N818 - a run outcome, not an error
+    """Raised inside ``ingest_run`` when upstream refuses for now but nothing is lost: the
+    next run's window covers this one (e.g. a GDELT 429 within the lookback). The run is
+    recorded as ``deferred`` and the exception is not re-raised."""
+
+
 def source_id(session: Session, slug: str) -> int:
     sid = session.scalar(select(Source.id).where(Source.slug == slug))
     if sid is None:
@@ -38,6 +44,7 @@ def source_id(session: Session, slug: str) -> int:
 class RunContext:
     id: int
     job: str
+    status: str = "running"
     inserted: int = 0
     updated: int = 0
     deleted: int = 0
@@ -54,6 +61,23 @@ def last_successful_params(job: str) -> dict[str, Any] | None:
             .limit(1)
         )
     return params
+
+
+def misses_since_success(job: str) -> int:
+    """Finished runs of ``job`` that were not ``ok``, since its last ``ok`` run."""
+    with session_factory()() as session:
+        last_ok = session.scalar(
+            select(IngestRun.finished_at)
+            .where(IngestRun.job == job, IngestRun.status == "ok")
+            .order_by(IngestRun.finished_at.desc())
+            .limit(1)
+        )
+        query = select(func.count()).where(
+            IngestRun.job == job, IngestRun.status.in_(("deferred", "error"))
+        )
+        if last_ok is not None:
+            query = query.where(IngestRun.finished_at > last_ok)
+        return session.scalar(query) or 0
 
 
 def file_already_ingested(job: str, sha256: str) -> bool:
@@ -86,6 +110,9 @@ def ingest_run(
     status, error = "ok", None
     try:
         yield ctx
+    except DeferredRun as exc:
+        status, error = "deferred", redact(str(exc))[:4000]
+        log.warning("job %s (run %d) deferred: %s", job, ctx.id, error)
     except BaseException as exc:
         status, error = "error", redact(f"{type(exc).__name__}: {exc}")[:4000]
         log.error("job %s (run %d) failed: %s", job, ctx.id, error)
@@ -101,6 +128,7 @@ def ingest_run(
             run.rows_deleted = ctx.deleted
             run.params = ctx.params
             run.raw_path = "\n".join(ctx.raw_paths) or None
+        ctx.status = status
         log.info(
             "job %s (run %d) %s: +%d ~%d -%d",
             job,

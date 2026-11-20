@@ -9,7 +9,7 @@ vi.mock('./map/OperationalMap', () => ({ default: () => <div data-testid="map" /
 
 describe('classification banner', () => {
   it('uses the exact required marking', () => {
-    expect(CLASSIFICATION_TEXT).toBe('UNCLASSIFIED — PUBLICLY AVAILABLE INFORMATION ONLY')
+    expect(CLASSIFICATION_TEXT).toBe('UNCLASSIFIED — OPEN-SOURCE INFORMATION ONLY')
   })
 
   it('renders at the top and bottom of the app', () => {

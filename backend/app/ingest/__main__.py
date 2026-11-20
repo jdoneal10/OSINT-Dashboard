@@ -5,6 +5,9 @@ make ingest SOURCE=cbp ALL=1                # every robots-allowed CBP series
 make ingest SOURCE=cbp FILE=data/raw/cbp/manual/nationwide-drugs-fy20-fy23.csv
 make ingest SOURCE=acled SINCE=2018-01-01   # ACLED backfill (incremental without SINCE)
 make ingest SOURCE=acled DELETED=1          # ACLED deleted-events reconciliation
+make ingest SOURCE=acled-weekly FILE=...    # ACLED weekly aggregate workbook (ADR 0011)
+make ingest SOURCE=dataminr                 # First Alert digests in data/raw/dataminr/inbox/
+make ingest SOURCE=dataminr FILE=...        # one digest .txt from elsewhere (left in place)
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.ingest import acled, cbp
+from app.ingest import acled, acled_weekly, cbp, dataminr, designations, news, sesnsp
 
 
 def _cbp(args: argparse.Namespace) -> int:
@@ -29,20 +32,64 @@ def _cbp(args: argparse.Namespace) -> int:
 def _acled(args: argparse.Namespace) -> int:
     if args.deleted:
         return acled.run_deleted()
+    if args.reprocess:
+        return acled.run_reprocess()
     return acled.run_events(since=args.since)
 
 
-INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {"cbp": _cbp, "acled": _acled}
+def _news(args: argparse.Namespace) -> int:
+    return news.run_news(args.feed or None)
+
+
+def _sesnsp(args: argparse.Namespace) -> int:
+    if not args.file:
+        print("sesnsp imports a downloaded file: pass FILE=... (SharePoint blocks automation)")
+        return 2
+    through = dt.date.fromisoformat(f"{args.through}-01") if args.through else None
+    return sesnsp.run_file(Path(args.file), through=through, snapshot=args.snapshot_date)
+
+
+def _acled_weekly(args: argparse.Namespace) -> int:
+    if not args.file:
+        print("acled-weekly imports a downloaded workbook: pass FILE=...")
+        return 2
+    return acled_weekly.run_file(Path(args.file), snapshot=args.snapshot_date)
+
+
+def _dataminr(args: argparse.Namespace) -> int:
+    return dataminr.run_inbox([Path(args.file)] if args.file else None)
+
+
+INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {
+    "cbp": _cbp,
+    "acled": _acled,
+    "acled-weekly": _acled_weekly,
+    "dataminr": _dataminr,
+    "news": _news,
+    "designations": lambda _args: designations.run_designations(),
+    "sesnsp": _sesnsp,
+}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.ingest")
     parser.add_argument("source", nargs="?", help="source slug: " + ", ".join(INGESTERS))
     parser.add_argument("--since", type=dt.date.fromisoformat, help="YYYY-MM-DD (backfill start)")
-    parser.add_argument("--file", help="import a manually downloaded file (cbp)")
-    parser.add_argument("--snapshot-date", type=dt.date.fromisoformat, help="override (cbp --file)")
+    parser.add_argument(
+        "--file", help="import a manually downloaded file (cbp, sesnsp, acled-weekly, dataminr)"
+    )
+    parser.add_argument(
+        "--snapshot-date",
+        type=dt.date.fromisoformat,
+        help="override (cbp, sesnsp, acled-weekly --file)",
+    )
     parser.add_argument("--all", action="store_true", help="every allowed file series (cbp)")
     parser.add_argument("--deleted", action="store_true", help="deleted-events pull (acled)")
+    parser.add_argument("--feed", action="append", help="news feed slug (repeatable)")
+    parser.add_argument("--through", help="last month with real data, YYYY-MM (sesnsp)")
+    parser.add_argument(
+        "--reprocess", action="store_true", help="re-apply raw pages on disk (acled)"
+    )
     args = parser.parse_args(argv)
 
     if not args.source:

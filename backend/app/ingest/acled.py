@@ -20,10 +20,12 @@ revision are removed.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from geoalchemy2 import Geometry
@@ -32,11 +34,12 @@ from shapely import wkt
 from shapely.geometry import Point
 from shapely.geometry.base import BaseGeometry
 from shapely.prepared import PreparedGeometry, prep
-from sqlalchemy import Boolean, cast, delete, func, literal_column, select
+from sqlalchemy import Boolean, cast, delete, func, literal_column, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.dml import ReturningInsert
 
+from app.core.config import get_settings
 from app.core.secrets import require_secret
 from app.db.models import Event, IngestRun, ReferenceArea, Source
 from app.db.session import session_factory
@@ -51,12 +54,14 @@ log = logging.getLogger(__name__)
 SOURCE = "acled"
 JOB_EVENTS = "acled-events"
 JOB_DELETED = "acled-deleted"
+JOB_REPROCESS = "acled-reprocess"
 BASE = "https://acleddata.com"
 TOKEN_URL = f"{BASE}/oauth/token"
 READ_URL = f"{BASE}/api/acled/read"
 DELETED_URL = f"{BASE}/api/deleted/read"
 COUNTRY = "Mexico"
 PAGE_LIMIT = 5000
+UPSERT_CHUNK = 1000
 
 # Baseline record confidence from the source's Admiralty reliability grade (ADR 0003).
 RELIABILITY_CONFIDENCE = {
@@ -230,20 +235,26 @@ class Aoi:
         return None
 
 
-def load_aoi(session: Session) -> Aoi:
+def load_aoi(session: Session, phase: int | None = None) -> Aoi:
+    """Mexican states (admin1) up to ``phase``: 1 = six border states, 2 = all of Mexico."""
+    phase = phase if phase is not None else get_settings().acled_aoi_phase
     rows = session.execute(
         select(
             ReferenceArea.name,
             ReferenceArea.admin1_code,
             func.ST_AsText(cast(ReferenceArea.geom, Geometry)),
-        ).where(ReferenceArea.country_iso3 == "MEX", ReferenceArea.phase == 1)
+        ).where(
+            ReferenceArea.country_iso3 == "MEX",
+            ReferenceArea.area_type == "admin1",
+            ReferenceArea.phase <= phase,
+        )
     ).all()
     if not rows:
-        raise RuntimeError("no Phase 1 MEX reference areas loaded; run `make seed` first")
+        raise RuntimeError(f"no phase<={phase} MEX reference areas loaded; run `make seed` first")
     names = {normalize_alias(name): code for name, code, _ in rows if code}
     shapes: list[tuple[str, PreparedGeometry]] = []
-    for _, code, text in rows:
-        geom: BaseGeometry = wkt.loads(text)
+    for _, code, area_wkt in rows:
+        geom: BaseGeometry = wkt.loads(area_wkt)
         shapes.append((code, prep(geom)))
     return Aoi(names=names, shapes=shapes)
 
@@ -307,10 +318,12 @@ def upsert_page(session: Session, records: list[dict[str, Any]], aoi: Aoi) -> di
         ).all()
         stats["removed"] = len(removed)
     event_ids: list[int] = []
-    if values:
-        base = insert(Event).values(values)
+    # Postgres caps a statement at 65,535 bind parameters (~20 columns x 1,000 rows is safe).
+    for start in range(0, len(values), UPSERT_CHUNK):
+        chunk = values[start : start + UPSERT_CHUNK]
+        base = insert(Event).values(chunk)
         update_cols = {
-            k: base.excluded[k] for k in values[0] if k not in ("source_id", "source_key")
+            k: base.excluded[k] for k in chunk[0] if k not in ("source_id", "source_key")
         }
         stmt: ReturningInsert[int, bool] = base.on_conflict_do_update(
             constraint="uq_events_source_key",
@@ -319,8 +332,27 @@ def upsert_page(session: Session, records: list[dict[str, Any]], aoi: Aoi) -> di
         for event_id, was_insert in session.execute(stmt):
             event_ids.append(event_id)
             stats["inserted" if was_insert else "updated"] += 1
+    if event_ids:
+        assign_admin2(session, event_ids)
         link_events(session, event_ids)
     return stats
+
+
+def assign_admin2(session: Session, event_ids: list[int]) -> None:
+    """Set ``events.admin2_code`` (INEGI municipality) by point-in-polygon, where loaded."""
+    if not event_ids:
+        return
+    session.execute(
+        text(
+            """
+            UPDATE events e SET admin2_code = ra.admin2_code
+            FROM reference_areas ra
+            WHERE e.id = ANY(:ids) AND ra.area_type = 'admin2' AND e.geom IS NOT NULL
+              AND ST_Intersects(ra.geom::geometry, e.geom::geometry)
+            """
+        ),
+        {"ids": event_ids},
+    )
 
 
 # --------------------------------------------------------------------------- jobs
@@ -428,4 +460,50 @@ def run_deleted(*, http: PoliteClient | None = None) -> int:
     finally:
         if owns:
             http.close()
+    return 0
+
+
+def run_reprocess() -> int:
+    """Re-apply every raw ACLED page on disk with the current AOI and code, without new pulls.
+
+    Event pages are replayed oldest first (so the newest copy of a revised event wins), then
+    every recorded deletion is re-applied so nothing ACLED deleted comes back. Used when the
+    AOI expands (Phase 2: all of Mexico) or parsing changes.
+    """
+    root = get_settings().raw_dir / SOURCE
+
+    def ordered(pattern: str) -> list[Path]:
+        def key(p: Path) -> tuple[str, int, str]:
+            run, _, rest = p.name.partition("-")
+            return (p.parent.name, int(run) if run.isdigit() else 0, rest)
+
+        return sorted(root.glob(f"*/{pattern}"), key=key)
+
+    event_pages = ordered("*-events-page-*.json")
+    deleted_pages = ordered("*-deleted-page-*.json")
+    if not event_pages:
+        raise RuntimeError(f"no raw ACLED pages under {root}")
+    with ingest_run(JOB_REPROCESS, source_slug=SOURCE, params={"pages": len(event_pages)}) as run:
+        with session_factory()() as session:
+            aoi = load_aoi(session)
+        for path in event_pages:
+            records = json.loads(path.read_bytes()).get("data") or []
+            with session_factory()() as session, session.begin():
+                _accumulate(run, upsert_page(session, records, aoi))
+        for path in deleted_pages:
+            ids = [
+                str(r["event_id_cnty"])
+                for r in json.loads(path.read_bytes()).get("data") or []
+                if r.get("event_id_cnty")
+            ]
+            if not ids:
+                continue
+            with session_factory()() as session, session.begin():
+                sid = source_id(session, SOURCE)
+                removed = session.scalars(
+                    delete(Event)
+                    .where(Event.source_id == sid, Event.source_key.in_(ids))
+                    .returning(Event.id)
+                ).all()
+                run.deleted += len(removed)
     return 0

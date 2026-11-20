@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import sys
+import unicodedata
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -98,10 +100,16 @@ def _round(obj: Any) -> Any:
 
 
 def _slugify(name: str) -> str:
-    return "".join(c if c.isalnum() else "-" for c in name.lower()).strip("-").replace("--", "-")
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-")
 
 
-def build_aoi(ne_zip: Path) -> dict[str, Any]:
+# Natural Earth still carries Mexico City's pre-2016 code/name; map to current ISO 3166-2.
+NE_RENAMES = {"MX-DIF": ("MX-CMX", "Ciudad de México")}
+
+
+def build_aoi(ne_zip: Path, phase: int = 1) -> dict[str, Any]:
+    """Phase 1: the ten border states. Phase 2: every other Mexican state."""
     with zipfile.ZipFile(ne_zip) as zf:
         names = {Path(n).suffix: n for n in zf.namelist() if Path(n).stem.endswith("provinces")}
         reader = shapefile.Reader(
@@ -112,9 +120,16 @@ def build_aoi(ne_zip: Path) -> dict[str, Any]:
         )
         features = []
         for rec in reader.iterShapeRecords():
-            code = rec.record["iso_3166_2"]
-            if code not in AOI_STATES:
-                continue
+            code, name = rec.record["iso_3166_2"], rec.record["name"]
+            code, name = NE_RENAMES.get(code, (code, name))
+            if phase == 1:
+                if code not in AOI_STATES:
+                    continue
+                slug = f"{code.split('-')[0].lower()}-{AOI_STATES[code]}"
+            else:
+                if rec.record["adm0_a3"] != "MEX" or code in AOI_STATES or not name:
+                    continue  # skips the unnamed Natural Earth island polygon (MX-X01~)
+                slug = f"mx-{_slugify(name)}"
             geom = shape(rec.shape.__geo_interface__)
             geom = geom.simplify(SIMPLIFY_DEG, preserve_topology=True).buffer(0)
             if isinstance(geom, Polygon):
@@ -125,18 +140,18 @@ def build_aoi(ne_zip: Path) -> dict[str, Any]:
                     "type": "Feature",
                     "geometry": _round(mapping(geom)),
                     "properties": {
-                        "slug": f"{code.split('-')[0].lower()}-{AOI_STATES[code]}",
-                        "name": rec.record["name"],
+                        "slug": slug,
+                        "name": name,
                         "area_type": "admin1",
                         "country_iso3": country,
                         "admin1_code": code,
-                        "phase": 1,
+                        "phase": phase,
                         "sources": [NE_CITATION],
                     },
                 }
             )
     missing = set(AOI_STATES) - {f["properties"]["admin1_code"] for f in features}
-    if missing:
+    if phase == 1 and missing:
         raise SystemExit(f"Natural Earth is missing AOI states: {sorted(missing)}")
     features.sort(key=lambda f: (f["properties"]["country_iso3"], f["properties"]["name"]))
     return {"type": "FeatureCollection", "features": features}
@@ -236,7 +251,12 @@ def main(raw_dir: str) -> None:
     raw = Path(raw_dir)
     out = Path("data/reference")
     out.mkdir(parents=True, exist_ok=True)
-    _write(out / "aoi_phase1.geojson", build_aoi(raw / "ne_10m_admin_1_states_provinces.zip"))
+    ne = raw / "ne_10m_admin_1_states_provinces.zip"
+    _write(out / "aoi_phase1.geojson", build_aoi(ne, phase=1))
+    phase2 = build_aoi(ne, phase=2)
+    if len(phase2["features"]) != 26:
+        raise SystemExit(f"expected 26 non-border Mexican states, got {len(phase2['features'])}")
+    _write(out / "aoi_phase2.geojson", phase2)
     _write(out / "nodes.geojson", build_nodes(raw / "bts_us_mexico_ports.json"))
 
 

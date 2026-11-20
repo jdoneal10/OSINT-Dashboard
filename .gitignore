@@ -38,3 +38,9 @@ frontend/coverage/
 .idea/
 .vscode/
 *.swp
+
+# local dev-stack logs (Terminal.app runs)
+logs/
+
+# Rendered chart samples (notional data; regenerate with the charts demo)
+data/chart_samples/

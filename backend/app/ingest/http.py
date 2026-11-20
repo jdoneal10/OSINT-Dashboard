@@ -6,6 +6,8 @@
   ``crawl=False``; their own terms and rate limits govern instead.
 - At most one request per ``min_interval`` seconds per host.
 - Retries with exponential backoff on 429/5xx and transport errors, honoring Retry-After.
+  ``backoff_initial`` sets the first wait (``backoff_initial * backoff_base**attempt``);
+  strict APIs such as GDELT need minutes, not seconds.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ class PoliteClient:
         timeout: float = 60.0,
         max_retries: int = 4,
         backoff_base: float = 2.0,
+        backoff_initial: float = 1.0,
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
@@ -50,6 +53,7 @@ class PoliteClient:
         self._min_interval = min_interval
         self._max_retries = max_retries
         self._backoff_base = backoff_base
+        self._backoff_initial = backoff_initial
         self._sleep = sleep
         self._clock = clock
         self._last_request: dict[str, float] = {}
@@ -96,6 +100,9 @@ class PoliteClient:
                 self._sleep(wait)
         self._last_request[host] = self._clock()
 
+    def _backoff(self, attempt: int) -> float:
+        return float(self._backoff_initial * self._backoff_base**attempt)
+
     def _send(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         attempt = 0
         while True:
@@ -105,13 +112,13 @@ class PoliteClient:
             except httpx.TransportError as exc:
                 if attempt >= self._max_retries:
                     raise
-                delay = self._backoff_base**attempt
+                delay = self._backoff(attempt)
                 log.warning("%s %s failed (%s); retrying in %.0fs", method, url, exc, delay)
             else:
                 if resp.status_code not in RETRY_STATUSES or attempt >= self._max_retries:
                     return resp
                 retry_after = resp.headers.get("Retry-After", "")
-                delay = float(retry_after) if retry_after.isdigit() else self._backoff_base**attempt
+                delay = float(retry_after) if retry_after.isdigit() else self._backoff(attempt)
                 log.warning(
                     "%s %s -> HTTP %d; retrying in %.0fs", method, url, resp.status_code, delay
                 )

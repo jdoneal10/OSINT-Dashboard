@@ -17,12 +17,12 @@ Both sources impose terms that shape the design. The terms were read on 2026-11-
 ### ACLED licence and handling
 - **Licence:** the owner confirmed the use is **personal, non-commercial** (EULA effective 2026-11-01, s.1.2). Internal analysis only; the database and raw pages are not shared.
 - **Access:** through the API only (s.3.3, s.7.2), with OAuth credentials kept in macOS Keychain.
-- **No ACLED content goes into any LLM** — prompts, embeddings or knowledge bases (s.7.1) — unless ACLED gives written consent. **This binds Phase 2 and Phase 4.** The Claude pipeline must exclude ACLED records and text, and so must INTSUM drafting.
+- **No ACLED content goes into any LLM** — prompts, embeddings or knowledge bases (s.7.1) — unless ACLED gives written consent. **This binds Phase 2 and Phase 4.** The Claude pipeline must exclude ACLED records and text, and so must INTSUM drafting. *Superseded by ADR 0006: ACLED gave written consent on 2026-11-11 for processing with Claude.*
 - **Attribution:** every visual that shows ACLED data carries it on the visual itself, per the Attribution Policy:
   - "ACLED (Armed Conflict Location & Event Data)" with a link
   - the access date
   - the filters applied
-- **Portfolio material:** external material must be transformative and must not let anyone reverse-engineer the data (s.3.1). Portfolio screenshots and the public demo (Phase 5) therefore use synthetic or aggregated data.
+- **Portfolio material:** external material must be transformative and must not let anyone reverse-engineer the data (s.3.1). Portfolio screenshots and the public demo (Phase 5) therefore use synthetic or aggregated data. *Amended by ADR 0006: professional, non-profit display with ACLED attribution is allowed.*
 - **Records:** `ingest_runs` and the raw snapshots serve s.15's three-year record-keeping requirement.
 
 ### ACLED scope: the six Mexican border states only

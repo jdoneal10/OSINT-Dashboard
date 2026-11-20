@@ -6,7 +6,8 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Actor, Event, IngestRun, actor_events
+from app.core.config import get_settings
+from app.db.models import Actor, Event, IngestRun, ReferenceArea, actor_events
 from app.ingest import acled
 from tests.acled_fake import FakeAcled, _json, fake_credentials
 
@@ -14,6 +15,8 @@ from tests.acled_fake import FakeAcled, _json, fake_credentials
 @pytest.fixture(autouse=True)
 def _credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_credentials(monkeypatch)
+    # These tests were written for the Phase 1 AOI (six border states); see the phase-2 tests.
+    monkeypatch.setattr(get_settings(), "acled_aoi_phase", 1)
 
 
 def _events(session: Session) -> dict[str, Event]:
@@ -135,3 +138,69 @@ def test_actor_links_follow_acled_dyad(seeded: Session) -> None:
     faction = seeded.scalars(select(Actor).where(Actor.canonical_name == "Synthetic Faction")).one()
     parent = seeded.scalars(select(Actor).where(Actor.slug == "cartel-de-sinaloa")).one()
     assert (faction.actor_type, faction.parent_id) == ("faction", parent.id)
+
+
+def test_phase2_aoi_covers_all_of_mexico(seeded: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "acled_aoi_phase", 2)
+    _backfill(seeded)
+    events = _events(seeded)
+    assert "MEX900003" in events  # Sinaloa: outside Phase 1, inside Phase 2
+    assert events["MEX900003"].admin1_code == "MX-SIN"
+
+
+def test_reprocess_applies_new_aoi_and_keeps_deletions(
+    seeded: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _backfill(seeded)  # phase 1: Sinaloa event filtered out, raw pages written to disk
+    with FakeAcled().client() as http:
+        acled.run_deleted(http=http)  # MEX900002 deleted upstream
+    assert "MEX900003" not in _events(seeded)
+
+    monkeypatch.setattr(get_settings(), "acled_aoi_phase", 2)
+    acled.run_reprocess()
+    events = _events(seeded)
+    assert "MEX900003" in events  # newly in scope, from raw pages only
+    assert "MEX900002" not in events  # replayed deletion keeps it gone
+    run = seeded.scalars(select(IngestRun).where(IngestRun.job == acled.JOB_REPROCESS)).one()
+    assert run.status == "ok"
+    assert run.rows_deleted == 1
+
+
+def test_admin2_assigned_by_point_in_polygon(seeded: Session) -> None:
+    # Synthetic municipality square around the synthetic Ensenada-area event (31.86, -116.60).
+    seeded.add(
+        ReferenceArea(
+            slug="mx-mun-test",
+            name="Synthetic Municipality",
+            area_type="admin2",
+            country_iso3="MEX",
+            admin1_code="MX-BCN",
+            admin2_code="02999",
+            phase=2,
+            geom=func.ST_GeogFromText(
+                "SRID=4326;MULTIPOLYGON(((-117 31.5,-116.2 31.5,-116.2 32.2,-117 32.2,-117 31.5)))"
+            ),
+            sources=[],
+        )
+    )
+    seeded.commit()
+    _backfill(seeded)
+    events = _events(seeded)
+    assert events["MEX900001"].admin2_code == "02999"
+    assert events["MEX900006"].admin2_code is None  # Tamaulipas: outside the square
+
+
+def test_large_page_is_chunked_under_parameter_limit(
+    seeded: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A full 5,000-row page in scope must not exceed Postgres's 65,535 bind parameters."""
+    monkeypatch.setattr(get_settings(), "acled_aoi_phase", 2)
+    template = _json("events-page2")["data"][0]
+    rows = [
+        {**template, "event_id_cnty": f"MEXBIG{i:05d}", "timestamp": str(1700001000 + i)}
+        for i in range(5000)
+    ]
+    fake = FakeAcled(events={"status": 200, "success": True, "data": rows, "next_cursor": None})
+    with fake.client() as http:
+        acled.run_events(dt.date(2024, 1, 1), http=http)
+    assert seeded.scalar(select(func.count()).select_from(Event)) == 5000

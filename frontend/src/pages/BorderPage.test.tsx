@@ -54,15 +54,20 @@ function renderAt(path: string) {
     },
     '/border/metrics': series('persons'),
     '/seizures': { aor: ['usbp-tucson'], weight: series('lbs'), events: series('events') },
-    '/events/timeseries': [
-      { month: '2024-01-01', admin1_code: 'MX-SON', events: 3, fatalities: 1 },
-    ],
-    '/events/meta': {
-      total: 3,
-      min_date: '2024-01-01',
-      max_date: '2024-01-31',
-      accessed: '2026-11-11T12:00:00Z',
-      sources: ['acled'],
+    '/acled/weekly': {
+      meta: {
+        events_through: '2025-11-15',
+        horizon_week_end: '2025-11-07',
+        aggregate_snapshot: '2026-11-16',
+        aggregate_first_week: '2025-11-01',
+        aggregate_last_week: '2025-11-15',
+        events_accessed: '2026-11-11T12:00:00Z',
+        aggregate_accessed: '2026-11-16T12:00:00Z',
+      },
+      points: [
+        { week: '2025-11-01', events: 3, fatalities: 1, origin: 'events' },
+        { week: '2025-11-08', events: 4, fatalities: 2, origin: 'aggregate' },
+      ],
     },
   })
   const router = createMemoryRouter(routes, { initialEntries: [path] })
@@ -93,6 +98,7 @@ describe('BorderPage', () => {
     expect(footer).toHaveTextContent(/ACLED \(Armed Conflict Location & Event Data\)/)
     expect(footer).toHaveTextContent(/accessed 2026-11-11/)
     expect(footer).toHaveTextContent(/Sonora/)
+    expect(footer).toHaveTextContent(/weekly aggregates \(file of 2026-11-16\)/)
   })
 
   it('keeps both classification banners and the nav on every route', async () => {

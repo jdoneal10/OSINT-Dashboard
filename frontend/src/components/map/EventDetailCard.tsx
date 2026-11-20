@@ -1,5 +1,7 @@
+import { Link } from 'react-router'
 import { useEvent } from '../../api/hooks'
 import { localDate } from '../../lib/dates'
+import { threatLabel } from '../../lib/threats'
 import { eventColor } from './eventColors'
 
 const GEO = { 1: 'exact location', 2: 'near location', 3: 'regional (admin-level)' } as const
@@ -9,6 +11,8 @@ const ROLE = {
   actor2: 'Actor 2',
   assoc_actor1: 'Assoc. (1)',
   assoc_actor2: 'Assoc. (2)',
+  perpetrator: 'Perpetrator',
+  target: 'Target',
 } as const
 
 interface Props {
@@ -54,6 +58,12 @@ export default function EventDetailCard({ id, onClose }: Props) {
       {data && !isPending && (
         <div className="max-h-[60vh] space-y-3 overflow-y-auto px-3 py-2 text-xs">
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            {data.border_threat && (
+              <>
+                <dt className="text-ink-500">Border threat</dt>
+                <dd>{threatLabel(data.border_threat)}</dd>
+              </>
+            )}
             <dt className="text-ink-500">Fatalities</dt>
             <dd className="tabular-nums">{data.fatalities ?? '—'}</dd>
             <dt className="text-ink-500">Location</dt>
@@ -66,7 +76,10 @@ export default function EventDetailCard({ id, onClose }: Props) {
               {TIME[data.time_precision as keyof typeof TIME] ?? 'unknown'}
             </dd>
             <dt className="text-ink-500">Confidence</dt>
-            <dd>{data.confidence !== null ? data.confidence.toFixed(2) : 'not assessed'}</dd>
+            <dd>
+              {data.confidence !== null ? data.confidence.toFixed(2) : 'not assessed'}
+              {data.credibility !== null && ` · credibility ${data.credibility}`}
+            </dd>
           </dl>
           {data.actors.length > 0 && (
             <ul className="space-y-0.5">
@@ -81,10 +94,26 @@ export default function EventDetailCard({ id, onClose }: Props) {
             </ul>
           )}
           {data.description && <p className="text-ink-300 leading-relaxed">{data.description}</p>}
-          <p className="text-ink-500 border-ink-700 border-t pt-2">
-            Source: {data.source.toUpperCase()} event {data.source_key} · retrieved{' '}
-            {localDate(data.retrieved_at)}
-          </p>
+          {data.document_ids.length > 0 ? (
+            <p className="text-ink-500 border-ink-700 space-x-2 border-t pt-2">
+              <span>Extracted from</span>
+              {data.document_ids.map((d) => (
+                <Link key={d} to={`/news/${d}`} className="text-sky-400 hover:underline">
+                  document {d}
+                </Link>
+              ))}
+              {data.cluster_id && (
+                <Link to={`/clusters/${data.cluster_id}`} className="text-sky-400 hover:underline">
+                  cluster {data.cluster_id}
+                </Link>
+              )}
+            </p>
+          ) : (
+            <p className="text-ink-500 border-ink-700 border-t pt-2">
+              Source: {data.source.toUpperCase()} event {data.source_key} · retrieved{' '}
+              {localDate(data.retrieved_at)}
+            </p>
+          )}
         </div>
       )}
     </section>

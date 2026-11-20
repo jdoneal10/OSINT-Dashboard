@@ -92,6 +92,15 @@ def test_retries_on_429_honoring_retry_after() -> None:
     assert clock.slept.count(7.0) == 2
 
 
+def test_backoff_initial_scales_retry_waits() -> None:
+    clock = FakeClock()
+    with _client(
+        lambda _r: httpx.Response(429), clock, min_interval=0, max_retries=3, backoff_initial=30
+    ) as c:
+        assert c.get("https://api.example.org/x", crawl=False).status_code == 429
+    assert clock.slept == [30.0, 60.0, 120.0]
+
+
 def test_gives_up_after_max_retries() -> None:
     clock = FakeClock()
     with _client(lambda _r: httpx.Response(503), clock, min_interval=0, max_retries=2) as c:
