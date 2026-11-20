@@ -55,7 +55,8 @@ log = logging.getLogger(__name__)
 # v3: reported TCO leaders may be named in free text (ADR 0005)
 # v4: smuggling and border-threat priority, border_threat field, threat-only rule (ADR 0007)
 # v5: relevance boundaries (South America/Caribbean out; border-crossing context in)
-PROMPT_VERSION = "extract-v5"
+# v6: seizure rules (scope, one record per item, quantity/unit, unidentified drugs, precursors)
+PROMPT_VERSION = "extract-v6"
 MAX_TEXT_CHARS = 30_000
 
 EventType = Literal[
@@ -104,13 +105,23 @@ class ExtractedEvent(BaseModel):
     border_threat: BorderThreat | None = Field(description="Priority border-threat category")
 
 
+SeizureUnit = Literal["kg", "lb", "g", "l", "units", "pills", "packages", "doses", "other"]
+
+
 class ExtractedSeizure(BaseModel):
-    seizure_date: str | None = Field(description="YYYY-MM-DD or null")
+    seizure_date: str | None = Field(description="YYYY-MM-DD of the seizure itself, or null")
     location: Location
-    substance: str = Field(description="e.g. fentanyl, methamphetamine, cocaine, weapons, cash")
+    substance: str = Field(
+        description="One item category, from the SEIZURE SUBSTANCES list when one fits"
+    )
     chemicals: list[str] = Field(description="Precursor or essential chemicals named, if any")
-    quantity: float | None = Field(ge=0)
-    unit: Literal["kg", "lb", "g", "l", "units", "pills", "other"] | None
+    quantity: float | None = Field(
+        ge=0, description="Amount of this one item only, as a plain number; null if not stated"
+    )
+    unit: SeizureUnit | None = Field(
+        description="Unit of quantity; 'packages' for packages, bricks or bundles counted "
+        "without a weight; 'units' for firearms, rounds, magazines and other counted items"
+    )
     seizing_agency: str | None = Field(description="Agency or force, not a person")
     description: str
 
@@ -161,9 +172,10 @@ threats against unarmed people, including bodies found with signs of violence.
    - Protests: peaceful demonstrations.
    - Strategic developments: arrests, seizures without violence, lab discoveries, \
 designations, indictments, extraditions, truces, territory changes without fighting.
-5. Seizures: one entry per seizure of drugs, precursor chemicals, weapons or cash, with the \
-quantity and unit as written (convert words to numbers). Laboratories count as seizures only \
-if materials were seized.
+5. Seizures. Record seizures of drugs, precursor or essential chemicals, firearms, \
+ammunition, explosives and cash, plus contraband smuggled through a port or border crossing \
+(substance "contraband" followed by the goods, e.g. "contraband cigarettes"). Laboratories \
+count only if materials were seized. See SEIZURE RULES below.
 6. Organizations: list each criminal organization, faction, gang or armed group named, and \
 any government force (e.g. SEMAR, Guardia Nacional, CBP). Use the canonical name from the \
 KNOWN ORGANIZATIONS list when the text refers to one of them by an alias.
@@ -192,7 +204,47 @@ units, equipment, positions, patrol patterns or response tactics of U.S. or Mexi
 personnel, or the locations of sensors, cameras or towers; leave such details out of \
 description and evidence too. An article that only describes law-enforcement or military \
 operations, deployments, closures or training produces no events: summarize it in \
-summary_en only."""
+summary_en only.
+
+SEIZURE RULES
+S1. Not seizures: auctions, forfeiture, return or destruction of goods seized earlier; \
+counterfeit or trademark-infringing goods; vehicles, property, jewelry or livestock taken from \
+suspects (mention them in description only). Court hearings or charges that mention an \
+earlier seizure do not create a new one unless the article itself reports that seizure.
+S2. One record per item category. Split a mixed load into separate records: each drug on its \
+own; firearms; ammunition (rounds or cartridges); magazines; explosives (grenades, IEDs, \
+launchers); cash; precursor chemicals. A rifle with two loaded magazines is three records: \
+firearms 1, magazines 2, ammunition = the rounds stated. Never add different items together \
+and never give a combined total as one item's quantity.
+S3. substance: use one of the SEIZURE SUBSTANCES names when it fits. Translate street or \
+Spanish names ("cristal", "hielo", "crystal" = methamphetamine; "mota", "marihuana" = \
+marijuana; "goma de opio" = opium gum; "pastillas de fentanilo", "M30" = fentanyl, unit \
+pills). When the text does not say which drug ("illicit substance", "suspected narcotics", \
+"probable droga", "packages of an unknown substance"), use "unidentified drug"; never \
+guess a drug, and never put "alleged" or "suspected" in substance.
+S4. Precursor vs product. A finished drug (powder, crystal, pills, liquid methamphetamine) \
+is that drug. Chemicals used to make it are substance "precursor chemicals" with each named \
+chemical in "chemicals" and their own quantity. Never record a precursor as the drug, or the \
+drug as a precursor; a lab with both gives one record for each.
+S5. quantity and unit, as written, for this item only:
+   - Weight beats count: "10 packages weighing 12 kg" is 12 kg. Packages, bricks or bundles \
+with no weight: the number of packages, unit "packages". "Several" or "various" packages: \
+quantity null, unit "packages".
+   - Keep the unit the text gives (kg, lb, g, l). Convert tons to kg (1 ton = 1000 kg) and \
+ounces to lb (16 oz = 1 lb); never convert between metric and pounds.
+   - Words and Spanish numbers to figures: "medio kilogramo" = 0.5 kg; "31 millones 856 \
+mil" = 31856000; "dos mil" = 2000. In Spanish text a dot or space can separate thousands \
+("1.250 kilos" = 1250 kg) and a comma can be the decimal mark ("2,5 kg" = 2.5 kg); read it \
+from context. "About", "more than" or "nearly" a figure: use the figure.
+   - Pills or tablets: unit pills. Doses: unit doses. Firearms, rounds, magazines, \
+grenades: unit units. Cash: the amount, unit units, with the currency in description.
+   - No figure stated: quantity null, unit null (or "packages" per above). Never invent one.
+S6. seizure_date is the day of the seizure. If the text only gives the day it was \
+announced, use null.
+
+SEIZURE SUBSTANCES
+fentanyl; methamphetamine; cocaine; heroin; marijuana; opium gum; unidentified drug; \
+precursor chemicals; firearms; ammunition; magazines; explosives; cash; contraband <goods>"""
 
 
 def build_system(session: Session) -> str:
@@ -228,6 +280,65 @@ def _date(value: str | None, fallback: dt.date) -> tuple[dt.date, bool]:
         return (dt.date.fromisoformat(value), True) if value else (fallback, False)
     except ValueError:
         return fallback, False
+
+
+# Seizure substance names (extract-v6, rule S3): the model is asked for these; storage
+# folds common variants into them so one drug is never counted under several names.
+_HEDGES = ("alleged ", "suspected ", "presumed ", "probable ", "possible ", "apparent ")
+_SUBSTANCE_SYNONYMS = {
+    "meth": "methamphetamine",
+    "crystal": "methamphetamine",
+    "crystal meth": "methamphetamine",
+    "cristal": "methamphetamine",
+    "ice": "methamphetamine",
+    "metanfetamina": "methamphetamine",
+    "fentanilo": "fentanyl",
+    "fentanyl pills": "fentanyl",
+    "cocaína": "cocaine",
+    "cocaina": "cocaine",
+    "marihuana": "marijuana",
+    "cannabis": "marijuana",
+    "heroína": "heroin",
+    "heroina": "heroin",
+    "weapons": "firearms",
+    "guns": "firearms",
+    "armas": "firearms",
+    "armas de fuego": "firearms",
+    "cartuchos": "ammunition",
+    "rounds": "ammunition",
+    "cargadores": "magazines",
+    "precursors": "precursor chemicals",
+}
+_UNIDENTIFIED = (
+    "illicit substance",
+    "unknown substance",
+    "unspecified substance",
+    "narcotic",
+    "drug",
+    "droga",
+    "estupefaciente",
+)
+
+
+def canonical_substance(raw: str) -> str:
+    """Fold a seizure substance into its SEIZURE SUBSTANCES name where the mapping is certain.
+
+    Lower-cases, drops hedges ("alleged", "suspected"), maps known synonyms, and turns
+    vague drug wording ("unspecified illicit substance", "suspected narcotics") into
+    "unidentified drug". Anything else (e.g. "contraband cigarettes") is kept as written.
+    """
+    name = " ".join(raw.strip().lower().split())
+    for hedge in _HEDGES:
+        if name.startswith(hedge):
+            name = name[len(hedge) :]
+    name = name.removeprefix("unspecified ").removeprefix("unidentified ").removeprefix("unknown ")
+    if name in _SUBSTANCE_SYNONYMS:
+        return _SUBSTANCE_SYNONYMS[name]
+    if "precursor" in name or "chemical" in name:
+        return name
+    if name in {"drug", "drugs", "substance", "substances"} or name.startswith(_UNIDENTIFIED):
+        return "unidentified drug"
+    return name or raw
 
 
 _PRECISION = {"day": 1, "week": 2, "month": 3, "unknown": 3}
@@ -341,7 +452,7 @@ def store_extraction(
             confidence=confidence,
             seizure_date=when,
             geom=func.ST_GeogFromText(geo.ewkt) if geo else None,
-            substance=s.substance,
+            substance=canonical_substance(s.substance),
             chemical_class=", ".join(s.chemicals)[:64] or None,
             quantity=Decimal(str(s.quantity)) if s.quantity is not None else None,
             unit=s.unit,

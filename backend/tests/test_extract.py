@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -204,3 +205,89 @@ def test_border_threat_is_stored(seeded: Session, doc_id: int) -> None:
 def test_prompt_states_threat_only_rule() -> None:
     assert "NEVER record the number" in extract.RULES
     assert "border_threat" in extract.RULES
+
+
+# --------------------------------------------------------------------------- seizures (v6)
+
+
+@pytest.mark.parametrize(
+    ("raw", "canonical"),
+    [
+        ("fentanyl", "fentanyl"),
+        ("Methamphetamine", "methamphetamine"),
+        ("cristal", "methamphetamine"),
+        ("marihuana", "marijuana"),
+        ("weapons", "firearms"),
+        ("cartuchos", "ammunition"),
+        ("unspecified illicit substance", "unidentified drug"),
+        ("suspected narcotics", "unidentified drug"),
+        ("alleged illicit substance", "unidentified drug"),
+        ("unknown substance", "unidentified drug"),
+        ("drugs (unspecified)", "unidentified drug"),
+        ("precursor chemicals", "precursor chemicals"),
+        ("drug precursors", "drug precursors"),  # never folded into a drug
+        ("contraband cigarettes", "contraband cigarettes"),
+    ],
+)
+def test_canonical_substance(raw: str, canonical: str) -> None:
+    assert extract.canonical_substance(raw) == canonical
+
+
+def _seizure(substance: str, quantity: float | None, unit: str | None, **kw: Any) -> dict[str, Any]:
+    return {"seizure_date": None, "location": {**LOC, "place": None}, "substance": substance,
+            "chemicals": [], "quantity": quantity, "unit": unit, "seizing_agency": None,
+            "description": "Synthetic seizure.", **kw}  # fmt: skip
+
+
+def test_mixed_load_is_stored_one_record_per_item(seeded: Session, doc_id: int) -> None:
+    # Synthetic mixed load: a rifle, two magazines with 31 rounds, half a kilo of "cristal",
+    # packages of an unidentified substance, and a lab's precursor drums.
+    payload = json.loads(json.dumps(GOOD))
+    payload["seizures"] = [
+        _seizure("weapons", 1, "units"),
+        _seizure("magazines", 2, "units"),
+        _seizure("ammunition", 31, "units"),
+        _seizure("cristal", 0.5, "kg"),
+        _seizure("suspected narcotics", None, "packages"),
+        _seizure("precursor chemicals", 400, "l", chemicals=["benzyl chloride"]),
+    ]
+    counts, _ = _run(_resp(payload))
+    assert counts["seizures"] == 6
+    rows = seeded.execute(
+        select(Seizure.substance, Seizure.quantity, Seizure.unit, Seizure.chemical_class)
+        .order_by(Seizure.source_key)
+    ).all()  # fmt: skip
+    assert [tuple(r) for r in rows] == [
+        ("firearms", 1, "units", None),
+        ("magazines", 2, "units", None),
+        ("ammunition", 31, "units", None),
+        ("methamphetamine", 0.5, "kg", None),
+        ("unidentified drug", None, "packages", None),
+        ("precursor chemicals", 400, "l", "benzyl chloride"),
+    ]
+
+
+def test_seizure_units_include_packages_and_doses() -> None:
+    from typing import get_args  # noqa: PLC0415
+
+    assert {"packages", "doses"} <= set(get_args(extract.SeizureUnit))
+    with pytest.raises(ValidationError, match="unit"):
+        extract.ExtractedSeizure.model_validate(_seizure("cocaine", 3, "bricks"))
+
+
+def test_prompt_states_seizure_rules() -> None:
+    rules = extract.RULES
+    for rule in (
+        "S1. Not seizures",
+        "S2. One record per item",
+        "S3. substance",
+        "S4. Precursor vs product",
+        "S5. quantity and unit",
+        "S6. seizure_date",
+    ):
+        assert rule in rules
+    assert "unidentified drug" in rules
+    assert "never give a combined total" in rules
+    # Event rules are untouched by the seizure work.
+    assert "4. Event types (use exactly these)" in rules
+    assert "9. border_threat." in rules
