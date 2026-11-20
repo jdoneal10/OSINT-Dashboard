@@ -2,7 +2,8 @@
 
 Documents are public articles and releases; ACLED never appears here (ADR 0003). The feed
 hides documents whose derived records all fall outside the AOI unless
-``include_out_of_aoi=true``.
+``include_out_of_aoi=true``, and documents whose only records are low-priority seizures
+unless ``include_low_priority=true``.
 """
 
 from __future__ import annotations
@@ -104,6 +105,7 @@ class SeizureOut(BaseModel):
     lon: float | None
     lat: float | None
     in_aoi: bool
+    low_priority: bool  # owner priority framework: small drug amount or contraband
     confidence: float | None
     credibility: int | None
     llm_model: str | None
@@ -162,7 +164,7 @@ def _sort_ts() -> Any:
     return func.coalesce(Document.published_at, Document.retrieved_at)
 
 
-def _has_record(in_aoi: bool | None) -> Any:
+def _has_record(in_aoi: bool | None, *, normal_priority: bool = False) -> Any:
     ev = select(event_documents.c.event_id).join(Event, Event.id == event_documents.c.event_id)
     sz = select(seizure_documents.c.seizure_id).join(
         Seizure, Seizure.id == seizure_documents.c.seizure_id
@@ -172,12 +174,26 @@ def _has_record(in_aoi: bool | None) -> Any:
     if in_aoi is not None:
         ev = ev.where(Event.in_aoi.is_(in_aoi))
         sz = sz.where(Seizure.in_aoi.is_(in_aoi))
+    if normal_priority:
+        sz = sz.where(Seizure.low_priority.is_(False))
     return or_(exists(ev), exists(sz))
 
 
 def in_aoi_clause() -> Any:
     """Document has no derived records, or at least one inside the AOI."""
     return or_(not_(_has_record(None)), _has_record(True))
+
+
+def visible_clause(*, include_out_of_aoi: bool, include_low_priority: bool) -> Any:
+    """Document has no derived records, or at least one the feed shows by default.
+
+    By default a record must lie inside the AOI and, for a seizure, not be low priority
+    (small drug amounts, contraband; docs/framework/seizure-priority.md).
+    """
+    shown = _has_record(
+        None if include_out_of_aoi else True, normal_priority=not include_low_priority
+    )
+    return or_(not_(_has_record(None)), shown)
 
 
 def _clusters_for(session: Session, doc_ids: list[int]) -> dict[int, list[ClusterRef]]:
@@ -309,6 +325,7 @@ def seizures_for(session: Session, doc_id: int) -> list[SeizureOut]:
             lon=x,
             lat=y,
             in_aoi=s.in_aoi,
+            low_priority=s.low_priority,
             confidence=float(s.confidence) if s.confidence is not None else None,
             credibility=s.credibility,
             llm_model=s.llm_model,
@@ -375,6 +392,9 @@ def list_documents(
     q: Annotated[str | None, Query(description="search title and English summary")] = None,
     include_duplicates: bool = False,
     include_out_of_aoi: bool = False,
+    include_low_priority: Annotated[
+        bool, Query(description="include documents whose only records are low-priority seizures")
+    ] = False,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     cursor: Annotated[str | None, Query(description="opaque; from next_cursor")] = None,
 ) -> DocumentPage:
@@ -390,8 +410,12 @@ def list_documents(
         stmt = stmt.where(Source.slug.in_(source))
     if not include_duplicates:
         stmt = stmt.where(Document.duplicate_of_id.is_(None))
-    if not include_out_of_aoi:
-        stmt = stmt.where(in_aoi_clause())
+    if not (include_out_of_aoi and include_low_priority):
+        stmt = stmt.where(
+            visible_clause(
+                include_out_of_aoi=include_out_of_aoi, include_low_priority=include_low_priority
+            )
+        )
     if admin1 or event_type or actor or border_threat:
         stmt = stmt.where(
             Document.id.in_(_docs_with_events(admin1, event_type, actor, border_threat))

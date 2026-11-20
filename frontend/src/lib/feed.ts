@@ -11,6 +11,7 @@ export function feedParams(search: URLSearchParams, q: string): Record<string, u
     border_threat: get('threat'),
     status: get('status'),
     include_out_of_aoi: search.get('out') === 'true' || undefined,
+    include_low_priority: search.get('low') === 'true' || undefined,
     q: q || undefined,
     limit: 25,
   }

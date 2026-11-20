@@ -16,6 +16,9 @@ Definitions
 - **Scope**: ``out_of_aoi`` marks a correctly extracted record that lies outside the area of
   interest (no direct link to the U.S.-Mexico border). It is a priority judgment, not an
   extraction error: such a record counts as correct, and scope is reported separately.
+- **Seizure priority**: ``seizures.low_priority`` (small drug amounts, contraband) is set by
+  code from the owner's thresholds, not by the model. It is reported separately and does
+  not change precision.
 - **Relevance**: a ``documents``/``relevant`` label says whether the pipeline's decision
   (extracted = relevant, else not) was right. The decision is frozen on the label
   (``judged_decision``), so re-filtering later does not change the label's meaning; from it
@@ -52,7 +55,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Document, Label, Source
+from app.db.models import Document, Label, Seizure, Source
 from app.db.session import session_factory
 from app.enrich import extract
 from app.enrich.llm.client import Gateway, Provenance
@@ -112,8 +115,22 @@ class RecordReport:
     field_errors: Counter[str]
     person_named: int
     out_of_aoi: int  # records outside the area of interest (scope, not error)
+    low_priority: int  # labeled seizures that are low priority (small drug amount, contraband)
     documents: int  # documents with at least one record label
     wrong_records: list[tuple[str, int]]
+
+
+def _low_priority(session: Session, seizure_ids: list[int]) -> int:
+    if not seizure_ids:
+        return 0
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(Seizure)
+            .where(Seizure.id.in_(seizure_ids), Seizure.low_priority.is_(True))
+        )
+        or 0
+    )
 
 
 def record_precision(session: Session, prompt_version: str) -> RecordReport:
@@ -151,6 +168,7 @@ def record_precision(session: Session, prompt_version: str) -> RecordReport:
         field_errors=fields,
         person_named=fields["person_named"],
         out_of_aoi=out_of_aoi,
+        low_priority=_low_priority(session, [t for (tb, t) in latest if tb == "seizures"]),
         documents=len({lab.document_id for lab in latest.values()}),
         wrong_records=wrong,
     )
@@ -386,6 +404,10 @@ def render(
         "",
         f"**Scope:** {rec.out_of_aoi} labeled record(s) lie outside the area of interest "
         "(correct extractions, low priority; hidden from the feed and map by default).",
+        "",
+        f"**Seizure priority:** {rec.low_priority} labeled seizure(s) are low priority "
+        "(small drug amounts or contraband; docs/framework/seizure-priority.md). Priority is "
+        "set by code, not the model; label these on extraction accuracy alone.",
         "",
         "## Relevance filter",
         "",

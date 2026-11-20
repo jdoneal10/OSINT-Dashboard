@@ -32,6 +32,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    false,
     func,
     true,
 )
@@ -382,6 +383,9 @@ class Seizure(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     country_iso3: Mapped[str | None] = mapped_column(String(3))
     admin1_code: Mapped[str | None] = mapped_column(String(16))
     in_aoi: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    # Owner's priority judgment (docs/framework/seizure-priority.md): small drug amounts and
+    # contraband goods. A correct record, hidden from the feed by default like out-of-AOI.
+    low_priority: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
 
 seizure_documents = Table(

@@ -113,6 +113,30 @@ def test_feed_hides_out_of_aoi_filtered_and_duplicates(
     assert [i["id"] for i in filtered] == [news["doc_filtered"]]
 
 
+def test_feed_hides_documents_with_only_low_priority_seizures(
+    client: TestClient, news: dict[str, int], seeded: Session
+) -> None:
+    # Synthetic: a document whose only record is a small, low-priority drug seizure.
+    doc = _doc(seeded, news["src_a"], "small-load")
+    sz = Seizure(
+        source_id=news["src_a"], source_key="small:s0", retrieved_at=NOW,
+        seizure_date=dt.date(2026, 11, 9), substance="methamphetamine",
+        quantity=Decimal("0.5"), unit="kg", low_priority=True, prompt_version="extract-v6",
+    )  # fmt: skip
+    seeded.add(sz)
+    seeded.flush()
+    seeded.execute(seizure_documents.insert().values(seizure_id=sz.id, document_id=doc))
+    seeded.commit()
+
+    default = {i["id"] for i in client.get("/documents").json()["items"]}
+    assert doc not in default
+    assert news["doc_in"] in default  # normal-priority records keep a document visible
+    wide = client.get("/documents", params={"include_low_priority": True}).json()["items"]
+    assert doc in {i["id"] for i in wide}
+    seizures = client.get(f"/documents/{doc}").json()["seizures"]
+    assert [s["low_priority"] for s in seizures] == [True]
+
+
 def test_feed_filters_and_pagination(client: TestClient, news: dict[str, int]) -> None:
     first = client.get("/documents", params={"limit": 1}).json()
     second = client.get("/documents", params={"limit": 1, "cursor": first["next_cursor"]}).json()

@@ -16,6 +16,17 @@ function OutsideAoi() {
   )
 }
 
+function LowPriority() {
+  return (
+    <span
+      className="text-ink-400 border-ink-500/60 ml-1 rounded border px-1 text-[10px]"
+      title="Small drug amount or contraband goods (owner priority framework)"
+    >
+      low priority
+    </span>
+  )
+}
+
 /** News events use perpetrator/target; ACLED events keep ACLED's actor1/actor2 dyad. */
 const ROLE_PAIRS: Record<string, [string, string]> = {
   news: ['perpetrator', 'target'],
@@ -153,6 +164,7 @@ export function SeizuresTable({
             <tr key={s.id}>
               <td className={TD}>
                 <span className="font-medium">{s.substance}</span>
+                {s.low_priority && <LowPriority />}
                 {s.chemical_class && <div className="text-ink-500">{s.chemical_class}</div>}
               </td>
               <td className={`${TD} tabular-nums`}>{quantity(s.quantity, s.unit)}</td>

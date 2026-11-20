@@ -274,6 +274,8 @@ export interface SeizureRecord {
   lon: number | null
   lat: number | null
   in_aoi: boolean
+  /** Small drug amount or contraband (owner priority framework); hidden from the feed by default. */
+  low_priority: boolean
   confidence: number | null
   credibility: number | null
   llm_model: string | null

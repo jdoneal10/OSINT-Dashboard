@@ -341,6 +341,44 @@ def canonical_substance(raw: str) -> str:
     return name or raw
 
 
+# Seizure priority (owner judgment, docs/framework/seizure-priority.md). Weapons,
+# ammunition, explosives, precursors and cash are always kept at normal priority; small
+# drug amounts and contraband goods are low priority. Judged per record, by its own amount.
+DRUGS = frozenset(
+    {"fentanyl", "methamphetamine", "cocaine", "heroin", "marijuana", "opium gum",
+     "unidentified drug"}
+)  # fmt: skip
+LOW_PRIORITY_KG = {"fentanyl": Decimal(1)}  # all other drugs: DEFAULT_LOW_PRIORITY_KG
+DEFAULT_LOW_PRIORITY_KG = Decimal(10)
+_KG_PER_UNIT = {
+    "kg": Decimal(1),
+    "g": Decimal("0.001"),
+    "lb": Decimal("0.45359237"),
+    "l": Decimal(1),  # liquid drug: about 1 kg per litre
+    "pills": Decimal("0.0001"),  # about 0.1 g per pressed pill
+}
+
+
+def seizure_low_priority(substance: str, quantity: Decimal | None, unit: str | None) -> bool:
+    """True for contraband goods and for drug seizures below the owner's threshold.
+
+    Doses are retail amounts, so low priority. A drug seizure with no measurable amount
+    (null quantity, packages, "other") stays at normal priority: it cannot be sized, and
+    hiding it could hide a large load.
+    """
+    name = canonical_substance(substance)
+    if name.startswith("contraband"):
+        return True
+    if name not in DRUGS:
+        return False
+    if unit == "doses":
+        return True
+    if quantity is None or unit not in _KG_PER_UNIT:
+        return False
+    kg = quantity * _KG_PER_UNIT[unit]
+    return kg < LOW_PRIORITY_KG.get(name, DEFAULT_LOW_PRIORITY_KG)
+
+
 _PRECISION = {"day": 1, "week": 2, "month": 3, "unknown": 3}
 _LINKABLE = {"cartel", "gang", "faction", "armed_group"}
 
@@ -444,6 +482,7 @@ def store_extraction(
         when, _ = _date(s.seizure_date, fallback_date)
         geo = geocode(session, place=s.location.place, municipality=s.location.municipality,
                       state=s.location.state, country=s.location.country)  # fmt: skip
+        quantity = Decimal(str(s.quantity)) if s.quantity is not None else None
         sz = Seizure(
             source_id=doc.source_id,
             source_key=f"{prefix}s{i}",
@@ -454,8 +493,9 @@ def store_extraction(
             geom=func.ST_GeogFromText(geo.ewkt) if geo else None,
             substance=canonical_substance(s.substance),
             chemical_class=", ".join(s.chemicals)[:64] or None,
-            quantity=Decimal(str(s.quantity)) if s.quantity is not None else None,
+            quantity=quantity,
             unit=s.unit,
+            low_priority=seizure_low_priority(s.substance, quantity, s.unit),
             seizing_agency=s.seizing_agency,
             node_id=geo.node_id if geo else None,
             country_iso3=geo.country_iso3 if geo else None,
@@ -623,6 +663,18 @@ def mark_for_reextraction() -> int:
         return len(docs)
 
 
+def reprioritize() -> int:
+    """Recompute ``low_priority`` on every stored seizure (local only; no API call)."""
+    changed = 0
+    with session_factory()() as session, session.begin():
+        for sz in session.scalars(select(Seizure)):
+            low = seizure_low_priority(sz.substance, sz.quantity, sz.unit)
+            if sz.low_priority != low:
+                sz.low_priority = low
+                changed += 1
+    return changed
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse  # noqa: PLC0415 — CLI only
 
@@ -632,7 +684,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=f"queue documents extracted under a prompt other than {PROMPT_VERSION}",
     )
+    parser.add_argument(
+        "--reprioritize",
+        action="store_true",
+        help="recompute seizure priority from the owner's thresholds (local, free)",
+    )
     args = parser.parse_args(argv)
+    if args.reprioritize:
+        print(f"Updated priority on {reprioritize()} seizure(s).")
     if args.reextract:
         print(f"Queued {mark_for_reextraction()} document(s); the pipeline batches them.")
     return 0

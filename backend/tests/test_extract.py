@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import shutil
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -291,3 +292,64 @@ def test_prompt_states_seizure_rules() -> None:
     # Event rules are untouched by the seizure work.
     assert "4. Event types (use exactly these)" in rules
     assert "9. border_threat." in rules
+
+
+@pytest.mark.parametrize(
+    ("substance", "quantity", "unit", "low"),
+    [
+        # Weapons, ammunition, explosives, precursors and cash: never low priority.
+        ("firearms", "1", "units", False),
+        ("ammunition", "31", "units", False),
+        ("explosives", "3", "units", False),
+        ("precursor chemicals", "5", "l", False),
+        ("cash", "1000", "units", False),
+        # Fentanyl: low below 1 kg.
+        ("fentanyl", "0.9", "kg", True),
+        ("fentanyl", "1", "kg", False),
+        ("fentanyl", "3", "lb", False),  # 1.36 kg
+        ("fentanyl", "5000", "pills", True),  # about 0.5 kg
+        ("fentanyl", "20000", "pills", False),  # about 2 kg
+        # Other drugs: low below 10 kg, any unit.
+        ("methamphetamine", "0.5", "kg", True),
+        ("cocaine", "8", "kg", True),
+        ("methamphetamine", "1.1", "lb", True),
+        ("cristal", "500", "g", True),  # synonym folded first
+        ("cocaine", "10", "kg", False),
+        ("marijuana", "34", "lb", False),  # 15.4 kg
+        ("methamphetamine", "1000", "l", False),
+        ("unidentified drug", "4470", "doses", True),  # retail amounts
+        # No measurable amount: kept visible, it could be a large load.
+        ("unidentified drug", None, "packages", False),
+        ("cocaine", None, None, False),
+        ("cocaine", "24", "other", False),
+        # Contraband goods: low priority at any size.
+        ("contraband cigarettes", "31856000", "units", True),
+    ],
+)
+def test_seizure_low_priority(substance: str, quantity: str | None, unit: str | None,
+                              low: bool) -> None:  # fmt: skip
+    amount = Decimal(quantity) if quantity is not None else None
+    assert extract.seizure_low_priority(substance, amount, unit) is low
+
+
+def test_priority_is_stored_per_record(seeded: Session, doc_id: int) -> None:
+    # Synthetic operation: rifles plus a small drug amount. Only the drug is low priority.
+    payload = json.loads(json.dumps(GOOD))
+    payload["seizures"] = [_seizure("firearms", 3, "units"), _seizure("cocaine", 8, "kg")]
+    _run(_resp(payload))
+    rows = seeded.execute(
+        select(Seizure.substance, Seizure.low_priority).order_by(Seizure.source_key)
+    ).all()
+    assert [tuple(r) for r in rows] == [("firearms", False), ("cocaine", True)]
+
+
+def test_reprioritize_backfills_stored_seizures(seeded: Session, doc_id: int) -> None:
+    payload = json.loads(json.dumps(GOOD))
+    payload["seizures"] = [_seizure("cocaine", 8, "kg")]
+    _run(_resp(payload))
+    with seeded.begin():
+        seeded.scalars(select(Seizure)).one().low_priority = False  # as before migration 0012
+    assert extract.reprioritize() == 1
+    seeded.expire_all()
+    assert seeded.scalars(select(Seizure.low_priority)).one() is True
+    assert extract.reprioritize() == 0  # idempotent

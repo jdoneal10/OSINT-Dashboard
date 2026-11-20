@@ -266,6 +266,15 @@ export default function NewsPage({ threats = false }: { threats?: boolean }) {
           />
           Include reports outside the AOI
         </label>
+        <label className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            className="accent-sky-500"
+            checked={get('low') === 'true'}
+            onChange={(e) => set('low', e.target.checked)}
+          />
+          Include low-priority seizures (small drug amounts, contraband)
+        </label>
         <p className="text-ink-500 border-ink-700 border-t pt-3 text-[11px] leading-relaxed">
           Grades use the Admiralty scale: source reliability (A–F) and information credibility
           (1–6). Syndicated copies count once; single-source claims stay at 3 or lower.

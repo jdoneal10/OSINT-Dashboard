@@ -12,7 +12,7 @@
 | B. Vague drug, vague amount | 78, 79, 80 (partly wrong) | Short alerts about "packages" of an unnamed substance. The records used three different free-text names ("unspecified illicit substance", "suspected narcotics", "alleged illicit substance"). Package counts were stored as `units` or dropped, because the unit list had no `packages`. |
 | C. Mixed load in one record | 70 (partly wrong, quantity) | A rifle seized with two loaded magazines became one "weapons, 1 unit" record. A Del Rio release in the same sample split items into separate records, and the owner marked those records correct (85–87). |
 | D. Contraband goods named loosely | 63 (partly wrong, substance) | A port seizure of contraband cigarettes was recorded as plain "cigarettes". |
-| E. Unexplained | 88 (partly wrong, quantity); 91, 92, 97 (wrong) | The stored quantity, unit and substance for 88, 91 and 92 match the source text. 97's document has a "not relevant" label, so this is a relevance disagreement, not a seizure-field error. The owner's reasons are needed (see below). |
+| E. Priority, not extraction | 88 (partly wrong, quantity); 91, 92, 97 (wrong) | The stored values match the source text. The owner confirmed on 2026-11-19 that these drug amounts are too small to matter: 0.5 kg and 8 kg in Sinaloa, 1.1 lb at Del Rio, 2 kg in Coahuila. The weapons records seized alongside them were marked correct. |
 
 ## extract-v6 changes (seizures only; event rules unchanged)
 
@@ -28,14 +28,21 @@
 
 ## Expected effect
 
-If the inferred causes are right, modes A–D account for 7 of the 11 flagged records. That would lift seizure strict precision on a comparable sample from 73.8% toward about 85–90%, and it would also make `substance` totals add up across documents. The estimate is unverified: the flagged records' documents carry labels, so `make reextract` skips them by design. Measuring v6 takes fresh labels on newly extracted documents, or a dry run over the flagged documents with nothing stored. Mode E is not addressed.
+If the inferred causes are right, modes A–D account for 7 of the 11 flagged records. That would lift seizure strict precision on a comparable sample from 73.8% toward about 85–90%, and it would also make `substance` totals add up across documents. The estimate is unverified: the flagged records' documents carry labels, so `make reextract` skips them by design. Measuring v6 takes fresh labels on newly extracted documents, or a dry run over the flagged documents with nothing stored. Mode E is handled by priority, not by the prompt (next section).
 
 ## Re-extraction cost (not run; needs the owner's yes)
 
 `make reextract` would queue 715 unlabeled documents (extracted or filtered out under v3 or v5). At v5's batch average of about $0.0002 per document, plus a longer cached system block, the cost is roughly **$0.15–0.40** through the Batch API. Month-to-date spend is $0.42 against the $75 cap.
 
-## Questions for the owner
+## Priority (owner's answers, 2026-11-19)
 
-1. Seizures 91 and 92 (drugs) were marked wrong, but seizure 93 (weapons), from the same operation, was marked correct. What was wrong with 91 and 92?
-2. Seizure 88's quantity matches the text (1.1 lb). Should the quantity have been converted to kg, or was something else wrong?
-3. Do port seizures of contraband cigarettes or fuel belong in seizures (v6 keeps them as `contraband <goods>`), or should they be dropped?
+The owner answered the open questions:
+- Weapons and ammunition always matter.
+- Small drug amounts do not, whether they are in kg or lb.
+- Port contraband counts as a seizure, but must not weigh the same as weapons, human smuggling or large drug loads.
+
+Seizures now carry a code-set `low_priority` flag (`docs/framework/seizure-priority.md`, migration 0012):
+- fentanyl under 1 kg, other drugs under 10 kg, doses and contraband goods are low priority;
+- weapons, ammunition, explosives, precursors and cash are never low priority.
+
+The feed hides documents whose only records are low-priority seizures, and the evaluation reports those records separately. Once the existing records are reprioritized, 88, 91, 92 and 97 are low priority, and their extracted values can be labeled correct.
