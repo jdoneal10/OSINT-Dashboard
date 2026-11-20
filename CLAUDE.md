@@ -105,5 +105,5 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 ## Do not
 - Do not add sources, scrapers, or AOI expansions beyond the current phase without asking.
 - Do not introduce paid data services without an ADR (current decision: free sources only; the owner may revisit later).
-- Do not add telemetry or analytics. Outbound calls go only to destinations listed in `docs/data-sources.md`: source pulls, the Claude API, and any service an ADR approves. A config allowlist enforcing the list is added with the first new destination (ADR 0008).
+- Do not add telemetry or analytics. Outbound calls go only to destinations listed in `docs/data-sources.md`: source pulls, the Claude API, and any service an ADR approves. The allowlist is enforced in code: `data/reference/outbound.yaml` plus active feed hosts in `feeds.yaml` and loopback (`app/core/outbound.py`, checked on every request and redirect hop); a new destination needs its `data-sources.md` row first (ADR 0008).
 - Do not commit data from `data/raw/` or any ACLED-derived export.

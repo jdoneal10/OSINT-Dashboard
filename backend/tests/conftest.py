@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
+from app.core import outbound  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import get_engine, session_factory  # noqa: E402
@@ -48,6 +49,20 @@ def _clean_tables() -> Iterator[None]:
     tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
     with get_engine().begin() as conn:
         conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+
+
+# Reserved test names (RFC 2606 / RFC 6761) used by recorded and fake responses.
+TEST_DOMAINS = frozenset(
+    {"example.org", "example.com", "example.net", "example", "invalid", "test"}
+)
+
+
+@pytest.fixture(autouse=True)
+def _test_domains_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fake transports use reserved example hosts; the production allowlist is unchanged.
+    Tests of the allowlist itself use ``outbound.allowed_domains`` directly."""
+    real = outbound.allowed_domains
+    monkeypatch.setattr(outbound, "allowed_domains", lambda path=None: real(path) | TEST_DOMAINS)
 
 
 @pytest.fixture(autouse=True)

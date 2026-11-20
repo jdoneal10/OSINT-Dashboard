@@ -7,6 +7,7 @@
 - Honor robots.txt and published rate limits.
 - No scraping where the terms prohibit it.
 - No social-media collection without an ADR.
+- **Outbound allowlist (enforced):** the backend reaches only the domains in `data/reference/outbound.yaml`, the hosts of active feeds in `feeds.yaml`, and loopback (local Ollama). Each request and redirect hop is checked (`app/core/outbound.py`); anything else fails with `OutboundBlockedError`. Add a source's row here, and its allowlist entry or feed, before its first pull. The one-time `make basemap` download runs outside the backend and is not covered.
 
 Before writing a source's ingester, re-read its current terms and update this file (who checked, and when). Rows marked **to verify** have not been checked against the live terms yet.
 

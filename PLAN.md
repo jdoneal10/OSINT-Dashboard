@@ -150,8 +150,8 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 **Exit criteria:** pipeline runs unattended daily; extraction precision ≥ 85% on a 100-article hand-labeled test set; spend inside budget.
 
 ### Phase 3 — Unmanned systems, electricity theft and people (~3–4 weeks; ADR 0009)
-- Sources (ADR 0010): Guardia Nacional, Defensa and SSPC listings; outlets added in vetted batches; PiX event and organization importers; Marginalia and GDELT taxonomy queries; Telegram once a collection method is approved; outbound allowlist enforced in config
-- Prompts `filter-v3` and `extract-v6` with the tiered priority; UxS fields (platform, mission, payload, activity) and an `energy_theft` event type (method, powered activity, facilitator, reported scale) from the owner framework
+- Sources (ADR 0010): Guardia Nacional, Defensa and SSPC listings; outlets added in vetted batches; PiX event and organization importers; Marginalia and GDELT taxonomy queries; Telegram once a collection method is approved; outbound allowlist enforced in config (done: `data/reference/outbound.yaml`)
+- Prompts `filter-v3` and `extract-v7` with the tiered priority (`extract-v6` went to the Phase 2 seizure fixes); UxS fields (platform, mission, payload, activity) and an `energy_theft` event type (method, powered activity, facilitator, reported scale) from the owner framework
 - Person records under ADR 0008: `persons`, person–organization and person–event links, every attribute cited and graded, `us_person` flag hidden by default, dispute/delete
 - Views: UxS and electricity-theft panels (map, trend, escalation ladder), person view, labeling fields for the new categories and the person safeguards
 - Re-extraction through the Batch API

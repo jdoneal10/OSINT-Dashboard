@@ -28,6 +28,7 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import select
 
+from app.core import outbound
 from app.core.config import get_settings
 from app.db.models import Document, LLMQuarantine
 from app.db.session import session_factory
@@ -97,6 +98,7 @@ class LocalFilter:
         settings = get_settings()
         self.model = model or settings.relevance_model
         self.url = settings.ollama_url.rstrip("/")
+        outbound.check(self.url)  # loopback only unless the allowlist says otherwise
         self._client = client or httpx.Client(timeout=120)
 
     def score(self, text: str) -> FilterOutput:
