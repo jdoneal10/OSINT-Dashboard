@@ -365,13 +365,18 @@ feeds:
     language: en
     discovery: rss
     url: https://dronelife.com/feed/
-    text: summary
+    text: full
     reliability: C
-    status: pending
+    status: active
     terms_note: >-
-      Drone trade press. robots.txt allows our client and AI agents, but the terms bar unauthorized spidering, scraping or other automated means to compile information. Pending the owner's decision; if approved, title and feed teaser only.
+      Drone trade press; reliability C. robots.txt allows our client and AI agents. The terms
+      bar unauthorized spidering, scraping or automated compiling and limit use to personal,
+      non-commercial use; the owner holds DroneLife's explicit written permission (2026-11-20)
+      for this non-commercial dashboard, which authorizes automated collection here. The terms
+      have no AI clause. ADR 0010 Amendment 2.
     sources:
-      - {title: "Terms of Service", publisher: DroneLife, url: "https://dronelife.com/termsofservice/", accessed: 2026-11-20}
+      - {title: "DroneLife RSS", publisher: DroneLife, url: "https://dronelife.com/feed/", accessed: 2026-11-20}
+      - {title: "Terms of Service", publisher: DroneLife, url: "https://dronelife.com/termsofservice/", accessed: 2026-11-20, note: "Owner's written permission from DroneLife (2026-11-20), held by the owner; ADR 0010 Amendment 2."}
 
 # Phase 3 batch 1 exclusions (2026-11-20):
 # - www.mimorelia.com, dronedj.com: robots.txt now disallows ClaudeBot (passed on 2026-11-13).
