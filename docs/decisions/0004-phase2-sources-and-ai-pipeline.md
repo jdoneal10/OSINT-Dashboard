@@ -76,3 +76,14 @@ Extraction schemas have **no fields for individuals**. Prompts instruct the mode
 - Coverage of Spanish-language reporting depends on GDELT's recall for Proceso and Milenio, which is modest (2 Proceso hits in 3 days in the test query). RSS-native outlets carry most of the volume.
 - If the owner reverses decision 1, the outlets marked "accepted risk" switch to `text: summary` in `feeds.yaml`, and their stored text is deleted.
 - Four sources are `status: pending` (SEMAR, FGR, Ríodoce, Animal Político) and will be re-checked when their ingesters are built.
+
+## Amendment (2026-11-21): extraction output as a forced tool call
+
+**What happened.** `extract-v8`, which added persons (ADR 0013) to the UxS and electricity-theft details (ADR 0009), produced a JSON schema too large for the API's structured-output grammar. The API rejected every request with a 400 ("compiled grammar is too large"), so no v8 request ever succeeded. Batch results came back errored, and the real-time retry raised the same 400. That aborted the collect stage, so from 2026-11-21 04:15 UTC no batch was collected and 673 documents waited in `batched`. Probes on synthetic text showed `extract-v6` was close to the limit: adding persons alone, or UxS plus electricity theft together, was enough to exceed it. Removing enums or nullable unions did not bring it back under.
+
+**Decision.**
+- **Tool transport.** An output model too large for the grammar sets `llm_transport = "tool"`. The gateway then sends its schema as the input schema of one forced, non-strict tool (`record_output`, `tool_choice` set to that tool) instead of `output_config.format`. Only `Extraction` uses this. The filter and analytic stages keep strict JSON.
+- **Validation is unchanged.** The pydantic model checks every response; invalid output is retried once, then quarantined. Without a grammar, the model is the only schema check, and the quarantine rate shows any drift.
+- **Caching.** The tool definition sits before the cached system block, so the cache breakpoint covers it.
+- **Collect stage.** A retry the API rejects as a bad request is quarantined (`reason = request_rejected`), and collection continues with the next result and batch.
+- **Prompt version.** The prompt text is unchanged, but the version moves to `extract-v9` to record the transport change. The v8 batches were requeued under the existing prompt-version rule and resubmitted as one v9 batch.

@@ -22,7 +22,7 @@ import datetime as dt
 import logging
 from collections.abc import Mapping
 from decimal import Decimal
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
@@ -60,7 +60,9 @@ log = logging.getLogger(__name__)
 # v7: tiered priority (ADR 0009): unmanned systems and electricity theft first; uxs and
 #     energy_theft detail on events; drones as a seizure item
 # v8: persons linked to criminal activity, with safeguards (hard rule 3; ADR 0008, 0013)
-PROMPT_VERSION = "extract-v8"
+# v9: same instructions as v8, returned as a forced tool call: the v8 schema exceeds the
+#     structured-output grammar limit, so no v8 request ever succeeded (ADR 0004 amendment)
+PROMPT_VERSION = "extract-v9"
 MAX_TEXT_CHARS = 30_000
 
 EventType = Literal[
@@ -223,6 +225,9 @@ class ExtractedPerson(BaseModel):
 
 
 class Extraction(BaseModel):
+    # Too large for the structured-output grammar; see app.enrich.llm.client.uses_tool.
+    llm_transport: ClassVar[str] = "tool"
+
     relevant: bool = Field(description="False if the article is not about organized crime")
     summary_en: str = Field(
         description="English summary, 2-4 sentences; name only people listed in persons"

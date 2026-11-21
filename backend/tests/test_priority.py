@@ -43,7 +43,7 @@ def topics(seeded: Session) -> dict[str, int]:
         e = Event(source_id=src.id, source_key=key, retrieved_at=NOW, event_date=day,
                   event_type=kw.pop("event_type", "Strategic developments"),
                   admin1_name=kw.pop("state", "Michoacán"), in_aoi=kw.pop("in_aoi", True),
-                  prompt_version="extract-v8", **kw)  # fmt: skip
+                  prompt_version="extract-v9", **kw)  # fmt: skip
         seeded.add(e)
         seeded.flush()
         return e.id

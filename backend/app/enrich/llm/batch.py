@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+import anthropic
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -155,6 +156,19 @@ def _retry(gateway: Gateway, job: BatchJob[Any], document_id: int, counts: dict[
     except BudgetPausedError:
         job.requeue(document_id)
         counts["requeued"] += 1
+        return
+    except anthropic.BadRequestError as exc:
+        # The request itself is invalid (e.g. a schema the API rejects); retrying will not
+        # help, and raising would stop collection of every later result and batch.
+        with session_factory()() as session, session.begin():
+            gateway.quarantine(
+                session, stage=job.stage, model=job.model, prompt_version=job.prompt_version,
+                prov=item.provenance, reason="request_rejected", error=str(exc), raw=None,
+                attempts=2,
+            )  # fmt: skip
+        log.warning("%s retry rejected for document %d: %s", job.stage, document_id, exc)
+        job.fail(document_id)
+        counts["quarantined"] += 1
         return
     if result.ok and result.parsed is not None:
         job.store(document_id, result.parsed, (result.input_tokens, result.output_tokens))

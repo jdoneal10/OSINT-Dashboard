@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from pydantic import BaseModel, Field, SecretStr
@@ -306,3 +306,46 @@ def test_strict_schema_moves_unsupported_constraints_to_description() -> None:
     assert schema["properties"]["items"]["description"] == "Things (at most items: 10)"
     assert schema["properties"]["ids"]["minItems"] == 1
     assert ">= 0" in str(schema["properties"]["n"])
+
+
+class BigOut(BaseModel):
+    """An output model too large for the structured-output grammar."""
+
+    llm_transport: ClassVar[str] = "tool"
+    answer: str
+
+
+def test_tool_transport_forces_one_non_strict_tool(seeded: Session, news_doc: int) -> None:
+    reply = _resp("")
+    reply.content = [SimpleNamespace(type="tool_use", name=gw.OUTPUT_TOOL, input={"answer": "sí"})]
+    reply.stop_reason = "tool_use"
+    fake = FakeClient(reply)
+    result = gw.Gateway(fake).call(
+        stage="extract", model=HAIKU, prompt_version="t1", system="sys", user="u",
+        output_model=BigOut, provenance=gw.Provenance(document_ids=(news_doc,)),
+    )  # fmt: skip
+    assert result.ok
+    assert result.parsed == BigOut(answer="sí")
+    req = fake.requests[0]
+    assert "output_config" not in req  # no grammar: the pydantic model is the only check
+    (tool,) = req["tools"]
+    assert "strict" not in tool
+    assert tool["input_schema"] == strict_schema(BigOut)
+    assert req["tool_choice"] == {"type": "tool", "name": gw.OUTPUT_TOOL}
+    assert req["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_tool_transport_invalid_input_is_retried_then_quarantined(
+    seeded: Session, news_doc: int
+) -> None:
+    bad = _resp("")
+    bad.content = [SimpleNamespace(type="tool_use", name=gw.OUTPUT_TOOL, input={"wrong": 1})]
+    fake = FakeClient(bad, bad)
+    result = gw.Gateway(fake).call(
+        stage="extract", model=HAIKU, prompt_version="t1", system="sys", user="u",
+        output_model=BigOut, provenance=gw.Provenance(document_ids=(news_doc,)),
+    )  # fmt: skip
+    assert not result.ok
+    assert result.attempts == 2
+    q = seeded.scalars(select(LLMQuarantine)).one()
+    assert (q.reason, q.raw_output) == ("validation", '{"wrong": 1}')

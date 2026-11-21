@@ -286,7 +286,7 @@ describe('Person labeling', () => {
       text_policy: 'full',
       relevance_model: null,
       llm_model: 'claude-haiku-5-5',
-      prompt_version: 'extract-v8',
+      prompt_version: 'extract-v9',
       llm_input_tokens: 1,
       llm_output_tokens: 1,
       events: [attack],

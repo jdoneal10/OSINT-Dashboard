@@ -85,7 +85,7 @@ export default function PersonsPage() {
           {data && data.items.length === 0 && (
             <p className="text-ink-500 text-xs">
               No person records{q ? ' match this search' : ' yet'}. They appear as documents are
-              extracted with prompt extract-v8 or later.
+              extracted with prompt extract-v9 or later.
             </p>
           )}
           {data && data.items.length > 0 && (

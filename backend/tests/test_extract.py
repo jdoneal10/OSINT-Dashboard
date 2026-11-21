@@ -24,10 +24,22 @@ NEWS = Path(__file__).parent / "fixtures" / "news" / "feeds.yaml"
 
 
 def _resp(payload: dict[str, Any] | str) -> Any:
+    """A reply as the API sends it for Extraction: the forced output tool's input.
+
+    A payload that is not a JSON object (malformed output) comes back as a text block.
+    """
     text = payload if isinstance(payload, str) else json.dumps(payload)
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        block = SimpleNamespace(type="tool_use", name="record_output", input=data)
+    else:
+        block = SimpleNamespace(type="text", text=text)
     return SimpleNamespace(
-        content=[SimpleNamespace(type="text", text=text)],
-        stop_reason="end_turn",
+        content=[block],
+        stop_reason="tool_use" if data is not None else "end_turn",
         stop_details=None,
         model="claude-haiku-5-5",
         usage=SimpleNamespace(

@@ -6,6 +6,8 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
+import anthropic
+import httpx
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -106,7 +108,9 @@ def test_backlog_is_submitted_as_one_guarded_batch(seeded: Session, three_docs: 
     params = requests[0]["params"]
     assert params["model"] == HAIKU
     assert params["system"][0]["cache_control"] == {"type": "ephemeral"}
-    assert params["output_config"]["format"]["type"] == "json_schema"
+    assert "format" not in params.get("output_config", {})  # too large for a grammar
+    assert params["tool_choice"] == {"type": "tool", "name": "record_output"}
+    assert params["tools"][0]["input_schema"]["required"][0] == "relevant"
     assert "stream" not in params
     assert "fallbacks" not in params
     assert _statuses(seeded, three_docs) == ["batched"] * 3
@@ -205,3 +209,33 @@ def test_reextraction_skips_labeled_and_unseen_documents(
         "relevant", "relevant", "filtered_out", "extracted",
     ]  # fmt: skip
     assert json.dumps(GOOD)  # fixture sanity
+
+
+def test_rejected_retry_is_quarantined_and_collection_continues(
+    seeded: Session, three_docs: list[int]
+) -> None:
+    """A 400 on the real-time retry (e.g. a schema the API rejects) must not stop collection."""
+    a, b, c = three_docs
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    rejected = anthropic.BadRequestError(
+        "compiled grammar is too large", response=httpx.Response(400, request=request), body=None
+    )
+    fake = FakeBatches()
+    extract.run_extract(gateway=Gateway(fake))
+    fake.status = "ended"
+    fake.outcomes = {
+        f"doc-{a}": errored(),
+        f"doc-{b}": ok(_resp(GOOD)),
+        f"doc-{c}": ok(_resp(GOOD)),
+    }
+
+    def reject(**kw: Any) -> Any:
+        raise rejected
+
+    fake.messages.create = reject
+    counts = extract.run_collect(gateway=Gateway(fake))
+    assert (counts["ok"], counts["quarantined"], counts["batches"]) == (2, 1, 1)
+    assert _statuses(seeded, three_docs) == ["quarantined", "extracted", "extracted"]
+    q = seeded.scalars(select(LLMQuarantine)).one()
+    assert (q.document_id, q.reason, q.attempts) == (a, "request_rejected", 2)
+    assert seeded.scalars(select(LLMBatch)).one().status == "collected"

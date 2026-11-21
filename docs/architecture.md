@@ -60,7 +60,8 @@ documents (new)
   → Haiku extract (extract-v4): English summary, events, seizures, organizations;
       priority on human smuggling and border threats, with a border_threat category
       per event (ADR 0007; threat activity only, hard rule 4);
-      strict JSON schema, one retry, then quarantine; no fields for people.
+      strict JSON schema (from extract-v9, a forced tool call; ADR 0004 amendment),
+      one retry, then quarantine; no fields for people.
       A backlog of >= 25 documents (backfill, `make reextract`) goes out as one Message
       Batches job at 50% price; the `collect` stage stores results every 30 min
   → geocode against the local INEGI gazetteer / cited U.S. ports of entry; in_aoi flag
