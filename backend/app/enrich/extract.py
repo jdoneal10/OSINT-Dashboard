@@ -42,6 +42,7 @@ from app.db.models import (
     seizure_documents,
 )
 from app.db.session import session_factory
+from app.enrich import persons
 from app.enrich.actors import ActorIndex
 from app.enrich.geocode import geocode, in_aoi
 from app.enrich.llm import batch as llm_batch
@@ -58,7 +59,8 @@ log = logging.getLogger(__name__)
 # v6: seizure rules (scope, one record per item, quantity/unit, unidentified drugs, precursors)
 # v7: tiered priority (ADR 0009): unmanned systems and electricity theft first; uxs and
 #     energy_theft detail on events; drones as a seizure item
-PROMPT_VERSION = "extract-v7"
+# v8: persons linked to criminal activity, with safeguards (hard rule 3; ADR 0008, 0013)
+PROMPT_VERSION = "extract-v8"
 MAX_TEXT_CHARS = 30_000
 
 EventType = Literal[
@@ -184,14 +186,51 @@ class ExtractedOrganization(BaseModel):
     org_type: OrgType
 
 
+PersonRole = Literal[
+    "leader", "member", "facilitator", "operator_or_technician", "supplier",
+    "front_business_owner", "financier", "complicit_official", "associate",
+]  # fmt: skip
+PersonStatus = Literal[
+    "arrested", "charged", "convicted", "sentenced", "extradited", "killed", "fugitive",
+    "released", "designated",
+]  # fmt: skip
+PersonEventRole = Literal[
+    "perpetrator", "directed", "arrested", "charged", "convicted_or_sentenced", "extradited",
+    "killed", "escaped",
+]  # fmt: skip
+
+
+class PersonEventLink(BaseModel):
+    event_index: int = Field(ge=0, description="0-based index into this output's events list")
+    role: PersonEventRole
+
+
+class ExtractedPerson(BaseModel):
+    name: str = Field(max_length=120, description="Full name exactly as the text writes it")
+    aliases: list[str] = Field(max_length=5, description="Aliases (alias, apodo) as written")
+    role: PersonRole = Field(description="How the text links the person to criminal activity")
+    organization: str | None = Field(description="Criminal organization named with the person")
+    nationality: str | None = Field(description="Country of nationality if the text states it")
+    us_nexus: bool = Field(
+        description="True if the text reports the person as a U.S. citizen or resident, or "
+        "located in the United States"
+    )
+    reported_minor: bool = Field(description="True if the text says the person is under 18")
+    statuses: list[PersonStatus] = Field(max_length=4)
+    title: str | None = Field(max_length=80, description="Rank or post, e.g. 'plaza boss'")
+    events: list[PersonEventLink] = Field(max_length=5)
+    evidence: str = Field(description="Short quote (<= 200 chars) linking the person")
+
+
 class Extraction(BaseModel):
     relevant: bool = Field(description="False if the article is not about organized crime")
     summary_en: str = Field(
-        description="English summary, 2-4 sentences; name only reported criminal-group leaders"
+        description="English summary, 2-4 sentences; name only people listed in persons"
     )
     events: list[ExtractedEvent] = Field(max_length=10)
     seizures: list[ExtractedSeizure] = Field(max_length=10)
     organizations: list[ExtractedOrganization] = Field(max_length=20)
+    persons: list[ExtractedPerson] = Field(max_length=15)
 
 
 RULES = """You extract structured intelligence from news articles and official press releases \
@@ -204,15 +243,26 @@ across the border, attacks on border personnel, and cross-border tunnels; (3) ev
 else in scope.
 
 RULES
-1. People. The only individuals you may name are leaders of criminal organizations whom the \
-text itself identifies as leaders (e.g. "CJNG leader Rafael Alvarez Ayala, alias R2"), and \
-only in summary_en, description and evidence, using the name and alias as the text gives \
-them. Never name anyone else: victims, relatives, bystanders, suspects or defendants not \
-described as leaders, journalists, or public officials. Refer to them by role ("two \
-victims", "a municipal police officer", "Mexico's Security Secretary"); if a quote would \
-name such a person, choose another quote. Never put a person in perpetrators, targets or \
-organizations; those lists hold organizations only. Organizations whose names include a \
-surname (e.g. "Los Salazar") are organizations.
+1. People. List in persons only individuals the text links to criminal activity: leaders, \
+members, facilitators, operators or technicians (e.g. drone pilots), suppliers, owners of \
+front businesses, financiers, and people the text reports as arrested, charged, prosecuted, \
+convicted, extradited, designated or sanctioned for organized-crime activity. Officials \
+only when the text reports them as complicit (role complicit_official). NEVER list \
+victims, bystanders, witnesses, relatives not themselves reported as involved, \
+journalists, minors (anyone the text says is under 18), or officials not reported as \
+complicit; refer to them by role ("two victims", "a municipal police officer", "Mexico's \
+Security Secretary"), and if a quote would name one of them, choose another quote.
+   - Names and aliases exactly as written, including Mexico's "N" surname convention.
+   - Never record addresses, phone numbers, emails, ID or account numbers, or health or \
+family details, in any field.
+   - us_nexus: true only if the text says the person is a U.S. citizen or resident or is in \
+the United States. reported_minor: true if the text says the person is under 18.
+   - events: link the person to events in this output by 0-based index, with the role the \
+text reports.
+   - In summary_en, description and evidence, name only people you list in persons.
+   - Never put a person in perpetrators, targets or organizations; those lists hold \
+organizations only. Organizations whose names include a surname (e.g. "Los Salazar") are \
+organizations.
 2. Extract only what the text states. Do not infer fatalities, dates or locations that are \
 not supported. Use null when unknown. "evidence" must be a short quote from the text.
 3. One event per distinct incident (place + time). Background, history and statistics are \
@@ -517,17 +567,20 @@ def store_extraction(
             Seizure.source_id == doc.source_id, Seizure.source_key.like(prefix + "%")
         )
     )
+    persons.clear_document(session, doc.id)  # person_events also go with the events above
     doc.translated_text = ex.summary_en
     for k, v in llm.items():
         setattr(doc, k, v)
     doc.pipeline_status = "extracted" if ex.relevant else "filtered_out"
     if not ex.relevant:
-        return {"events": 0, "seizures": 0}
+        persons.delete_uncited(session)
+        return {"events": 0, "seizures": 0, "persons": 0}
 
     citation = {"title": doc.title or "news article", "publisher": source.name,
                 "url": doc.source_url or ""}  # fmt: skip
     org_types = {normalize_alias(o.name): o.org_type for o in ex.organizations}
     index = ActorIndex.load(session)
+    event_ids: list[int] = []
     for i, e in enumerate(ex.events):
         when, exact = _date(e.event_date, fallback_date)
         geo = geocode(session, place=e.location.place, municipality=e.location.municipality,
@@ -574,6 +627,7 @@ def store_extraction(
         )
         session.add(ev)
         session.flush()
+        event_ids.append(ev.id)
         session.execute(event_documents.insert().values(event_id=ev.id, document_id=doc.id))
         for role, names in (("perpetrator", e.perpetrators), ("target", e.targets)):
             for actor_id in _actor_ids(index, names, org_types, citation):
@@ -608,7 +662,25 @@ def store_extraction(
         session.add(sz)
         session.flush()
         session.execute(seizure_documents.insert().values(seizure_id=sz.id, document_id=doc.id))
-    return {"events": len(ex.events), "seizures": len(ex.seizures)}
+
+    def org_actor(name: str) -> int | None:
+        ids = _actor_ids(index, [name], org_types, citation)
+        return ids[0] if ids else None
+
+    n_persons = persons.store_persons(
+        session,
+        ex.persons,
+        lambda evidence: persons.citation_for(
+            doc, source, evidence, model=model, prompt_version=PROMPT_VERSION
+        ),
+        actor_id=org_actor,
+        event_links=[
+            [(event_ids[x.event_index], x.role) for x in p.events if x.event_index < len(event_ids)]
+            for p in ex.persons
+        ],
+    )
+    persons.delete_uncited(session)
+    return {"events": len(ex.events), "seizures": len(ex.seizures), "persons": n_persons}
 
 
 MAX_TOKENS = 8000

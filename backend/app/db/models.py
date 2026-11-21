@@ -558,6 +558,115 @@ designation_actors = Table(
 )
 
 
+# --------------------------------------------------------------------------- persons (ADR 0013)
+# Hard rule 3 / ADR 0008: only people an open source links to criminal activity. Every
+# attribute and link is a cited claim: one row per source record, with its date and Admiralty
+# grade, shown as reported. A person with no remaining citation is deleted (no uncited
+# person exists). Contact and personal-life details have no column, by design.
+
+PERSON_ATTRIBUTES = ("role", "alias", "nationality", "status", "title")
+PERSON_STATUSES = (
+    "arrested", "charged", "convicted", "sentenced", "extradited", "killed", "fugitive",
+    "released", "designated",
+)  # fmt: skip
+PERSON_ORG_ROLES = (
+    "leader", "member", "facilitator", "operator_or_technician", "supplier",
+    "front_business_owner", "financier", "complicit_official", "associate",
+)  # fmt: skip
+PERSON_EVENT_ROLES = (
+    "perpetrator", "directed", "arrested", "charged", "convicted_or_sentenced", "extradited",
+    "killed", "escaped",
+)  # fmt: skip
+
+
+class Person(TimestampMixin, Base):
+    __tablename__ = "persons"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(256))  # as the first source wrote it
+    # Normalized full name used to match reports of the same person; NULL when the name is too
+    # thin to match safely (one word, or a placeholder such as "N").
+    name_key: Mapped[str | None] = mapped_column(String(256), index=True)
+    # Reported U.S. citizen, resident or U.S.-located: hidden from person views and search by
+    # default (hard rule 3; the owner's EO 12333 boundary). Set by any citing record.
+    us_person: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    disputed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    dispute_note: Mapped[str | None] = mapped_column(Text)
+
+
+class PersonCitationMixin:
+    """The source record behind one person claim (hard rule 3: cited, dated, graded)."""
+
+    person_id: Mapped[int] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"))
+    document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    designation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("designations.id", ondelete="CASCADE"), index=True
+    )
+    source_url: Mapped[str | None] = mapped_column(Text)
+    reported_on: Mapped[dt.date] = mapped_column(Date)
+    reliability: Mapped[str] = mapped_column(String(1))
+    credibility: Mapped[int] = mapped_column(SmallInteger)
+    evidence: Mapped[str | None] = mapped_column(String(300))
+    llm_model: Mapped[str | None] = mapped_column(String(64))
+    prompt_version: Mapped[str | None] = mapped_column(String(32))
+
+
+def _citation_checks() -> tuple[CheckConstraint, ...]:
+    return (
+        CheckConstraint("document_id IS NOT NULL OR designation_id IS NOT NULL", "cited"),
+        _check_in("reliability", ("A", "B", "C", "D", "E", "F"), "reliability"),
+        CheckConstraint("credibility BETWEEN 1 AND 6", "credibility"),
+    )
+
+
+class PersonAttribute(PersonCitationMixin, TimestampMixin, Base):
+    __tablename__ = "person_attributes"
+    __table_args__ = (
+        *_citation_checks(),
+        _check_in("attribute", PERSON_ATTRIBUTES, "attribute"),
+        UniqueConstraint(
+            "person_id", "attribute", "value", "document_id", "designation_id",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )  # fmt: skip
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    attribute: Mapped[str] = mapped_column(String(16))
+    value: Mapped[str] = mapped_column(String(256))
+
+
+class PersonOrganization(PersonCitationMixin, TimestampMixin, Base):
+    __tablename__ = "person_organizations"
+    __table_args__ = (
+        *_citation_checks(),
+        _check_in("role", PERSON_ORG_ROLES, "role"),
+        UniqueConstraint(
+            "person_id", "actor_id", "role", "document_id", "designation_id",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )  # fmt: skip
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("actors.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(32))
+
+
+class PersonEvent(PersonCitationMixin, TimestampMixin, Base):
+    __tablename__ = "person_events"
+    __table_args__ = (
+        *_citation_checks(),
+        _check_in("role", PERSON_EVENT_ROLES, "role"),
+        UniqueConstraint("person_id", "event_id", "role"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(32))
+
+
 # --------------------------------------------------------------------------- analysis & ops
 
 

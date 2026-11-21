@@ -89,6 +89,7 @@ GOOD = {
         {"name": "Los Sintéticos", "org_type": "gang"},
         {"name": "hombres armados", "org_type": "other"},
     ],
+    "persons": [],
 }
 
 
@@ -185,7 +186,7 @@ def test_reextraction_replaces_records(seeded: Session, doc_id: int) -> None:
 def test_system_block_is_deterministic_and_cacheable(seeded: Session) -> None:
     a, b = extract.build_system(seeded), extract.build_system(seeded)
     assert a == b
-    assert "The only individuals you may name are leaders of criminal organizations" in a
+    assert "List in persons only individuals the text links to criminal activity" in a
     assert "Cartel de Sinaloa" in a
     assert len(a) > 2500  # comfortably above the 512-token cache minimum
 
@@ -270,7 +271,7 @@ def test_uxs_and_energy_theft_are_stored(seeded: Session, doc_id: int) -> None:
     )
     assert (power.energy_powered, power.energy_scale) == (["crypto_mining"], "300 mining rigs")
     assert (power.uxs_activity, power.uxs_missions) == (None, [])
-    assert {e.prompt_version for e in (drone, power)} == {"extract-v7"}
+    assert {e.prompt_version for e in (drone, power)} == {extract.PROMPT_VERSION}
 
 
 def test_unknown_uxs_category_is_rejected(seeded: Session, doc_id: int) -> None:
