@@ -31,6 +31,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core import outbound
 from app.core.config import get_settings
 from app.core.secrets import require_secret
 from app.db.models import Alert, Document, Event, LLMQuarantine, LLMUsage, Source, event_documents
@@ -240,6 +241,7 @@ class Gateway:
             # Pin the official endpoint: never inherit ANTHROPIC_BASE_URL (or any proxy) from
             # the environment, so the key and article text only ever go to the Claude API
             # (CLAUDE.md: no outbound calls beyond source pulls and the Claude API).
+            outbound.check(API_BASE_URL)
             self._client = anthropic.Anthropic(
                 api_key=require_secret("ANTHROPIC_API_KEY").get_secret_value(),
                 base_url=API_BASE_URL,

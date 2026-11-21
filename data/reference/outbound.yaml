@@ -1,0 +1,30 @@
+# Outbound allowlist (ADR 0008 §2; CLAUDE.md "Do not"). The backend may only send requests to:
+#   - a domain listed below (subdomains included),
+#   - the host of a feed registered in feeds.yaml (registering a feed records its terms), or
+#   - loopback (the local Ollama relevance model).
+# Every entry must match a row in docs/data-sources.md, or a service an ADR approves.
+# app/core/outbound.py enforces this on every request and on every redirect hop.
+
+version: 1
+destinations:
+  - domain: api.anthropic.com
+    purpose: Claude API (translation, extraction, analysis)
+    basis: CLAUDE.md stack; ADR 0004
+  - domain: acleddata.com
+    purpose: ACLED API (OAuth token, events, deleted events)
+    basis: data-sources.md "ACLED"; ADR 0003, ADR 0006
+  - domain: cbp.gov
+    purpose: CBP Public Data Portal files
+    basis: data-sources.md "CBP Public Data Portal"; ADR 0003
+  - domain: api.gdeltproject.org
+    purpose: GDELT 2.0 DOC API, filtered to registered feed domains
+    basis: data-sources.md "GDELT 2.0 DOC API"; ADR 0004
+  - domain: federalregister.gov
+    purpose: Federal Register API (FTO and SDGT notices)
+    basis: data-sources.md "State Dept FTO list; Federal Register"
+  - domain: sanctionslistservice.ofac.treas.gov
+    purpose: OFAC SDN XML export
+    basis: data-sources.md "OFAC SDN list"
+  - domain: inegi.org.mx
+    purpose: INEGI municipalities and gazetteer (one-time reference build)
+    basis: data-sources.md "INEGI free-use terms"

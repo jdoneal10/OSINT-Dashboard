@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { LabelRecord, LabelTarget, Verdict } from '../../api/types'
+import type { LabelRecord, Verdict } from '../../api/types'
 import { OUT_OF_AOI, RECORD_FIELDS, labelField, type LabelChange } from '../../lib/labels'
 
 const VERDICTS: { value: Verdict; label: string; tone: string }[] = [
@@ -17,7 +17,7 @@ const VERDICTS: { value: Verdict; label: string; tone: string }[] = [
 ]
 
 interface Props {
-  table: Exclude<LabelTarget, 'documents'>
+  table: 'events' | 'seizures'
   current: LabelRecord | undefined
   busy: boolean
   /** The record is already flagged outside the AOI (pre-ticks the scope box). */

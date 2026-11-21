@@ -55,7 +55,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Document, Label, Seizure, Source
+from app.db.models import Document, Event, Label, Seizure, Source
 from app.db.session import session_factory
 from app.enrich import extract
 from app.enrich.llm.client import Gateway, Provenance
@@ -67,6 +67,14 @@ TARGET_DOCUMENTS = 100
 SWEEP = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
 RECORD_TABLES = ("events", "seizures")
 SCOPE_FIELDS = frozenset({"out_of_aoi"})  # priority judgments, not extraction errors
+# Phase 3 (ADR 0009, ADR 0013). The priority sample size is a working default: enough for a
+# 95% interval about +/-10 points wide at 85% precision. Adjust here if the owner decides.
+TARGET_PRIORITY_RECORDS = 50
+PRIORITY_FIELDS = frozenset({"uxs", "energy_theft"})
+# Person-label fields that record a hard-rule-3 violation rather than an accuracy error.
+SAFEGUARD_FIELDS = frozenset(
+    {"excluded_category", "contact_detail", "us_nexus_missed", "unsupported"}
+)
 
 
 def wilson(successes: float, n: float, z: float = 1.96) -> tuple[float, float]:
@@ -171,6 +179,81 @@ def record_precision(session: Session, prompt_version: str) -> RecordReport:
         low_priority=_low_priority(session, [t for (tb, t) in latest if tb == "seizures"]),
         documents=len({lab.document_id for lab in latest.values()}),
         wrong_records=wrong,
+    )
+
+
+# --------------------------------------------------------------------------- Phase 3
+
+
+@dataclass
+class Phase3Report:
+    priority: Precision  # labeled events carrying UxS or electricity-theft detail
+    priority_errors: Counter[str]
+    persons: Precision
+    person_errors: Counter[str]
+    violations: list[tuple[int, int, list[str]]]  # (document, person, safeguard fields)
+
+
+def _latest(labels: Iterable[Label]) -> dict[tuple[int, str, int], Label]:
+    latest: dict[tuple[int, str, int], Label] = {}
+    for lab in labels:
+        key = (lab.document_id, lab.target_table, lab.target_id)
+        if key not in latest or lab.updated_at > latest[key].updated_at:
+            latest[key] = lab
+    return latest
+
+
+def phase3(session: Session, prompt_version: str) -> Phase3Report:
+    """Precision on the priority-topic events and on persons, and safeguard violations."""
+    out = Phase3Report(Precision(), Counter(), Precision(), Counter(), [])
+    priority_ids = set(
+        session.scalars(
+            select(Event.id).where(
+                (Event.uxs_activity.is_not(None)) | (Event.energy_method.is_not(None))
+            )
+        )
+    )
+    labels = session.scalars(
+        select(Label).where(
+            Label.target_table.in_(("events", "persons")), Label.prompt_version == prompt_version
+        )
+    )
+    for (doc_id, table, target), lab in sorted(_latest(labels).items()):
+        named = {f for f in lab.field.split(",") if f}
+        errors = named - SCOPE_FIELDS
+        if table == "events":
+            if target not in priority_ids:
+                continue
+            v = "correct" if lab.verdict == "partial" and not errors else lab.verdict
+            out.priority.add(v)
+            if v == "partial":
+                out.priority_errors.update(errors)
+            continue
+        safeguards = sorted(errors & SAFEGUARD_FIELDS)
+        accuracy = errors - SAFEGUARD_FIELDS
+        v = lab.verdict
+        if v == "partial" and not accuracy and not safeguards:
+            v = "correct"
+        out.persons.add(v)
+        out.person_errors.update(accuracy)
+        if safeguards:
+            out.violations.append((doc_id, target, safeguards))
+    return out
+
+
+def phase3_verdict(r: Phase3Report) -> str:
+    if r.violations:
+        return f"**FAIL**: {len(r.violations)} labeled person-safeguard violation(s)."
+    if r.priority.n < TARGET_PRIORITY_RECORDS:
+        return (
+            f"**INSUFFICIENT SAMPLE**: {r.priority.n} of {TARGET_PRIORITY_RECORDS} UxS or "
+            "electricity-theft records labeled; no safeguard violations so far."
+        )
+    strict = r.priority.strict or 0.0
+    status = "PASS" if strict >= TARGET_PRECISION else "FAIL"
+    return (
+        f"**{status}**: priority-field strict precision {_pct(strict)} "
+        f"(target {TARGET_PRECISION:.0%}); no safeguard violations."
     )
 
 
@@ -359,6 +442,32 @@ def verdict(rec: RecordReport) -> str:
     return f"**{status}**: strict precision {_pct(strict)} (target {TARGET_PRECISION:.0%})."
 
 
+def _render_phase3(r: Phase3Report) -> list[str]:
+    lines = [
+        "## Phase 3: priority topics and persons",
+        "",
+        "| Records | Labeled | Correct | Partly wrong | Wrong | Strict | 95% CI |",
+        "|---|---:|---:|---:|---:|---:|---|",
+    ]
+    for name, p in (("UxS / electricity-theft events", r.priority), ("persons", r.persons)):
+        lines.append(
+            f"| {name} | {p.n} | {p.correct} | {p.partial} | {p.incorrect} | "
+            f"{_pct(p.strict)} | {_ci(p)} |"
+        )
+    errors = r.priority_errors + r.person_errors
+    lines += [
+        "",
+        "Field errors: " + (", ".join(f"{f} {n}" for f, n in errors.most_common()) or "none") + ".",
+    ]
+    lines += [
+        "",
+        f"**Person safeguards (hard rule 3, ADR 0013):** {len(r.violations)} violation(s).",
+    ]
+    for doc_id, person_id, fields in r.violations:
+        lines.append(f"- document {doc_id}, person {person_id}: {', '.join(fields)}")
+    return [*lines, ""]
+
+
 def render(
     prompt_version: str,
     rec: RecordReport,
@@ -367,6 +476,7 @@ def render(
     today: dt.date,
     *,
     haiku: HaikuRelevance | None = None,
+    p3: Phase3Report | None = None,
 ) -> str:
     lines = [
         f"# Extraction evaluation: {prompt_version}",
@@ -376,6 +486,11 @@ def render(
         f"- **Documents with record labels:** {rec.documents}; "
         f"**with relevance labels:** {len(docs)}",
         f"- **Exit criterion (Phase 2):** {verdict(rec)}",
+        *(
+            [f"- **Exit criteria (Phase 3, new fields and persons):** {phase3_verdict(p3)}"]
+            if p3
+            else []
+        ),
         "",
         "Generated by `python -m app.enrich.evaluate` from the owner's hand labels. "
         "Labels, notes and article text stay local; this report holds counts and record ids "
@@ -409,6 +524,7 @@ def render(
         "(small drug amounts or contraband; docs/framework/seizure-priority.md). Priority is "
         "set by code, not the model; label these on extraction accuracy alone.",
         "",
+        *(_render_phase3(p3) if p3 else []),
         "## Relevance filter",
         "",
         "Recall and pass rate are weighted by filter stratum (see module docstring).",
@@ -494,11 +610,13 @@ def run(
             m.seconds_per_doc = per_doc
             filters.append(m)
         haiku = haiku_relevance(session, docs, haiku_gateway) if haiku_gateway else None
+        p3 = phase3(session, version)
     today = today or dt.datetime.now().astimezone().date()  # the owner's local date
     out_dir = out_dir or settings.repo_root / "docs" / "evaluations"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{today.isoformat()}-extraction-{version}.md"
-    path.write_text(render(version, rec, docs, filters, today, haiku=haiku), encoding="utf-8")
+    report = render(version, rec, docs, filters, today, haiku=haiku, p3=p3)
+    path.write_text(report, encoding="utf-8")
     return path
 
 

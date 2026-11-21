@@ -36,6 +36,7 @@ from sqlalchemy import (
     func,
     true,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (
@@ -65,6 +66,16 @@ Citations = list[dict[str, Any]]
 def _check_in(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
     quoted = ", ".join(f"'{v}'" for v in values)
     return CheckConstraint(f"{column} IN ({quoted})", name)
+
+
+def _check_array_in(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
+    quoted = ", ".join(f"'{v}'" for v in values)
+    return CheckConstraint(f"{column} <@ ARRAY[{quoted}]::varchar[]", name)
+
+
+def _check_null_or_in(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
+    quoted = ", ".join(f"'{v}'" for v in values)
+    return CheckConstraint(f"{column} IS NULL OR {column} IN ({quoted})", name)
 
 
 def _gist(table: str, column: str) -> Index:
@@ -194,6 +205,38 @@ BORDER_THREATS = (
 )
 
 
+# Unmanned systems and electricity theft (owner framework, docs/framework/
+# uxs-and-electricity-theft.md; ADR 0009). Categories are owner judgment; values on a record
+# are what its source reports.
+UXS_PLATFORMS = (
+    "suas_multirotor", "fpv", "fixed_wing", "heavy_lift_or_hybrid", "ugv", "usv", "unknown",
+)  # fmt: skip
+UXS_MISSIONS = (
+    "surveillance", "route_security", "overwatch", "attack", "logistics",
+    "coercion_or_propaganda", "surveillance_of_security_forces", "monitoring_economic_activity",
+)  # fmt: skip
+UXS_PAYLOADS = (
+    "explosive_or_grenade", "ied", "camera_or_thermal", "release_mechanism", "supply",
+    "loudspeaker_or_light", "none_reported",
+)  # fmt: skip
+UXS_ACTIVITIES = (
+    "employment", "recovery_or_seizure", "procurement_or_import", "assembly_or_modification",
+    "training", "prosecution",
+)  # fmt: skip
+ENERGY_METHODS = (
+    "meter_bypass", "illegal_line_connection", "transformer_or_feeder_tampering",
+    "insider_facilitation", "unknown",
+)  # fmt: skip
+ENERGY_POWERED = (
+    "crypto_mining", "cultivation", "drug_lab", "warehouse_or_storage", "refrigeration",
+    "communications", "residential_compound", "other",
+)  # fmt: skip
+ENERGY_FACILITATORS = (
+    "utility_employee", "contractor", "electrician", "official", "property_manager",
+    "none_reported",
+)  # fmt: skip
+
+
 class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     __tablename__ = "events"
     __table_args__ = (
@@ -206,6 +249,17 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
         ),
         _gist("events", "geom"),
         Index("ix_events_event_date", "event_date"),
+        _check_null_or_in("uxs_platform", UXS_PLATFORMS, "uxs_platform"),
+        _check_null_or_in("uxs_activity", UXS_ACTIVITIES, "uxs_activity"),
+        _check_array_in("uxs_missions", UXS_MISSIONS, "uxs_missions"),
+        _check_array_in("uxs_payloads", UXS_PAYLOADS, "uxs_payloads"),
+        CheckConstraint("(uxs_activity IS NULL) = (uxs_platform IS NULL)", "uxs_complete"),
+        _check_null_or_in("energy_method", ENERGY_METHODS, "energy_method"),
+        _check_array_in("energy_powered", ENERGY_POWERED, "energy_powered"),
+        _check_null_or_in("energy_facilitator", ENERGY_FACILITATORS, "energy_facilitator"),
+        CheckConstraint(
+            "(energy_method IS NULL) = (energy_facilitator IS NULL)", "energy_theft_complete"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -234,6 +288,23 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     in_aoi: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     # Priority border-threat category (news-derived events; ADR 0007), else NULL.
     border_threat: Mapped[str | None] = mapped_column(String(32), index=True)
+    # Unmanned systems (extract-v7): set when the event involves criminal UxS; activity says
+    # what happened (employment, seizure, procurement, assembly, training, prosecution).
+    uxs_activity: Mapped[str | None] = mapped_column(String(32), index=True)
+    uxs_platform: Mapped[str | None] = mapped_column(String(32))
+    uxs_missions: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)), default=list, server_default="{}"
+    )
+    uxs_payloads: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)), default=list, server_default="{}"
+    )
+    # Electricity theft (extract-v7): reported cases only, never inferred sites (ADR 0009 §4).
+    energy_method: Mapped[str | None] = mapped_column(String(40), index=True)
+    energy_powered: Mapped[list[str]] = mapped_column(
+        ARRAY(String(32)), default=list, server_default="{}"
+    )
+    energy_facilitator: Mapped[str | None] = mapped_column(String(32))
+    energy_scale: Mapped[str | None] = mapped_column(String(200))  # as reported, never estimated
 
 
 # actor1..assoc_actor2 mirror ACLED's dyad exactly (no perpetrator/target semantics);
@@ -485,6 +556,115 @@ designation_actors = Table(
     Column("designation_id", ForeignKey("designations.id", ondelete="CASCADE"), primary_key=True),
     Column("actor_id", ForeignKey("actors.id", ondelete="CASCADE"), primary_key=True),
 )
+
+
+# --------------------------------------------------------------------------- persons (ADR 0013)
+# Hard rule 3 / ADR 0008: only people an open source links to criminal activity. Every
+# attribute and link is a cited claim: one row per source record, with its date and Admiralty
+# grade, shown as reported. A person with no remaining citation is deleted (no uncited
+# person exists). Contact and personal-life details have no column, by design.
+
+PERSON_ATTRIBUTES = ("role", "alias", "nationality", "status", "title")
+PERSON_STATUSES = (
+    "arrested", "charged", "convicted", "sentenced", "extradited", "killed", "fugitive",
+    "released", "designated",
+)  # fmt: skip
+PERSON_ORG_ROLES = (
+    "leader", "member", "facilitator", "operator_or_technician", "supplier",
+    "front_business_owner", "financier", "complicit_official", "associate",
+)  # fmt: skip
+PERSON_EVENT_ROLES = (
+    "perpetrator", "directed", "arrested", "charged", "convicted_or_sentenced", "extradited",
+    "killed", "escaped",
+)  # fmt: skip
+
+
+class Person(TimestampMixin, Base):
+    __tablename__ = "persons"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(256))  # as the first source wrote it
+    # Normalized full name used to match reports of the same person; NULL when the name is too
+    # thin to match safely (one word, or a placeholder such as "N").
+    name_key: Mapped[str | None] = mapped_column(String(256), index=True)
+    # Reported U.S. citizen, resident or U.S.-located: hidden from person views and search by
+    # default (hard rule 3; the owner's EO 12333 boundary). Set by any citing record.
+    us_person: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    disputed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    dispute_note: Mapped[str | None] = mapped_column(Text)
+
+
+class PersonCitationMixin:
+    """The source record behind one person claim (hard rule 3: cited, dated, graded)."""
+
+    person_id: Mapped[int] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"))
+    document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    designation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("designations.id", ondelete="CASCADE"), index=True
+    )
+    source_url: Mapped[str | None] = mapped_column(Text)
+    reported_on: Mapped[dt.date] = mapped_column(Date)
+    reliability: Mapped[str] = mapped_column(String(1))
+    credibility: Mapped[int] = mapped_column(SmallInteger)
+    evidence: Mapped[str | None] = mapped_column(String(300))
+    llm_model: Mapped[str | None] = mapped_column(String(64))
+    prompt_version: Mapped[str | None] = mapped_column(String(32))
+
+
+def _citation_checks() -> tuple[CheckConstraint, ...]:
+    return (
+        CheckConstraint("document_id IS NOT NULL OR designation_id IS NOT NULL", "cited"),
+        _check_in("reliability", ("A", "B", "C", "D", "E", "F"), "reliability"),
+        CheckConstraint("credibility BETWEEN 1 AND 6", "credibility"),
+    )
+
+
+class PersonAttribute(PersonCitationMixin, TimestampMixin, Base):
+    __tablename__ = "person_attributes"
+    __table_args__ = (
+        *_citation_checks(),
+        _check_in("attribute", PERSON_ATTRIBUTES, "attribute"),
+        UniqueConstraint(
+            "person_id", "attribute", "value", "document_id", "designation_id",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )  # fmt: skip
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    attribute: Mapped[str] = mapped_column(String(16))
+    value: Mapped[str] = mapped_column(String(256))
+
+
+class PersonOrganization(PersonCitationMixin, TimestampMixin, Base):
+    __tablename__ = "person_organizations"
+    __table_args__ = (
+        *_citation_checks(),
+        _check_in("role", PERSON_ORG_ROLES, "role"),
+        UniqueConstraint(
+            "person_id", "actor_id", "role", "document_id", "designation_id",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )  # fmt: skip
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("actors.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(32))
+
+
+class PersonEvent(PersonCitationMixin, TimestampMixin, Base):
+    __tablename__ = "person_events"
+    __table_args__ = (
+        *_citation_checks(),
+        _check_in("role", PERSON_EVENT_ROLES, "role"),
+        UniqueConstraint("person_id", "event_id", "role"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(32))
 
 
 # --------------------------------------------------------------------------- analysis & ops
@@ -739,7 +919,10 @@ class Label(TimestampMixin, Base):
 
     __tablename__ = "labels"
     __table_args__ = (
-        UniqueConstraint("target_table", "target_id", "field", name="uq_labels_target"),
+        # Per document: a person is judged once for each document it was extracted from.
+        UniqueConstraint(
+            "document_id", "target_table", "target_id", "field", name="uq_labels_target"
+        ),
         _check_in("verdict", LABEL_VERDICTS, "verdict"),
     )
 
@@ -747,7 +930,7 @@ class Label(TimestampMixin, Base):
     document_id: Mapped[int] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE"), index=True
     )
-    target_table: Mapped[str] = mapped_column(String(32))  # events | seizures | actor_events
+    target_table: Mapped[str] = mapped_column(String(32))  # events | seizures | documents | persons
     target_id: Mapped[int] = mapped_column(BigInteger)
     field: Mapped[str] = mapped_column(String(64), default="")  # "" = whole record
     verdict: Mapped[str] = mapped_column(String(16))

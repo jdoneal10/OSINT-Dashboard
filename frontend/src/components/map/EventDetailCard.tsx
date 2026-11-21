@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import { useEvent } from '../../api/hooks'
 import { localDate } from '../../lib/dates'
 import { threatLabel } from '../../lib/threats'
+import { PriorityDetail } from '../news/RecordTables'
 import { eventColor } from './eventColors'
 
 const GEO = { 1: 'exact location', 2: 'near location', 3: 'regional (admin-level)' } as const
@@ -93,6 +94,7 @@ export default function EventDetailCard({ id, onClose }: Props) {
               ))}
             </ul>
           )}
+          <PriorityDetail ev={data} />
           {data.description && <p className="text-ink-300 leading-relaxed">{data.description}</p>}
           {data.document_ids.length > 0 ? (
             <p className="text-ink-500 border-ink-700 space-x-2 border-t pt-2">

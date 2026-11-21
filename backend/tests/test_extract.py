@@ -68,6 +68,8 @@ GOOD = {
             "description": "Gunmen clashed; three died.",
             "evidence": "dejó tres muertos",
             "border_threat": None,
+            "uxs": None,
+            "energy_theft": None,
         }
     ],
     "seizures": [
@@ -87,6 +89,7 @@ GOOD = {
         {"name": "Los Sintéticos", "org_type": "gang"},
         {"name": "hombres armados", "org_type": "other"},
     ],
+    "persons": [],
 }
 
 
@@ -183,7 +186,7 @@ def test_reextraction_replaces_records(seeded: Session, doc_id: int) -> None:
 def test_system_block_is_deterministic_and_cacheable(seeded: Session) -> None:
     a, b = extract.build_system(seeded), extract.build_system(seeded)
     assert a == b
-    assert "The only individuals you may name are leaders of criminal organizations" in a
+    assert "List in persons only individuals the text links to criminal activity" in a
     assert "Cartel de Sinaloa" in a
     assert len(a) > 2500  # comfortably above the 512-token cache minimum
 
@@ -206,6 +209,105 @@ def test_border_threat_is_stored(seeded: Session, doc_id: int) -> None:
 def test_prompt_states_threat_only_rule() -> None:
     assert "NEVER record the number" in extract.RULES
     assert "border_threat" in extract.RULES
+
+
+# --------------------------------------------------------------------------- UxS and energy (v7)
+
+
+def test_v7_categories_match_the_database() -> None:
+    from typing import get_args  # noqa: PLC0415
+
+    from app.db import models  # noqa: PLC0415
+
+    pairs = (
+        (extract.UxsPlatform, models.UXS_PLATFORMS),
+        (extract.UxsMission, models.UXS_MISSIONS),
+        (extract.UxsPayload, models.UXS_PAYLOADS),
+        (extract.UxsActivity, models.UXS_ACTIVITIES),
+        (extract.EnergyMethod, models.ENERGY_METHODS),
+        (extract.EnergyPowered, models.ENERGY_POWERED),
+        (extract.EnergyFacilitator, models.ENERGY_FACILITATORS),
+    )
+    for literal, values in pairs:
+        assert get_args(literal) == values
+
+
+def _event(**kw: Any) -> dict[str, Any]:
+    return {**GOOD["events"][0], **kw}
+
+
+def test_uxs_and_energy_theft_are_stored(seeded: Session, doc_id: int) -> None:
+    payload = json.loads(json.dumps(GOOD))
+    payload["events"] = [
+        _event(
+            event_type="Explosions/Remote violence",
+            uxs={
+                "activity": "employment",
+                "platform": "fpv",
+                "missions": ["attack", "attack", "surveillance"],
+                "payloads": ["explosive_or_grenade"],
+            },
+        ),
+        _event(
+            event_type="Strategic developments",
+            fatalities=None,
+            energy_theft={
+                "method": "illegal_line_connection",
+                "powered": ["crypto_mining"],
+                "facilitator": "none_reported",
+                "scale": "300 mining rigs",
+            },
+        ),
+    ]
+    _run(_resp(payload))
+    drone, power = seeded.scalars(select(Event).order_by(Event.source_key)).all()
+    assert (drone.uxs_activity, drone.uxs_platform) == ("employment", "fpv")
+    assert drone.uxs_missions == ["attack", "surveillance"]  # duplicates dropped, order kept
+    assert drone.uxs_payloads == ["explosive_or_grenade"]
+    assert (drone.energy_method, drone.energy_powered) == (None, [])
+    assert (power.energy_method, power.energy_facilitator) == (
+        "illegal_line_connection",
+        "none_reported",
+    )
+    assert (power.energy_powered, power.energy_scale) == (["crypto_mining"], "300 mining rigs")
+    assert (power.uxs_activity, power.uxs_missions) == (None, [])
+    assert {e.prompt_version for e in (drone, power)} == {extract.PROMPT_VERSION}
+
+
+def test_unknown_uxs_category_is_rejected(seeded: Session, doc_id: int) -> None:
+    payload = json.loads(json.dumps(GOOD))
+    payload["events"][0]["uxs"] = {"activity": "employment", "platform": "jetpack",
+                                   "missions": [], "payloads": []}  # fmt: skip
+    _run(_resp(payload), _resp(payload))  # invalid twice: quarantined, nothing stored
+    assert seeded.scalars(select(Event)).all() == []
+
+
+def test_database_rejects_categories_outside_the_framework(seeded: Session, doc_id: int) -> None:
+    from sqlalchemy import update  # noqa: PLC0415
+    from sqlalchemy.exc import IntegrityError  # noqa: PLC0415
+
+    _run(_resp(GOOD))
+    for values in (
+        {"uxs_activity": "employment"},  # platform missing
+        {"uxs_activity": "employment", "uxs_platform": "fpv", "uxs_missions": ["joyride"]},
+        {"energy_method": "meter_bypass"},  # facilitator missing
+        {
+            "energy_method": "meter_bypass",
+            "energy_facilitator": "none_reported",
+            "energy_powered": ["casino"],
+        },
+    ):
+        with pytest.raises(IntegrityError):
+            seeded.execute(update(Event).values(**values))
+        seeded.rollback()
+
+
+def test_prompt_states_priorities_and_v7_rules() -> None:
+    rules = extract.RULES
+    assert rules.index("unmanned systems") < rules.index("human smuggling")
+    for phrase in ("11. uxs.", "12. energy_theft.", "Police or military drones",
+                   "never infer a site", "Never name the person", "drones; cash"):  # fmt: skip
+        assert phrase in rules, phrase
 
 
 # --------------------------------------------------------------------------- seizures (v6)

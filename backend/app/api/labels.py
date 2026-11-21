@@ -6,6 +6,9 @@ A label judges one pipeline output: a whole record (``field = ""``) or one field
   or wrong?
 - ``documents`` with ``field = "relevant"``: was the pipeline's relevance decision
   (extracted vs filtered out) correct? Used for filter recall.
+- ``persons`` (ADR 0013): the person as extracted from this document. ``field`` names wrong
+  attributes and any safeguard violation (an excluded category such as a victim or minor,
+  a contact detail, a missed U.S. nexus, an unsupported claim). One label per document.
 
 ``prompt_version`` is copied from the judged record so results stay tied to the prompt that
 produced them after re-extraction.
@@ -28,6 +31,7 @@ from app.db.models import (
     Document,
     Event,
     Label,
+    PersonAttribute,
     Seizure,
     Source,
     event_documents,
@@ -45,7 +49,7 @@ RECORD_TABLES = ("events", "seizures")
 
 class LabelIn(BaseModel):
     document_id: int
-    target_table: Literal["events", "seizures", "documents"]
+    target_table: Literal["events", "seizures", "documents", "persons"]
     target_id: int
     field: str = Field(default="", max_length=64)
     verdict: Literal["correct", "incorrect", "partial"]
@@ -64,6 +68,18 @@ def _judged(session: Session, body: LabelIn) -> tuple[str | None, str | None]:
             raise HTTPException(422, "target document does not match document_id")
         decision = "relevant" if doc.pipeline_status == "extracted" else "not_relevant"
         return doc.prompt_version or doc.relevance_model, decision
+    if body.target_table == "persons":
+        person_version = session.scalar(
+            select(PersonAttribute.prompt_version)
+            .where(
+                PersonAttribute.person_id == body.target_id,
+                PersonAttribute.document_id == body.document_id,
+            )
+            .limit(1)
+        )
+        if person_version is None:
+            raise HTTPException(422, f"person {body.target_id} is not from this document")
+        return person_version, None
     model: type[Event] | type[Seizure]
     if body.target_table == "events":
         model, link, col = Event, event_documents, event_documents.c.event_id
@@ -194,6 +210,31 @@ def _record_top_up(session: Session, rows: list[Row], picked: list[Row], target:
     return extra
 
 
+def _records_for(session: Session, ids: list[int]) -> dict[int, set[tuple[str, int]]]:
+    """Records to label per document: its events, seizures and persons (ADR 0013)."""
+    records: dict[int, set[tuple[str, int]]] = defaultdict(set)
+    for doc_id, ev_id in session.execute(
+        select(event_documents.c.document_id, event_documents.c.event_id).where(
+            event_documents.c.document_id.in_(ids)
+        )
+    ):
+        records[doc_id].add(("events", ev_id))
+    for doc_id, sz_id in session.execute(
+        select(seizure_documents.c.document_id, seizure_documents.c.seizure_id).where(
+            seizure_documents.c.document_id.in_(ids)
+        )
+    ):
+        records[doc_id].add(("seizures", sz_id))
+    for doc_id, person_id in session.execute(
+        select(PersonAttribute.document_id, PersonAttribute.person_id)
+        .where(PersonAttribute.document_id.in_(ids))
+        .distinct()
+    ):
+        if doc_id is not None:
+            records[doc_id].add(("persons", person_id))
+    return records
+
+
 @router.get("/queue", response_model=LabelQueue)
 def label_queue(
     session: DB,
@@ -240,19 +281,7 @@ def label_queue(
     if record_documents:
         picked += _record_top_up(session, rows, picked, record_documents)
     ids = [p[0] for p in picked]
-    records: dict[int, set[tuple[str, int]]] = defaultdict(set)
-    for doc_id, ev_id in session.execute(
-        select(event_documents.c.document_id, event_documents.c.event_id).where(
-            event_documents.c.document_id.in_(ids)
-        )
-    ):
-        records[doc_id].add(("events", ev_id))
-    for doc_id, sz_id in session.execute(
-        select(seizure_documents.c.document_id, seizure_documents.c.seizure_id).where(
-            seizure_documents.c.document_id.in_(ids)
-        )
-    ):
-        records[doc_id].add(("seizures", sz_id))
+    records = _records_for(session, ids)
     labeled: dict[int, set[tuple[str, int]]] = defaultdict(set)
     relevance: set[int] = set()
     for doc_id, table, target in session.execute(

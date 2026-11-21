@@ -98,3 +98,12 @@ The owner reports a written agreement from Telegram that authorizes incorporatin
   - **Collection method.** No method is approved. ScrapeAtlas was offered and declined by the owner (paid service). The owner is evaluating an alternative for social media content, which needs its own decision before any code is written.
 - **Claude processing:** the owner confirmed on 2026-11-13 that the agreement covers processing with Claude, so Telegram content goes through the normal LLM stages once collected.
 - **Handling once collected:** social-media grade (low Admiralty, single source unless corroborated); narco-propaganda stays low; rule 3 person safeguards and rule 4 (no friendly-force data) apply; raw pulls go to `data/raw/telegram/` and are never committed.
+
+## Amendment 2 (2026-11-20): DroneLife written permission
+Outlet batch 1 left DroneLife pending. Its robots.txt allows our client and AI agents, but its [Terms of Service](https://dronelife.com/termsofservice/) bar "unauthorized spidering, 'scraping,' or harvesting Content … or … other unauthorized automated means to compile information" and limit use to personal, non-commercial use.
+
+The owner reports explicit written permission from DroneLife for this dashboard, given its non-commercial use. The owner holds the permission.
+
+- **Effect:** automated collection (RSS plus full article text) is authorized for this project. DroneLife is active with `text: full` and reliability C.
+- **AI processing:** the terms have no AI clause, so DroneLife content goes through the normal LLM stages.
+- **Unchanged:** personal, non-commercial use only; no redistribution. The feed entry in `feeds.yaml` records this.

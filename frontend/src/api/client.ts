@@ -13,21 +13,27 @@ import type {
   DocumentDetail,
   DocumentPage,
   EventDetail,
+  EventPage,
   EventPoints,
-  EventsMeta,
   EventTypeCount,
+  EventsMeta,
   Health,
+  LLMUsage,
   LabelInput,
   LabelQueue,
   LabelRecord,
-  LLMUsage,
   MetricSeries,
-  MunicipalityProps,
-  SourceCount,
   MonthCount,
+  MunicipalityProps,
   NodeProps,
+  PersonDetail,
+  PersonPage,
+  PersonSummary,
   ReferenceCollection,
   SeizureSeries,
+  SourceCount,
+  TopicSummary,
+  UxsSummary,
 } from './types'
 
 /** All API calls go through the Vite dev proxy at /api → 127.0.0.1:8000. */
@@ -84,6 +90,19 @@ export const api = {
   eventPoints: (params: Record<string, unknown>, init?: RequestInit) =>
     getJson<EventPoints>(`/events/geojson${toQuery(params)}`, init),
   event: (id: number, init?: RequestInit) => getJson<EventDetail>(`/events/${id}`, init),
+  events: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<EventPage>(`/events${toQuery(params)}`, init),
+  priorityUxs: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<UxsSummary>(`/priority/uxs${toQuery(params)}`, init),
+  priorityEnergy: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<TopicSummary>(`/priority/energy-theft${toQuery(params)}`, init),
+  persons: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<PersonPage>(`/persons${toQuery(params)}`, init),
+  person: (id: number, params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<PersonDetail>(`/persons/${id}${toQuery(params)}`, init),
+  disputePerson: (id: number, body: { disputed: boolean; note?: string | null }) =>
+    sendJson<PersonSummary>('PUT', `/persons/${id}/dispute`, body),
+  deletePerson: (id: number) => sendJson<undefined>('DELETE', `/persons/${id}`),
   eventTimeseries: (params: Record<string, unknown>, init?: RequestInit) =>
     getJson<MonthCount[]>(`/events/timeseries${toQuery(params)}`, init),
   acledWeekly: (params: Record<string, unknown>, init?: RequestInit) =>

@@ -28,6 +28,7 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import select
 
+from app.core import outbound
 from app.core.config import get_settings
 from app.db.models import Document, LLMQuarantine
 from app.db.session import session_factory
@@ -36,17 +37,26 @@ from app.enrich.infrastructure import keep_for_infrastructure
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = "filter-v2"  # v2: human smuggling and border threats first (ADR 0007)
+# v2: human smuggling and border threats first (ADR 0007)
+# v3: tiered priority (ADR 0009): unmanned systems and electricity theft first
+PROMPT_VERSION = "filter-v3"
 MAX_CHARS = 6000  # title + lead paragraphs are enough to judge relevance
 
 SYSTEM = """You screen news articles and official press releases for an analyst who tracks \
 transnational criminal organizations (drug cartels, gangs) in Mexico, Central America and the \
 U.S. Southwest border.
 
-TOP PRIORITY (score very high): human smuggling (smuggling loads, stash houses, smuggling \
+TOP PRIORITY (score very high): criminal use of drones or other unmanned systems (attacks, \
+surveillance, drone seizures, purchases, workshops, operator training, prosecutions; "dron", \
+"drones", "FPV", "dron explosivo", "UAV"); electricity theft tied to criminal activity \
+(stolen power for crypto mining, grows, labs or warehouses; illegal connections, tampered \
+meters or transformers, CFE insiders; "robo de energía", "conexión clandestina", \
+"diablito" with a criminal link, "minería de criptomonedas").
+
+HIGH PRIORITY (score high): human smuggling (smuggling loads, stash houses, smuggling \
 deaths, smuggling networks and prosecutions); threats to the U.S.-Mexico border such as \
-criminal drones, laser strikes, gunfire at or across the border, attacks on border \
-personnel, cross-border tunnels.
+laser strikes, gunfire at or across the border, attacks on border personnel, cross-border \
+tunnels.
 
 RELEVANT (score high): cartel or gang violence; homicides, kidnappings, extortion, \
 disappearances or clandestine graves linked to organized crime; clashes between armed groups \
@@ -97,6 +107,7 @@ class LocalFilter:
         settings = get_settings()
         self.model = model or settings.relevance_model
         self.url = settings.ollama_url.rstrip("/")
+        outbound.check(self.url)  # loopback only unless the allowlist says otherwise
         self._client = client or httpx.Client(timeout=120)
 
     def score(self, text: str) -> FilterOutput:

@@ -85,6 +85,17 @@ export interface EventDetail {
   in_aoi: boolean
   /** Priority border-threat category (ADR 0007), or null. */
   border_threat: string | null
+  /** Unmanned systems (extract-v7; ADR 0009): set when the event involves criminal UxS. */
+  uxs_activity?: string | null
+  uxs_platform?: string | null
+  uxs_missions?: string[]
+  uxs_payloads?: string[]
+  /** Reported electricity theft (extract-v7): method, what it powered, facilitator role. */
+  energy_method?: string | null
+  energy_powered?: string[]
+  energy_facilitator?: string | null
+  /** Scale exactly as the source reports it (kW, MW, equipment count); never estimated. */
+  energy_scale?: string | null
   /** Supporting quote from the source text (news-derived events only). */
   evidence: string | null
   actors: EventActor[]
@@ -293,7 +304,7 @@ export interface QuarantineEntry {
 }
 
 export type Verdict = 'correct' | 'incorrect' | 'partial'
-export type LabelTarget = 'events' | 'seizures' | 'documents'
+export type LabelTarget = 'events' | 'seizures' | 'documents' | 'persons'
 
 export interface LabelRecord {
   id: number
@@ -329,6 +340,8 @@ export interface DocumentDetail extends DocumentSummary {
   llm_output_tokens: number | null
   events: EventDetail[]
   seizures: SeizureRecord[]
+  /** Persons extracted from this document, with this document's claims only (ADR 0013). */
+  persons?: DocPerson[]
   quarantine: QuarantineEntry[]
   labels: LabelRecord[]
   duplicates: number[]
@@ -433,4 +446,97 @@ export interface LabelQueue {
   size: number
   done: number
   items: LabelQueueItem[]
+}
+
+/** /priority/* panels (ADR 0009): counts of reported events. */
+export interface TopicMonth {
+  month: string // 'YYYY-MM'
+  counts: Record<string, number>
+}
+
+export interface TopicSummary {
+  total: number
+  sources: number
+  months: TopicMonth[]
+  breakdown: Record<string, Record<string, number>>
+  states: Record<string, number>
+  caveat: string
+}
+
+export interface LadderRow {
+  rung: number
+  label: string
+  /** False when no extraction field can show this rung yet. */
+  captured: boolean
+  use: number
+  capability: number
+  first_seen: string | null
+  last_seen: string | null
+}
+
+export interface UxsSummary extends TopicSummary {
+  ladder: LadderRow[]
+  ladder_note: string
+}
+
+export interface EventPage {
+  items: EventDetail[]
+  next_cursor: string | null
+}
+
+/** Person records (hard rule 3; ADR 0008, ADR 0013): every claim cited and graded. */
+export interface PersonSummary {
+  id: number
+  display_name: string
+  roles: string[]
+  organizations: string[]
+  n_sources: number
+  last_reported_on: string | null
+  us_person: boolean
+  disputed: boolean
+}
+
+export interface PersonPage {
+  items: PersonSummary[]
+  total: number
+}
+
+export interface PersonCitation {
+  source: string
+  source_url: string | null
+  document_id: number | null
+  designation_id: number | null
+  reported_on: string
+  /** Admiralty reliability + credibility, e.g. "B3". */
+  grade: string
+  evidence: string | null
+  basis: string // always "as reported"
+}
+
+export interface PersonClaim {
+  kind: 'role' | 'alias' | 'nationality' | 'status' | 'title' | 'organization' | 'event'
+  value: string
+  actor_id: number | null
+  event_id: number | null
+  event_date: string | null
+  citation: PersonCitation
+}
+
+export interface PersonDetail extends PersonSummary {
+  dispute_note: string | null
+  claims: PersonClaim[]
+}
+
+export interface DocPersonClaim {
+  kind: string
+  value: string
+  event_id: number | null
+}
+
+export interface DocPerson {
+  id: number
+  display_name: string
+  us_person: boolean
+  disputed: boolean
+  claims: DocPersonClaim[]
 }

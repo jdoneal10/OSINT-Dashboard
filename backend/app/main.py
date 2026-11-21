@@ -23,6 +23,8 @@ from app.api import (
     health,
     labels,
     llm,
+    persons,
+    priority,
     reference,
 )
 from app.core.config import get_settings
@@ -58,7 +60,17 @@ def create_app() -> FastAPI:
     app.include_router(acled_weekly.router)
     app.include_router(border.router)
     app.include_router(actors.router)
-    for module in (documents, clusters, designations, crime, llm, labels, charts):
+    for module in (
+        documents,
+        clusters,
+        designations,
+        crime,
+        llm,
+        labels,
+        charts,
+        persons,
+        priority,
+    ):
         app.include_router(module.router)
     return app
 

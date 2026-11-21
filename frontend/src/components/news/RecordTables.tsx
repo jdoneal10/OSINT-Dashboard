@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import type { EventDetail, SeizureRecord } from '../../api/types'
+import type { DocPerson, EventDetail, SeizureRecord } from '../../api/types'
 import { GEO_PRECISION, quantity } from '../../lib/format'
+import { CLAIM_KIND_LABELS, roleLabel } from '../../lib/persons'
+import { categoryLabel } from '../../lib/priority'
 import { eventColor } from '../map/eventColors'
 import ThreatChip from './ThreatChip'
 
@@ -39,6 +41,42 @@ function actorsByRole(ev: EventDetail, role: string): string {
       .filter((a) => a.role === role)
       .map((a) => a.name)
       .join(', ') || '—'
+  )
+}
+
+/** UxS or electricity-theft detail (extract-v7; ADR 0009), as reported. */
+export function PriorityDetail({ ev }: { ev: EventDetail }) {
+  const chips: string[] = []
+  let tag = ''
+  if (ev.uxs_activity) {
+    tag = 'UxS'
+    chips.push(
+      categoryLabel(ev.uxs_activity),
+      categoryLabel(ev.uxs_platform ?? 'unknown'),
+      ...(ev.uxs_missions ?? []).map(categoryLabel),
+      ...(ev.uxs_payloads ?? []).map(categoryLabel),
+    )
+  } else if (ev.energy_method) {
+    tag = 'Electricity theft'
+    chips.push(
+      categoryLabel(ev.energy_method),
+      ...(ev.energy_powered ?? []).map(categoryLabel),
+      categoryLabel(ev.energy_facilitator ?? 'none_reported'),
+      ...(ev.energy_scale ? [ev.energy_scale] : []),
+    )
+  }
+  if (!tag) return null
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1">
+      <span className="rounded border border-violet-500/50 px-1 text-[10px] text-violet-300">
+        {tag}
+      </span>
+      {chips.map((c, i) => (
+        <span key={`${c}-${i}`} className="bg-ink-800 text-ink-300 rounded px-1 text-[10px]">
+          {c}
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -89,6 +127,7 @@ export function EventsTable({
                     <ThreatChip threat={ev.border_threat} />
                   </div>
                 )}
+                <PriorityDetail ev={ev} />
                 {ev.description && <p className="text-ink-300 mt-1">{ev.description}</p>}
                 {ev.evidence && (
                   <blockquote className="border-ink-700 text-ink-500 mt-1 border-l-2 pl-2 italic">
@@ -176,6 +215,75 @@ export function SeizuresTable({
                 {!s.in_aoi && <OutsideAoi />}
               </td>
               {actions && <td className={TD}>{actions(s)}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** Persons extracted from one document, with that document's claims (ADR 0013). */
+export function PersonsTable({
+  persons,
+  actions,
+}: {
+  persons: DocPerson[]
+  actions?: (p: DocPerson) => ReactNode
+}) {
+  if (persons.length === 0) return <p className="text-ink-500 text-xs">No persons extracted.</p>
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr>
+            <th className={TH}>Person (as reported)</th>
+            <th className={TH}>Claims from this document</th>
+            {actions && <th className={TH}>Label</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {persons.map((p) => (
+            <tr key={p.id}>
+              <td className={`${TD} w-[30%]`}>
+                <Link
+                  to={`/persons/${p.id}${p.us_person ? '?us=1' : ''}`}
+                  className="text-sky-400 hover:underline"
+                >
+                  {p.display_name}
+                </Link>
+                {p.us_person && (
+                  <span className="ml-1 rounded border border-amber-500/40 px-1 text-[10px] text-amber-300">
+                    U.S. person · hidden from person views
+                  </span>
+                )}
+                {p.disputed && (
+                  <span className="ml-1 rounded border border-rose-500/40 px-1 text-[10px] text-rose-300">
+                    disputed
+                  </span>
+                )}
+              </td>
+              <td className={TD}>
+                <ul className="space-y-0.5">
+                  {p.claims.map((c, i) => (
+                    <li key={`${c.kind}-${c.value}-${i}`}>
+                      <span className="text-ink-500">{CLAIM_KIND_LABELS[c.kind] ?? c.kind}:</span>{' '}
+                      {c.kind === 'organization'
+                        ? (() => {
+                            const [role, org] = c.value.split(': ', 2)
+                            return `${org} (${roleLabel(role)})`
+                          })()
+                        : c.kind === 'role' || c.kind === 'status' || c.kind === 'event'
+                          ? roleLabel(c.value)
+                          : c.value}
+                      {c.event_id !== null && c.kind === 'event' && (
+                        <span className="text-ink-500"> · event {c.event_id}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </td>
+              {actions && <td className={TD}>{actions(p)}</td>}
             </tr>
           ))}
         </tbody>
