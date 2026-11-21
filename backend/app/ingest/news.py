@@ -12,11 +12,13 @@ row (job ``news-<slug>``), so one failing outlet never blocks the rest.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import re
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin, urlsplit
+from zoneinfo import ZoneInfo
 
 import feedparser
 from lxml import html as lxml_html
@@ -47,6 +49,7 @@ from app.ingest.runs import (
 log = logging.getLogger(__name__)
 
 GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
+MEXICO_CITY = ZoneInfo("America/Mexico_City")
 GDELT_MIN_INTERVAL = 20.0  # GDELT asks for one request per 5 s; it still answered 429 at ~15 s
 # GDELT's 429s outlast short retries (observed 2026-11-12/13): wait 30 s, 1, 2, then 4 min.
 GDELT_BACKOFF_INITIAL = 30.0
@@ -106,21 +109,63 @@ def parse_rss(content: bytes) -> list[Entry]:
     return out
 
 
+# gob.mx archive listings answer with JavaScript (text/javascript): the article markup sits
+# in escaped string literals passed to ``$("#prensa").append("...")``. Such literals are read
+# wherever they appear, in a script response or an inline <script>.
+_JS_APPEND = re.compile(r'\.append\(\s*"((?:[^"\\]|\\.)*)"\s*\)', re.S)
+
+
+def _script_fragments(text: str) -> list[Any]:
+    """HTML fragments that scripts build with ``.append("...")`` string literals."""
+    out = []
+    for literal in _JS_APPEND.findall(text):
+        try:
+            markup = json.loads(f'"{literal}"')
+        except ValueError:
+            continue
+        if "<a" in markup:
+            out.append(lxml_html.fragment_fromstring(markup, create_parent="div"))
+    return out
+
+
 def parse_listing(content: bytes, base_url: str, link_pattern: str) -> list[Entry]:
     pattern = re.compile(link_pattern)
     host = urlsplit(base_url).netloc.lower()
-    tree = lxml_html.fromstring(content)
+    text = content.decode("utf-8", errors="replace")
+    fragments = _script_fragments(text) if ".append(" in text else []
+    roots = [*fragments] if fragments and not text.lstrip().startswith("<") else []
+    if not roots:
+        roots = [lxml_html.fromstring(content), *fragments]
     seen: dict[str, Entry] = {}
-    for a in tree.iter("a"):
-        href = a.get("href")
-        if not href:
-            continue
-        url = urljoin(base_url, href)
-        parts = urlsplit(url)
-        # Only the agency's own articles: same host, matching path.
-        if parts.netloc.lower() == host and pattern.search(parts.path) and url not in seen:
-            seen[url] = Entry(url=url, title=" ".join(a.text_content().split()) or None)
+    for root in roots:
+        for a in root.iter("a"):
+            href = a.get("href")
+            if not href:
+                continue
+            url = urljoin(base_url, href)
+            parts = urlsplit(url)
+            # Only the agency's own articles: same host, matching path.
+            if parts.netloc.lower() == host and pattern.search(parts.path) and url not in seen:
+                title = a.get("aria-label") or " ".join(a.text_content().split()) or None
+                seen[url] = Entry(url=url, title=title, published=_listed_time(a))
     return list(seen.values())
+
+
+def _listed_time(a: Any) -> dt.datetime | None:
+    """``<time datetime="YYYY-MM-DD HH:MM:SS">`` in the link's ``<article>`` card (gob.mx
+    listings; Mexico City time, UTC-6 with no daylight saving since 2022)."""
+    card = next((el for el in a.iterancestors() if el.tag == "article"), None)
+    stamp = card.find(".//time") if card is not None else None
+    raw = stamp.get("datetime") if stamp is not None else None
+    if not raw:
+        return None
+    try:
+        naive = dt.datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if naive.tzinfo is not None:
+        return naive.astimezone(dt.UTC)
+    return naive.replace(tzinfo=MEXICO_CITY).astimezone(dt.UTC)
 
 
 def parse_gdelt(payload: dict[str, Any], domain: str) -> list[Entry]:

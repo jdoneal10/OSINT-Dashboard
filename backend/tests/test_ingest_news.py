@@ -316,3 +316,18 @@ def test_teaser_only_feed_content_falls_back_to_article_page(
     (doc,) = _docs(seeded, "test-fulltext")
     assert "synthetic indictment against members" in (doc.original_text or "")
     assert any("/2026/11/enfrentamiento" in c for c in site.calls)
+
+
+def test_listing_reads_links_from_a_javascript_listing() -> None:
+    """gob.mx archives answer with JavaScript; cards come from ``.append("...")`` strings."""
+    content = (FIX / "gobmx-listing.js").read_bytes()
+    entries = news.parse_listing(
+        content, "https://www.gob.mx/agencia/es/archivo/prensa", r"^/agencia/prensa/[a-z0-9-]+$"
+    )
+    assert [e.url for e in entries] == [
+        "https://www.gob.mx/agencia/prensa/agencia-sintetica-asegura-dron-con-explosivos?idiom=es",
+        "https://www.gob.mx/agencia/prensa/informe-sintetico-de-acciones-relevantes?idiom=es",
+    ]  # the other agency's card and the pagination link are left out
+    assert entries[0].title == "AGENCIA SINTÉTICA ASEGURA DRON CON EXPLOSIVOS EN MICHOACÁN"
+    # 15:46 in Mexico City (UTC-6, no daylight saving) is 21:46 UTC.
+    assert entries[0].published == dt.datetime(2026, 11, 20, 21, 46, tzinfo=dt.UTC)

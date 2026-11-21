@@ -53,6 +53,7 @@ feeds:
   # Not ingested directly; their releases may still surface via other outlets.
 
   # ------------------------------------------------------------------ Mexican government
+  # gob.mx listings (ADR 0010): activated 2026-11-20 once the JavaScript listing was parsed.
   - slug: semar
     name: Secretaría de Marina (SEMAR) — prensa
     domain: www.gob.mx
@@ -60,12 +61,19 @@ feeds:
     language: es
     discovery: listing
     url: https://www.gob.mx/semar/es/archivo/prensa
+    link_pattern: ^/semar/prensa/[a-z0-9-]+$
     text: full
     reliability: B
-    status: pending  # gob.mx archive pages are JavaScript shells (no links in HTML); RSS 500. Re-checked 2026-11-11
-    terms_note: Mexican government publication. robots.txt allows. Official claims are self-reported; corroborate.
+    status: active
+    terms_note: >-
+      Mexican government publication. gob.mx terms (re-read 2026-11-20): personal,
+      non-commercial viewing and downloading; no public display, redistribution or transfer
+      (same handling as all gob.mx feeds, ADR 0010). robots.txt has no group for our client.
+      The listing answers with JavaScript; links are read from its markup strings.
+      Official claims are self-reported; corroborate.
     sources:
-      - {title: "SEMAR prensa", publisher: Gobierno de México — SEMAR, url: "https://www.gob.mx/semar/es/archivo/prensa", accessed: 2026-11-11}
+      - {title: "SEMAR prensa", publisher: Gobierno de México — SEMAR, url: "https://www.gob.mx/semar/es/archivo/prensa", accessed: 2026-11-20}
+      - {title: "Términos y condiciones de uso", publisher: Gobierno de México, url: "https://www.gob.mx/terminos", accessed: 2026-11-20}
 
   - slug: fgr
     name: Fiscalía General de la República (FGR) — prensa
@@ -74,12 +82,82 @@ feeds:
     language: es
     discovery: listing
     url: https://www.gob.mx/fgr/es/archivo/prensa
+    link_pattern: ^/fgr/prensa/[a-z0-9-]+$
     text: full
     reliability: B
-    status: pending  # archive page is a JavaScript shell like SEMAR's (200, no links in HTML). Re-checked 2026-11-11
-    terms_note: Mexican government publication. robots.txt allows.
+    status: active
+    terms_note: >-
+      Mexican government publication. gob.mx terms (re-read 2026-11-20): personal,
+      non-commercial viewing and downloading; no public display, redistribution or transfer
+      (same handling as all gob.mx feeds, ADR 0010). robots.txt has no group for our client.
+      The listing answers with JavaScript; links are read from its markup strings. HTTP 200 again on 2026-11-20 (500 in Phase 2).
+      Official claims are self-reported; corroborate.
     sources:
-      - {title: "FGR prensa", publisher: Gobierno de México — FGR, url: "https://www.gob.mx/fgr/es/archivo/prensa", accessed: 2026-11-11}
+      - {title: "FGR prensa", publisher: Gobierno de México — FGR, url: "https://www.gob.mx/fgr/es/archivo/prensa", accessed: 2026-11-20}
+      - {title: "Términos y condiciones de uso", publisher: Gobierno de México, url: "https://www.gob.mx/terminos", accessed: 2026-11-20}
+
+  - slug: guardia-nacional
+    name: Guardia Nacional — prensa
+    domain: www.gob.mx
+    country: MEX
+    language: es
+    discovery: listing
+    url: https://www.gob.mx/guardianacional/es/archivo/prensa
+    link_pattern: ^/guardianacional/prensa/[a-z0-9-]+$
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Mexican government publication. gob.mx terms (re-read 2026-11-20): personal,
+      non-commercial viewing and downloading; no public display, redistribution or transfer
+      (same handling as all gob.mx feeds, ADR 0010). robots.txt has no group for our client.
+      The listing answers with JavaScript; links are read from its markup strings.
+      Official claims are self-reported; corroborate.
+    sources:
+      - {title: "Guardia Nacional prensa", publisher: Gobierno de México — Guardia Nacional, url: "https://www.gob.mx/guardianacional/es/archivo/prensa", accessed: 2026-11-20}
+      - {title: "Términos y condiciones de uso", publisher: Gobierno de México, url: "https://www.gob.mx/terminos", accessed: 2026-11-20}
+
+  - slug: defensa
+    name: Secretaría de la Defensa Nacional (Defensa) — prensa
+    domain: www.gob.mx
+    country: MEX
+    language: es
+    discovery: listing
+    url: https://www.gob.mx/defensa/es/archivo/prensa
+    link_pattern: ^/defensa/prensa/[a-z0-9-]+$
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Mexican government publication. gob.mx terms (re-read 2026-11-20): personal,
+      non-commercial viewing and downloading; no public display, redistribution or transfer
+      (same handling as all gob.mx feeds, ADR 0010). robots.txt has no group for our client.
+      The listing answers with JavaScript; links are read from its markup strings.
+      Official claims are self-reported; corroborate.
+    sources:
+      - {title: "Defensa prensa", publisher: Gobierno de México — Defensa, url: "https://www.gob.mx/defensa/es/archivo/prensa", accessed: 2026-11-20}
+      - {title: "Términos y condiciones de uso", publisher: Gobierno de México, url: "https://www.gob.mx/terminos", accessed: 2026-11-20}
+
+  - slug: sspc
+    name: Secretaría de Seguridad y Protección Ciudadana (SSPC) — prensa
+    domain: www.gob.mx
+    country: MEX
+    language: es
+    discovery: listing
+    url: https://www.gob.mx/sspc/es/archivo/prensa
+    link_pattern: ^/sspc/prensa/[a-z0-9-]+$
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Mexican government publication. gob.mx terms (re-read 2026-11-20): personal,
+      non-commercial viewing and downloading; no public display, redistribution or transfer
+      (same handling as all gob.mx feeds, ADR 0010). robots.txt has no group for our client.
+      The listing answers with JavaScript; links are read from its markup strings. Includes the Gabinete de Seguridad daily summaries.
+      Official claims are self-reported; corroborate.
+    sources:
+      - {title: "SSPC prensa", publisher: Gobierno de México — SSPC, url: "https://www.gob.mx/sspc/es/archivo/prensa", accessed: 2026-11-20}
+      - {title: "Términos y condiciones de uso", publisher: Gobierno de México, url: "https://www.gob.mx/terminos", accessed: 2026-11-20}
 
   # ------------------------------------------------------------------ research / media
   - slug: insightcrime
@@ -185,6 +263,120 @@ feeds:
     terms_note: robots.txt and terms not yet readable; stays inactive until checked.
     sources:
       - {title: "Animal Político", publisher: Animal Político, url: "https://animalpolitico.com", accessed: 2026-11-11}
+
+  # ------------------------------------------------------------------ Phase 3 batch 1 (ADR 0010)
+  # Michoacán and Sinaloa regional press, and drone trade press. robots.txt checked 2026-11-20
+  # for our client, ClaudeBot and anthropic-ai; terms read the same day.
+  - slug: quadratin
+    name: Quadratín Michoacán
+    domain: www.quadratin.com.mx
+    country: MEX
+    language: es
+    discovery: rss
+    url: https://www.quadratin.com.mx/feed/
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Michoacán regional press (UxS reporting hotspot). robots.txt allows our client and AI agents. The aviso-legal page has no terms text (2026-11-20); no prohibition found.
+    sources:
+      - {title: "Quadratín RSS", publisher: Quadratín, url: "https://www.quadratin.com.mx/feed/", accessed: 2026-11-20}
+      - {title: "Aviso legal", publisher: Quadratín, url: "https://www.quadratin.com.mx/aviso-legal/", accessed: 2026-11-20}
+
+  - slug: changoonga
+    name: Changoonga (Michoacán)
+    domain: changoonga.com
+    country: MEX
+    language: es
+    discovery: rss
+    url: https://changoonga.com/feed/
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Michoacán local news; reliability C (local, often single-source). robots.txt allows our client and AI agents. No terms page found (2026-11-20).
+    sources:
+      - {title: "Changoonga RSS", publisher: Changoonga, url: "https://changoonga.com/feed/", accessed: 2026-11-20}
+
+  - slug: noroeste
+    name: Noroeste (Sinaloa)
+    domain: www.noroeste.com.mx
+    country: MEX
+    language: es
+    discovery: gdelt  # no RSS found 2026-11-20
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Sinaloa regional press. robots.txt allows our client and AI agents. Terms: content is for personal, non-commercial use (same handling as Ríodoce). No RSS found, so GDELT discovery.
+    sources:
+      - {title: "Términos", publisher: Editorial Noroeste, url: "https://www.noroeste.com.mx/terminos", accessed: 2026-11-20}
+
+  - slug: lineadirecta
+    name: Línea Directa (Sinaloa)
+    domain: lineadirectaportal.com
+    country: MEX
+    language: es
+    discovery: rss
+    url: https://lineadirectaportal.com/feed
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Sinaloa regional news; reliability C. robots.txt allows our client and AI agents. Terms link points to the homepage; no terms text found (2026-11-20).
+    sources:
+      - {title: "Línea Directa RSS", publisher: Línea Directa, url: "https://lineadirectaportal.com/feed", accessed: 2026-11-20}
+
+  - slug: suasnews
+    name: sUAS News
+    domain: www.suasnews.com
+    country: GBR
+    language: en
+    discovery: rss
+    url: https://www.suasnews.com/feed/
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Drone trade press; reliability C (industry news and aggregation). robots.txt allows our client and AI agents. Terms prohibit reproduction and distribution (accepted risk for private non-commercial research, ADR 0004 policy); no scraping or AI clause found.
+    sources:
+      - {title: "sUAS News RSS", publisher: sUAS News, url: "https://www.suasnews.com/feed/", accessed: 2026-11-20}
+      - {title: "Terms", publisher: sUAS News, url: "https://www.suasnews.com/terms/", accessed: 2026-11-20}
+
+  - slug: unmannedairspace
+    name: Unmanned Airspace
+    domain: www.unmannedairspace.info
+    country: GBR
+    language: en
+    discovery: rss
+    url: https://www.unmannedairspace.info/feed/
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Drone and counter-UAS trade press; reliability C. robots.txt allows our client and AI agents. No terms page found (2026-11-20). Rule 4: counter-UAS capability reporting about security forces is never recorded (extraction rule 10).
+    sources:
+      - {title: "Unmanned Airspace RSS", publisher: Unmanned Airspace, url: "https://www.unmannedairspace.info/feed/", accessed: 2026-11-20}
+
+  - slug: dronelife
+    name: DroneLife
+    domain: dronelife.com
+    country: USA
+    language: en
+    discovery: rss
+    url: https://dronelife.com/feed/
+    text: summary
+    reliability: C
+    status: pending
+    terms_note: >-
+      Drone trade press. robots.txt allows our client and AI agents, but the terms bar unauthorized spidering, scraping or other automated means to compile information. Pending the owner's decision; if approved, title and feed teaser only.
+    sources:
+      - {title: "Terms of Service", publisher: DroneLife, url: "https://dronelife.com/termsofservice/", accessed: 2026-11-20}
+
+# Phase 3 batch 1 exclusions (2026-11-20):
+# - www.mimorelia.com, dronedj.com: robots.txt now disallows ClaudeBot (passed on 2026-11-13).
+# - www.twz.com (The War Zone): publisher terms (recurrent.io) forbid using content to operate
+#   AI systems, "including translation services", without express permission.
 
 # Excluded (2026-11-11 robots.txt check):
 # - www.borderreport.com, www.elsiglodetorreon.com.mx (also Content-Signal ai-train=no),
