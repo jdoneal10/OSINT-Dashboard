@@ -36,6 +36,7 @@ from sqlalchemy import (
     func,
     true,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (
@@ -65,6 +66,16 @@ Citations = list[dict[str, Any]]
 def _check_in(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
     quoted = ", ".join(f"'{v}'" for v in values)
     return CheckConstraint(f"{column} IN ({quoted})", name)
+
+
+def _check_array_in(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
+    quoted = ", ".join(f"'{v}'" for v in values)
+    return CheckConstraint(f"{column} <@ ARRAY[{quoted}]::varchar[]", name)
+
+
+def _check_null_or_in(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
+    quoted = ", ".join(f"'{v}'" for v in values)
+    return CheckConstraint(f"{column} IS NULL OR {column} IN ({quoted})", name)
 
 
 def _gist(table: str, column: str) -> Index:
@@ -194,6 +205,38 @@ BORDER_THREATS = (
 )
 
 
+# Unmanned systems and electricity theft (owner framework, docs/framework/
+# uxs-and-electricity-theft.md; ADR 0009). Categories are owner judgment; values on a record
+# are what its source reports.
+UXS_PLATFORMS = (
+    "suas_multirotor", "fpv", "fixed_wing", "heavy_lift_or_hybrid", "ugv", "usv", "unknown",
+)  # fmt: skip
+UXS_MISSIONS = (
+    "surveillance", "route_security", "overwatch", "attack", "logistics",
+    "coercion_or_propaganda", "surveillance_of_security_forces", "monitoring_economic_activity",
+)  # fmt: skip
+UXS_PAYLOADS = (
+    "explosive_or_grenade", "ied", "camera_or_thermal", "release_mechanism", "supply",
+    "loudspeaker_or_light", "none_reported",
+)  # fmt: skip
+UXS_ACTIVITIES = (
+    "employment", "recovery_or_seizure", "procurement_or_import", "assembly_or_modification",
+    "training", "prosecution",
+)  # fmt: skip
+ENERGY_METHODS = (
+    "meter_bypass", "illegal_line_connection", "transformer_or_feeder_tampering",
+    "insider_facilitation", "unknown",
+)  # fmt: skip
+ENERGY_POWERED = (
+    "crypto_mining", "cultivation", "drug_lab", "warehouse_or_storage", "refrigeration",
+    "communications", "residential_compound", "other",
+)  # fmt: skip
+ENERGY_FACILITATORS = (
+    "utility_employee", "contractor", "electrician", "official", "property_manager",
+    "none_reported",
+)  # fmt: skip
+
+
 class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     __tablename__ = "events"
     __table_args__ = (
@@ -206,6 +249,17 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
         ),
         _gist("events", "geom"),
         Index("ix_events_event_date", "event_date"),
+        _check_null_or_in("uxs_platform", UXS_PLATFORMS, "uxs_platform"),
+        _check_null_or_in("uxs_activity", UXS_ACTIVITIES, "uxs_activity"),
+        _check_array_in("uxs_missions", UXS_MISSIONS, "uxs_missions"),
+        _check_array_in("uxs_payloads", UXS_PAYLOADS, "uxs_payloads"),
+        CheckConstraint("(uxs_activity IS NULL) = (uxs_platform IS NULL)", "uxs_complete"),
+        _check_null_or_in("energy_method", ENERGY_METHODS, "energy_method"),
+        _check_array_in("energy_powered", ENERGY_POWERED, "energy_powered"),
+        _check_null_or_in("energy_facilitator", ENERGY_FACILITATORS, "energy_facilitator"),
+        CheckConstraint(
+            "(energy_method IS NULL) = (energy_facilitator IS NULL)", "energy_theft_complete"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -234,6 +288,23 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     in_aoi: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     # Priority border-threat category (news-derived events; ADR 0007), else NULL.
     border_threat: Mapped[str | None] = mapped_column(String(32), index=True)
+    # Unmanned systems (extract-v7): set when the event involves criminal UxS; activity says
+    # what happened (employment, seizure, procurement, assembly, training, prosecution).
+    uxs_activity: Mapped[str | None] = mapped_column(String(32), index=True)
+    uxs_platform: Mapped[str | None] = mapped_column(String(32))
+    uxs_missions: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)), default=list, server_default="{}"
+    )
+    uxs_payloads: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)), default=list, server_default="{}"
+    )
+    # Electricity theft (extract-v7): reported cases only, never inferred sites (ADR 0009 §4).
+    energy_method: Mapped[str | None] = mapped_column(String(40), index=True)
+    energy_powered: Mapped[list[str]] = mapped_column(
+        ARRAY(String(32)), default=list, server_default="{}"
+    )
+    energy_facilitator: Mapped[str | None] = mapped_column(String(32))
+    energy_scale: Mapped[str | None] = mapped_column(String(200))  # as reported, never estimated
 
 
 # actor1..assoc_actor2 mirror ACLED's dyad exactly (no perpetrator/target semantics);

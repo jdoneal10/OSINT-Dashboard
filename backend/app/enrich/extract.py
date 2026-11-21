@@ -56,7 +56,9 @@ log = logging.getLogger(__name__)
 # v4: smuggling and border-threat priority, border_threat field, threat-only rule (ADR 0007)
 # v5: relevance boundaries (South America/Caribbean out; border-crossing context in)
 # v6: seizure rules (scope, one record per item, quantity/unit, unidentified drugs, precursors)
-PROMPT_VERSION = "extract-v6"
+# v7: tiered priority (ADR 0009): unmanned systems and electricity theft first; uxs and
+#     energy_theft detail on events; drones as a seizure item
+PROMPT_VERSION = "extract-v7"
 MAX_TEXT_CHARS = 30_000
 
 EventType = Literal[
@@ -81,6 +83,53 @@ BorderThreat = Literal[
 ]
 
 
+UxsPlatform = Literal[
+    "suas_multirotor", "fpv", "fixed_wing", "heavy_lift_or_hybrid", "ugv", "usv", "unknown"
+]  # fmt: skip
+UxsMission = Literal[
+    "surveillance", "route_security", "overwatch", "attack", "logistics",
+    "coercion_or_propaganda", "surveillance_of_security_forces", "monitoring_economic_activity",
+]  # fmt: skip
+UxsPayload = Literal[
+    "explosive_or_grenade", "ied", "camera_or_thermal", "release_mechanism", "supply",
+    "loudspeaker_or_light", "none_reported",
+]  # fmt: skip
+UxsActivity = Literal[
+    "employment", "recovery_or_seizure", "procurement_or_import", "assembly_or_modification",
+    "training", "prosecution",
+]  # fmt: skip
+EnergyMethod = Literal[
+    "meter_bypass", "illegal_line_connection", "transformer_or_feeder_tampering",
+    "insider_facilitation", "unknown",
+]  # fmt: skip
+EnergyPowered = Literal[
+    "crypto_mining", "cultivation", "drug_lab", "warehouse_or_storage", "refrigeration",
+    "communications", "residential_compound", "other",
+]  # fmt: skip
+EnergyFacilitator = Literal[
+    "utility_employee", "contractor", "electrician", "official", "property_manager",
+    "none_reported",
+]  # fmt: skip
+
+
+class UxsDetail(BaseModel):
+    activity: UxsActivity = Field(description="What happened involving the unmanned system")
+    platform: UxsPlatform
+    missions: list[UxsMission] = Field(max_length=4, description="Uses the text reports")
+    payloads: list[UxsPayload] = Field(max_length=4)
+
+
+class EnergyTheftDetail(BaseModel):
+    method: EnergyMethod
+    powered: list[EnergyPowered] = Field(max_length=4, description="What the power fed")
+    facilitator: EnergyFacilitator = Field(description="Role only, never a name")
+    scale: str | None = Field(
+        max_length=200,
+        description="kW, MW or equipment count exactly as the text gives it; null if not "
+        "stated; never estimated",
+    )
+
+
 class Location(BaseModel):
     place: str | None = Field(description="Town, neighborhood or landmark, as written")
     municipality: str | None
@@ -103,6 +152,10 @@ class ExtractedEvent(BaseModel):
     )
     evidence: str = Field(description="Short supporting quote (<= 200 chars) from the text")
     border_threat: BorderThreat | None = Field(description="Priority border-threat category")
+    uxs: UxsDetail | None = Field(description="Set when criminal unmanned systems are involved")
+    energy_theft: EnergyTheftDetail | None = Field(
+        description="Set for a reported case of criminal electricity theft"
+    )
 
 
 SeizureUnit = Literal["kg", "lb", "g", "l", "units", "pills", "packages", "doses", "other"]
@@ -144,9 +197,11 @@ class Extraction(BaseModel):
 RULES = """You extract structured intelligence from news articles and official press releases \
 (Spanish or English) about transnational criminal organizations in Mexico, Central America and \
 the U.S. Southwest border. The output feeds an analyst's database; precision matters more \
-than coverage. TOP PRIORITY: human smuggling, and threats to the U.S.-Mexico border such as \
-criminal drone (UAS) incursions, laser strikes, gunfire at or across the border, attacks on \
-border personnel, and cross-border tunnels.
+than coverage. PRIORITIES, in order: (1) criminal use of unmanned systems (drones, ground and \
+maritime robots) and electricity theft by criminal groups; (2) human smuggling and threats \
+to the U.S.-Mexico border such as criminal drone incursions, laser strikes, gunfire at or \
+across the border, attacks on border personnel, and cross-border tunnels; (3) everything \
+else in scope.
 
 RULES
 1. People. The only individuals you may name are leaders of criminal organizations whom the \
@@ -173,24 +228,25 @@ threats against unarmed people, including bodies found with signs of violence.
    - Strategic developments: arrests, seizures without violence, lab discoveries, \
 designations, indictments, extraditions, truces, territory changes without fighting.
 5. Seizures. Record seizures of drugs, precursor or essential chemicals, firearms, \
-ammunition, explosives and cash, plus contraband smuggled through a port or border crossing \
-(substance "contraband" followed by the goods, e.g. "contraband cigarettes"). Laboratories \
-count only if materials were seized. See SEIZURE RULES below.
+ammunition, explosives, cash and drones, plus contraband smuggled through a port or border \
+crossing (substance "contraband" followed by the goods, e.g. "contraband cigarettes"). \
+Laboratories count only if materials were seized. See SEIZURE RULES below.
 6. Organizations: list each criminal organization, faction, gang or armed group named, and \
 any government force (e.g. SEMAR, Guardia Nacional, CBP). Use the canonical name from the \
 KNOWN ORGANIZATIONS list when the text refers to one of them by an alias.
 7. Relevance. Set "relevant" to true when the article is about any of: organized-crime \
 activity in Mexico, Central America or the U.S. border region; human smuggling or migrant \
-smuggling; threats to the border (rule 9); actions against criminal groups operating in the \
-region (arrests, prosecutions, extraditions, sanctions, designations), wherever they happen; \
-seizures of drugs, precursors, weapons or cash linked to the region; or U.S.-Mexico border \
-context: border-security policy, crossing and port-of-entry developments (closures, customs \
-cooperation, trade-fraud enforcement) and official border enforcement statistics (context \
-only: no events, see rule 10). Set it to false, with empty lists, for: ordinary politics, \
-business, sport or entertainment; crime with no organized-crime or border link, including \
-sexual exploitation or fraud by individuals or networks not tied to cartels or smuggling; \
-and crime in South America, the Caribbean or elsewhere unless the article ties it to \
-Mexico, Central America or the U.S. border (country profiles of those places too).
+smuggling; criminal use of unmanned systems (rule 11) or electricity theft tied to criminal \
+activity (rule 12); threats to the border (rule 9); actions against criminal groups operating \
+in the region (arrests, prosecutions, extraditions, sanctions, designations), wherever they \
+happen; seizures of drugs, precursors, weapons or cash linked to the region; or U.S.-Mexico \
+border context: border-security policy, crossing and port-of-entry developments (closures, \
+customs cooperation, trade-fraud enforcement) and official border enforcement statistics \
+(context only: no events, see rule 10). Set it to false, with empty lists, for: ordinary \
+politics, business, sport or entertainment; crime with no organized-crime or border link, \
+including sexual exploitation or fraud by individuals or networks not tied to cartels or \
+smuggling; and crime in South America, the Caribbean or elsewhere unless the article ties it \
+to Mexico, Central America or the U.S. border (country profiles of those places too).
 8. "summary_en" is always in English.
 9. border_threat. For each event, set border_threat to one of: human_smuggling (smuggling \
 loads, stash houses, smuggling deaths, smuggling organizations and their prosecution), \
@@ -205,6 +261,38 @@ personnel, or the locations of sensors, cameras or towers; leave such details ou
 description and evidence too. An article that only describes law-enforcement or military \
 operations, deployments, closures or training produces no events: summarize it in \
 summary_en only.
+11. uxs. Set uxs on an event that involves drones or other unmanned systems used, seized, \
+bought, built, modified, taught or prosecuted in connection with criminal groups (any \
+event type; "Explosions/Remote violence" for drone attacks, "Strategic developments" for \
+seizures, procurement, workshops, training and prosecutions). Otherwise null.
+   - activity: employment (a group used it), recovery_or_seizure, procurement_or_import, \
+assembly_or_modification, training, prosecution.
+   - platform: suas_multirotor (commercial quadcopters such as DJI or Autel), fpv \
+(first-person-view racing-style drones), fixed_wing, heavy_lift_or_hybrid, ugv (ground \
+robot), usv (unmanned boat or semi-submersible without crew), unknown when the text does \
+not say.
+   - missions, as the text reports them: surveillance, route_security, overwatch, attack, \
+logistics (carrying drugs or supplies), coercion_or_propaganda, \
+surveillance_of_security_forces, monitoring_economic_activity. For \
+surveillance_of_security_forces record only what the criminal group did and the place at \
+the text's precision; never the units, positions or response (rule 10).
+   - payloads: explosive_or_grenade, ied, camera_or_thermal, release_mechanism, supply, \
+loudspeaker_or_light; none_reported when the text names none.
+   - Police or military drones are not criminal unmanned systems: never set uxs for them.
+12. energy_theft. Set energy_theft on an event that reports electricity stolen by or for \
+criminal activity: a raid, discovery, investigation, prosecution or official statement about \
+a site, network or facilitator. Report the case; never infer a site from consumption, \
+location or appearance. Household "diablitos" with no criminal-group, drug, mining or \
+storage link are not in scope (relevant false unless the article has another in-scope \
+event). Fuel theft (huachicol) is not electricity theft.
+   - method: meter_bypass, illegal_line_connection, transformer_or_feeder_tampering, \
+insider_facilitation, unknown.
+   - powered, as reported: crypto_mining, cultivation, drug_lab, warehouse_or_storage, \
+refrigeration, communications, residential_compound, other.
+   - facilitator, as reported, by role only: utility_employee, contractor, electrician, \
+official, property_manager, none_reported. Never name the person.
+   - scale: the kW, MW or equipment count the text gives (e.g. "300 mining rigs", \
+"2 MW"), else null.
 
 SEIZURE RULES
 S1. Not seizures: auctions, forfeiture, return or destruction of goods seized earlier; \
@@ -237,14 +325,15 @@ mil" = 31856000; "dos mil" = 2000. In Spanish text a dot or space can separate t
 ("1.250 kilos" = 1250 kg) and a comma can be the decimal mark ("2,5 kg" = 2.5 kg); read it \
 from context. "About", "more than" or "nearly" a figure: use the figure.
    - Pills or tablets: unit pills. Doses: unit doses. Firearms, rounds, magazines, \
-grenades: unit units. Cash: the amount, unit units, with the currency in description.
+grenades, drones: unit units. Cash: the amount, unit units, with the currency in description.
    - No figure stated: quantity null, unit null (or "packages" per above). Never invent one.
 S6. seizure_date is the day of the seizure. If the text only gives the day it was \
 announced, use null.
 
 SEIZURE SUBSTANCES
 fentanyl; methamphetamine; cocaine; heroin; marijuana; opium gum; unidentified drug; \
-precursor chemicals; firearms; ammunition; magazines; explosives; cash; contraband <goods>"""
+precursor chemicals; firearms; ammunition; magazines; explosives; drones; cash; \
+contraband <goods>"""
 
 
 def build_system(session: Session) -> str:
@@ -308,6 +397,11 @@ _SUBSTANCE_SYNONYMS = {
     "rounds": "ammunition",
     "cargadores": "magazines",
     "precursors": "precursor chemicals",
+    "drone": "drones",
+    "dron": "drones",
+    "drones (uas)": "drones",
+    "uav": "drones",
+    "uavs": "drones",
 }
 _UNIDENTIFIED = (
     "illicit substance",
@@ -453,6 +547,14 @@ def store_extraction(
             country_iso3=geo.country_iso3 if geo else None,
             in_aoi=in_aoi(e.location.country, e.location.state),
             border_threat=e.border_threat,
+            uxs_activity=e.uxs.activity if e.uxs else None,
+            uxs_platform=e.uxs.platform if e.uxs else None,
+            uxs_missions=list(dict.fromkeys(e.uxs.missions)) if e.uxs else [],
+            uxs_payloads=list(dict.fromkeys(e.uxs.payloads)) if e.uxs else [],
+            energy_method=e.energy_theft.method if e.energy_theft else None,
+            energy_powered=list(dict.fromkeys(e.energy_theft.powered)) if e.energy_theft else [],
+            energy_facilitator=e.energy_theft.facilitator if e.energy_theft else None,
+            energy_scale=e.energy_theft.scale if e.energy_theft else None,
             admin1_code=geo.admin1_code if geo else None,
             admin2_code=geo.admin2_code if geo else None,
             admin1_name=e.location.state,
