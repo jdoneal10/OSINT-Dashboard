@@ -919,7 +919,10 @@ class Label(TimestampMixin, Base):
 
     __tablename__ = "labels"
     __table_args__ = (
-        UniqueConstraint("target_table", "target_id", "field", name="uq_labels_target"),
+        # Per document: a person is judged once for each document it was extracted from.
+        UniqueConstraint(
+            "document_id", "target_table", "target_id", "field", name="uq_labels_target"
+        ),
         _check_in("verdict", LABEL_VERDICTS, "verdict"),
     )
 
@@ -927,7 +930,7 @@ class Label(TimestampMixin, Base):
     document_id: Mapped[int] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE"), index=True
     )
-    target_table: Mapped[str] = mapped_column(String(32))  # events | seizures | actor_events
+    target_table: Mapped[str] = mapped_column(String(32))  # events | seizures | documents | persons
     target_id: Mapped[int] = mapped_column(BigInteger)
     field: Mapped[str] = mapped_column(String(64), default="")  # "" = whole record
     verdict: Mapped[str] = mapped_column(String(16))

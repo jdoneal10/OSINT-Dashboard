@@ -28,11 +28,16 @@ from app.api.events import (
 )
 from app.db.models import (
     PIPELINE_STATUSES,
+    Actor,
     Document,
     Event,
     EventCluster,
     Label,
     LLMQuarantine,
+    Person,
+    PersonAttribute,
+    PersonEvent,
+    PersonOrganization,
     Seizure,
     Source,
     actor_events,
@@ -135,6 +140,22 @@ class LabelOut(BaseModel):
     updated_at: dt.datetime
 
 
+class DocPersonClaim(BaseModel):
+    kind: str  # role | alias | nationality | status | title | organization | event
+    value: str
+    event_id: int | None = None
+
+
+class DocPersonOut(BaseModel):
+    """A person as extracted from this document (ADR 0013): only this document's claims."""
+
+    id: int
+    display_name: str
+    us_person: bool
+    disputed: bool
+    claims: list[DocPersonClaim]
+
+
 class DocumentDetail(DocumentSummary):
     original_text: str | None
     feed_summary: str | None  # publisher teaser, when the feed supplied one
@@ -146,12 +167,48 @@ class DocumentDetail(DocumentSummary):
     llm_output_tokens: int | None
     events: list[EventOut]
     seizures: list[SeizureOut]
+    persons: list[DocPersonOut]
     quarantine: list[QuarantineOut]
     labels: list[LabelOut]
     duplicates: list[int]  # documents marked as copies of this one
 
 
 # --------------------------------------------------------------------------- helpers
+
+
+def persons_for(session: Session, document_id: int) -> list[DocPersonOut]:
+    """Persons extracted from one document, with that document's claims only. U.S. persons
+    are included and flagged: the owner labels the safeguards here (ADR 0013)."""
+    claims: dict[int, list[DocPersonClaim]] = {}
+    for a in session.scalars(
+        select(PersonAttribute)
+        .where(PersonAttribute.document_id == document_id)
+        .order_by(PersonAttribute.id)
+    ):
+        claims.setdefault(a.person_id, []).append(DocPersonClaim(kind=a.attribute, value=a.value))
+    for o, org in session.execute(
+        select(PersonOrganization, Actor.canonical_name)
+        .join(Actor, Actor.id == PersonOrganization.actor_id)
+        .where(PersonOrganization.document_id == document_id)
+    ):
+        claims.setdefault(o.person_id, []).append(
+            DocPersonClaim(kind="organization", value=f"{o.role}: {org}")
+        )
+    for e in session.scalars(select(PersonEvent).where(PersonEvent.document_id == document_id)):
+        claims.setdefault(e.person_id, []).append(
+            DocPersonClaim(kind="event", value=e.role, event_id=e.event_id)
+        )
+    people = session.scalars(select(Person).where(Person.id.in_(claims)).order_by(Person.id))
+    return [
+        DocPersonOut(
+            id=p.id,
+            display_name=p.display_name,
+            us_person=p.us_person,
+            disputed=p.disputed,
+            claims=claims[p.id],
+        )
+        for p in people
+    ]
 
 
 def admiralty(reliability: str | None, credibility: int | None) -> str | None:
@@ -496,6 +553,7 @@ def get_document(document_id: int, session: DB) -> DocumentDetail:
         llm_output_tokens=doc.llm_output_tokens,
         events=[event_out(r, actors, docs) for r in ev_rows],
         seizures=seizures_for(session, document_id),
+        persons=persons_for(session, document_id),
         quarantine=[
             QuarantineOut(
                 id=x.id,

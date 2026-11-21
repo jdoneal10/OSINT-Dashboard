@@ -3,9 +3,10 @@ import { useDocument, useLabelMutations, useLabelQueue } from '../api/hooks'
 import type { DocumentDetail, LabelRecord, LabelTarget } from '../api/types'
 import DocumentHeader from '../components/news/DocumentHeader'
 import LabelControl from '../components/news/LabelControl'
+import PersonLabelControl from '../components/news/PersonLabelControl'
 import { relevanceAnswer, relevanceVerdict, type LabelChange } from '../lib/labels'
 import Panel from '../components/news/Panel'
-import { EventsTable, SeizuresTable } from '../components/news/RecordTables'
+import { EventsTable, PersonsTable, SeizuresTable } from '../components/news/RecordTables'
 
 const SAMPLE_SIZE = 100
 /** The evaluation's gate: documents with labeled records (docs/evaluations). */
@@ -25,7 +26,11 @@ function Workbench({ doc }: { doc: DocumentDetail }) {
   const busy = save.isPending || remove.isPending
 
   /** One label per record: replace any earlier label stored under a different field. */
-  const saveRecord = async (table: 'events' | 'seizures', id: number, change: LabelChange) => {
+  const saveRecord = async (
+    table: 'events' | 'seizures' | 'persons',
+    id: number,
+    change: LabelChange,
+  ) => {
     const stale = doc.labels.filter(
       (l) => l.target_table === table && l.target_id === id && l.field !== change.field,
     )
@@ -118,6 +123,22 @@ function Workbench({ doc }: { doc: DocumentDetail }) {
               current={recordLabel(doc, 'seizures', s.id)}
               busy={busy}
               onSave={(c) => void saveRecord('seizures', s.id, c)}
+            />
+          )}
+        />
+      </Panel>
+      <Panel
+        title="4 · Extracted persons"
+        aside="Hard rule 3: flag anyone who must not be recorded"
+      >
+        <PersonsTable
+          persons={doc.persons ?? []}
+          actions={(p) => (
+            <PersonLabelControl
+              key={`p${p.id}-${recordLabel(doc, 'persons', p.id)?.updated_at ?? ''}`}
+              current={recordLabel(doc, 'persons', p.id)}
+              busy={busy}
+              onSave={(c) => void saveRecord('persons', p.id, c)}
             />
           )}
         />

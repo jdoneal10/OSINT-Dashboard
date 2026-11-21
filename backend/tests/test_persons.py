@@ -272,3 +272,38 @@ def test_owner_can_dispute_and_delete(client: Any, seeded: Session, people: dict
     seeded.expire_all()
     for model in (PersonAttribute, PersonOrganization, PersonEvent):
         assert seeded.scalars(select(model).where(model.person_id == pid)).all() == []
+
+
+# --------------------------------------------------------------------------- labels and eval
+
+
+def test_person_labels_feed_the_phase3_safeguard_count(
+    client: Any, seeded: Session, doc: int, people: dict[str, int]
+) -> None:
+    from app.enrich.evaluate import phase3, phase3_verdict  # noqa: PLC0415
+
+    ramon, carl = people["Ramón Sintético Pérez"], people["Carl Synthetic Doe"]
+    body = {"document_id": doc, "target_table": "persons", "target_id": ramon}
+    ok = client.put("/labels", json=body | {"verdict": "correct"}).json()
+    assert ok["prompt_version"] == extract.PROMPT_VERSION
+    bad = body | {"target_id": carl, "verdict": "incorrect", "field": "excluded_category"}
+    assert client.put("/labels", json=bad).status_code == 200
+    # A person not extracted from this document cannot be labeled against it.
+    assert (
+        client.put("/labels", json=body | {"target_id": 999999, "verdict": "correct"}).status_code
+        == 422
+    )
+    # The document detail lists this document's persons (U.S. persons flagged) for labeling.
+    persons = client.get(f"/documents/{doc}").json()["persons"]
+    assert {p["display_name"]: p["us_person"] for p in persons} == {
+        "Ramón Sintético Pérez": False,
+        "Carl Synthetic Doe": True,
+    }
+    from app.api.labels import _records_for  # noqa: PLC0415
+
+    kinds = sorted(t for t, _ in _records_for(seeded, [doc])[doc])
+    assert kinds == ["events", "persons", "persons", "seizures"]  # persons need labels too
+    report = phase3(seeded, extract.PROMPT_VERSION)
+    assert (report.persons.n, report.persons.correct) == (2, 1)
+    assert report.violations == [(doc, carl, ["excluded_category"])]
+    assert phase3_verdict(report).startswith("**FAIL**: 1 labeled person-safeguard")

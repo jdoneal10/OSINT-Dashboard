@@ -5,9 +5,11 @@ import HealthIndicator from './HealthIndicator'
 
 const NAV = [
   { to: '/', label: 'Operational map', end: true },
+  { to: '/priority', label: 'UxS & electricity', end: false },
   { to: '/border', label: 'Border panel', end: false },
   { to: '/threats', label: 'Border threats', end: false },
   { to: '/news', label: 'News feed', end: false },
+  { to: '/persons', label: 'People', end: false },
   { to: '/designations', label: 'Designations', end: false },
   { to: '/labeling', label: 'Labeling', end: false },
 ]
