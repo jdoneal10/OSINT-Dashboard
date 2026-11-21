@@ -87,3 +87,8 @@ Extraction schemas have **no fields for individuals**. Prompts instruct the mode
 - **Caching.** The tool definition sits before the cached system block, so the cache breakpoint covers it.
 - **Collect stage.** A retry the API rejects as a bad request is quarantined (`reason = request_rejected`), and collection continues with the next result and batch.
 - **Prompt version.** The prompt text is unchanged, but the version moves to `extract-v9` to record the transport change. The v8 batches were requeued under the existing prompt-version rule and resubmitted as one v9 batch.
+- **Follow-up (same day).** The first v9 batch quarantined 114 of 673 documents, 111 of them for a missing person `title`. Two causes:
+  - **Schema bug, present since v8:** `strict_schema` stripped every key named `title`, to drop pydantic's auto-generated titles. That also removed the person field named `title`, so the model was never asked for it, but pydantic required it.
+  - **Fix:** the schema builder now keeps field names. Extraction's nullable and list fields default to empty, so an omission validates; the schema sent still lists every property as required.
+  - **Same version:** every v9 document that named a person had failed, so no stored v9 record came from the flawed schema, and the version stays `extract-v9`.
+  - **Recovery:** the 114 documents were requeued and resubmitted as one batch.

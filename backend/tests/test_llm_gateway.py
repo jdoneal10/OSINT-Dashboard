@@ -349,3 +349,16 @@ def test_tool_transport_invalid_input_is_retried_then_quarantined(
     assert result.attempts == 2
     q = seeded.scalars(select(LLMQuarantine)).one()
     assert (q.reason, q.raw_output) == ("validation", '{"wrong": 1}')
+
+
+def test_strict_schema_keeps_fields_named_like_keywords() -> None:
+    """Pydantic's "title" keys are dropped, but a field called ``title`` is kept."""
+
+    class Post(BaseModel):
+        title: str | None
+        default: int
+
+    schema = strict_schema(Post)
+    assert set(schema["properties"]) == {"title", "default"}
+    assert schema["required"] == ["title", "default"]
+    assert "title" not in schema["properties"]["title"]

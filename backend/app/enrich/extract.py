@@ -119,15 +119,20 @@ EnergyFacilitator = Literal[
 class UxsDetail(BaseModel):
     activity: UxsActivity = Field(description="What happened involving the unmanned system")
     platform: UxsPlatform
-    missions: list[UxsMission] = Field(max_length=4, description="Uses the text reports")
-    payloads: list[UxsPayload] = Field(max_length=4)
+    missions: list[UxsMission] = Field(
+        default_factory=list, max_length=4, description="Uses the text reports"
+    )
+    payloads: list[UxsPayload] = Field(default_factory=list, max_length=4)
 
 
 class EnergyTheftDetail(BaseModel):
     method: EnergyMethod
-    powered: list[EnergyPowered] = Field(max_length=4, description="What the power fed")
+    powered: list[EnergyPowered] = Field(
+        default_factory=list, max_length=4, description="What the power fed"
+    )
     facilitator: EnergyFacilitator = Field(description="Role only, never a name")
     scale: str | None = Field(
+        default=None,
         max_length=200,
         description="kW, MW or equipment count exactly as the text gives it; null if not "
         "stated; never estimated",
@@ -135,30 +140,42 @@ class EnergyTheftDetail(BaseModel):
 
 
 class Location(BaseModel):
-    place: str | None = Field(description="Town, neighborhood or landmark, as written")
-    municipality: str | None
-    state: str | None
-    country: str | None = Field(description="Country name in English")
+    place: str | None = Field(
+        default=None, description="Town, neighborhood or landmark, as written"
+    )
+    municipality: str | None = None
+    state: str | None = None
+    country: str | None = Field(default=None, description="Country name in English")
 
 
 class ExtractedEvent(BaseModel):
     event_type: EventType
-    sub_event_type: str | None = Field(description="Short label, e.g. 'Armed clash'")
-    event_date: str | None = Field(description="YYYY-MM-DD if stated or inferable, else null")
+    sub_event_type: str | None = Field(default=None, description="Short label, e.g. 'Armed clash'")
+    event_date: str | None = Field(
+        default=None, description="YYYY-MM-DD if stated or inferable, else null"
+    )
     date_precision: Literal["day", "week", "month", "unknown"]
     location: Location
-    fatalities: int | None = Field(ge=0)
-    injured: int | None = Field(ge=0)
-    perpetrators: list[str] = Field(description="Organizations or groups, never people")
-    targets: list[str] = Field(description="Organizations or groups, never people")
+    fatalities: int | None = Field(default=None, ge=0)
+    injured: int | None = Field(default=None, ge=0)
+    perpetrators: list[str] = Field(
+        default_factory=list, description="Organizations or groups, never people"
+    )
+    targets: list[str] = Field(
+        default_factory=list, description="Organizations or groups, never people"
+    )
     description: str = Field(
         description="One or two English sentences; name only reported criminal-group leaders"
     )
     evidence: str = Field(description="Short supporting quote (<= 200 chars) from the text")
-    border_threat: BorderThreat | None = Field(description="Priority border-threat category")
-    uxs: UxsDetail | None = Field(description="Set when criminal unmanned systems are involved")
+    border_threat: BorderThreat | None = Field(
+        default=None, description="Priority border-threat category"
+    )
+    uxs: UxsDetail | None = Field(
+        default=None, description="Set when criminal unmanned systems are involved"
+    )
     energy_theft: EnergyTheftDetail | None = Field(
-        description="Set for a reported case of criminal electricity theft"
+        default=None, description="Set for a reported case of criminal electricity theft"
     )
 
 
@@ -166,20 +183,27 @@ SeizureUnit = Literal["kg", "lb", "g", "l", "units", "pills", "packages", "doses
 
 
 class ExtractedSeizure(BaseModel):
-    seizure_date: str | None = Field(description="YYYY-MM-DD of the seizure itself, or null")
+    seizure_date: str | None = Field(
+        default=None, description="YYYY-MM-DD of the seizure itself, or null"
+    )
     location: Location
     substance: str = Field(
         description="One item category, from the SEIZURE SUBSTANCES list when one fits"
     )
-    chemicals: list[str] = Field(description="Precursor or essential chemicals named, if any")
+    chemicals: list[str] = Field(
+        default_factory=list, description="Precursor or essential chemicals named, if any"
+    )
     quantity: float | None = Field(
-        ge=0, description="Amount of this one item only, as a plain number; null if not stated"
+        default=None,
+        ge=0,
+        description="Amount of this one item only, as a plain number; null if not stated",
     )
     unit: SeizureUnit | None = Field(
+        default=None,
         description="Unit of quantity; 'packages' for packages, bricks or bundles counted "
-        "without a weight; 'units' for firearms, rounds, magazines and other counted items"
+        "without a weight; 'units' for firearms, rounds, magazines and other counted items",
     )
-    seizing_agency: str | None = Field(description="Agency or force, not a person")
+    seizing_agency: str | None = Field(default=None, description="Agency or force, not a person")
     description: str
 
 
@@ -209,33 +233,44 @@ class PersonEventLink(BaseModel):
 
 class ExtractedPerson(BaseModel):
     name: str = Field(max_length=120, description="Full name exactly as the text writes it")
-    aliases: list[str] = Field(max_length=5, description="Aliases (alias, apodo) as written")
+    aliases: list[str] = Field(
+        default_factory=list, max_length=5, description="Aliases (alias, apodo) as written"
+    )
     role: PersonRole = Field(description="How the text links the person to criminal activity")
-    organization: str | None = Field(description="Criminal organization named with the person")
-    nationality: str | None = Field(description="Country of nationality if the text states it")
+    organization: str | None = Field(
+        default=None, description="Criminal organization named with the person"
+    )
+    nationality: str | None = Field(
+        default=None, description="Country of nationality if the text states it"
+    )
     us_nexus: bool = Field(
         description="True if the text reports the person as a U.S. citizen or resident, or "
         "located in the United States"
     )
     reported_minor: bool = Field(description="True if the text says the person is under 18")
-    statuses: list[PersonStatus] = Field(max_length=4)
-    title: str | None = Field(max_length=80, description="Rank or post, e.g. 'plaza boss'")
-    events: list[PersonEventLink] = Field(max_length=5)
+    statuses: list[PersonStatus] = Field(default_factory=list, max_length=4)
+    title: str | None = Field(
+        default=None, max_length=80, description="Rank or post, e.g. 'plaza boss'"
+    )
+    events: list[PersonEventLink] = Field(default_factory=list, max_length=5)
     evidence: str = Field(description="Short quote (<= 200 chars) linking the person")
 
 
 class Extraction(BaseModel):
-    # Too large for the structured-output grammar; see app.enrich.llm.client.uses_tool.
+    # Too large for the structured-output grammar; see app.enrich.llm.client.uses_tool. With
+    # no grammar the model sometimes omits a nullable or list field instead of sending null or
+    # []; the defaults on those fields read an omission as empty. The schema sent is
+    # unchanged: every property is still listed as required.
     llm_transport: ClassVar[str] = "tool"
 
     relevant: bool = Field(description="False if the article is not about organized crime")
     summary_en: str = Field(
         description="English summary, 2-4 sentences; name only people listed in persons"
     )
-    events: list[ExtractedEvent] = Field(max_length=10)
-    seizures: list[ExtractedSeizure] = Field(max_length=10)
-    organizations: list[ExtractedOrganization] = Field(max_length=20)
-    persons: list[ExtractedPerson] = Field(max_length=15)
+    events: list[ExtractedEvent] = Field(default_factory=list, max_length=10)
+    seizures: list[ExtractedSeizure] = Field(default_factory=list, max_length=10)
+    organizations: list[ExtractedOrganization] = Field(default_factory=list, max_length=20)
+    persons: list[ExtractedPerson] = Field(default_factory=list, max_length=15)
 
 
 RULES = """You extract structured intelligence from news articles and official press releases \

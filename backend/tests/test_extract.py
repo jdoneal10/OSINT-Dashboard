@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Actor, Document, Event, Seizure, Source, actor_events
 from app.enrich import extract
 from app.enrich.llm.client import Gateway
+from app.enrich.llm.schema import strict_schema
 from app.ingest.feeds import load_feeds, sync_sources
 from app.reference.inegi_load import load as load_inegi
 
@@ -467,3 +468,19 @@ def test_reprioritize_backfills_stored_seizures(seeded: Session, doc_id: int) ->
     seeded.expire_all()
     assert seeded.scalars(select(Seizure.low_priority)).one() is True
     assert extract.reprioritize() == 0  # idempotent
+
+
+def test_omitted_nullable_and_list_fields_read_as_empty() -> None:
+    """With no grammar (tool transport) Haiku sometimes omits null fields such as ``title``."""
+    person = {"name": "Persona Sintética", "role": "leader", "us_nexus": False,
+              "reported_minor": False, "evidence": "líder sintético"}  # fmt: skip
+    doc = {"relevant": True, "summary_en": "s", "events": [], "seizures": [],
+           "organizations": [], "persons": [person]}  # fmt: skip
+    parsed = extract.Extraction.model_validate(doc)
+    p = parsed.persons[0]
+    assert (p.title, p.organization, p.nationality, p.aliases, p.statuses, p.events) == (
+        None, None, None, [], [], [],
+    )  # fmt: skip
+    # The schema sent still lists every property as required.
+    schema = strict_schema(extract.Extraction)
+    assert "title" in schema["$defs"]["ExtractedPerson"]["required"]
