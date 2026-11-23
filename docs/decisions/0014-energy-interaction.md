@@ -1,6 +1,6 @@
 # ADR 0014: Energy interaction: reported grid interactions, indicators and municipal assessments
 
-- **Status:** Accepted by the owner, 2026-11-22 (see Owner decisions). Built: schema (step 2) and the ACLED pass (step 5).
+- **Status:** Accepted by the owner, 2026-11-22 (see Owner decisions). Built: schema (step 2), the ACLED pass (step 5) and prompt `extract-v11` (step 4, tested; not yet live).
 - **Relates to:** ADR 0008 (hard rules), ADR 0009 (UxS and electricity-theft focus), ADR 0012
   (critical-infrastructure keep rule), owner framework `docs/framework/uxs-and-electricity-theft.md` §2.
 
@@ -145,3 +145,32 @@ A new analytic job, in the pattern of the existing Sonnet corroboration stage (`
   the model's quote exceeds 200 characters. Not yet measured: precision. A random check of 12
   kinds found one error (rioters holding a CFE worker during a price protest, tagged as an
   attack), which the owner's labels should decide before any prompt change.
+- 2026-11-23: prompt `extract-v11` written. Rule 12 becomes `grid_interaction` (the six kinds,
+  with the criminal-link requirement and the "not kinds" list from the ACLED pass); rule 13 adds
+  the five indicators; crypto-mining equipment becomes a seizure item. The kinds and
+  indicators are defined once in `app/enrich/extract.py` and shared with the ACLED pass.
+  Storage keeps the theft detail exactly when the kind is `theft`: a named non-theft kind drops
+  a stray detail, a detail with no kind is a theft case (as in v10), and a theft kind with no
+  detail is kept with method unknown.
+- 2026-11-23, test (step 4): v10 and v11 were each run three times over a fixed set of 162
+  stored documents: the 101 labeled extract-v9 documents and 64 news documents with grid or
+  fuel-theft terms (3 overlap; most of the 64 are ordinary outages and crashes, which serve as
+  negatives). Dry runs: nothing stored, 1,480 calls including retries, $0.95.
+  - Round 1 found three misreadings repeated across runs: a truck fire set by armed men that
+    cut power tagged as sabotage; a lab and greenhouse raid tagged `high_load_site` with no
+    electrical equipment in the text; "huachicol fiscal" (fuel smuggling and tax fraud) tagged
+    fuel theft. The rules for sabotage (the grid must be the target), `high_load_site` (the
+    equipment must be named) and `fuel_theft` (not tax fraud) were tightened and v11 run three
+    more times.
+  - Round 2 against v10: no relevance flips on the 101 labeled documents (301 of 301 calls
+    relevant under both) and no document with mixed relevance across runs. Events per call
+    1.30 (v10) and 1.37 (v11): v11 records events v10 missed in two articles (zero events in
+    all three v10 runs) and splits detentions from a clash in one. On the grid set one document
+    became relevant in all three runs: a leak from an illegal pipeline tap.
+  - Grid outputs: fuel theft on five documents, consistent across runs on three; the
+    `high_load_site` and fuel-smuggling errors are gone. One known error remains, 3 of 3 runs:
+    the Los Mochis truck fire (document 1941) is still tagged `deliberate_outage_or_sabotage`;
+    `huachicol hormiga` (small-scale fuel smuggling) was tagged fuel theft in 1 of 3 runs. The
+    corpus holds no electricity-theft article, so the theft kind is untested on news.
+  - Not yet done: switching the worker to v11, `make reextract`, and labeling (step 6), which
+    are the owner's to approve.

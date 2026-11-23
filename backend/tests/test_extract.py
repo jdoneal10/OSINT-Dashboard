@@ -348,9 +348,76 @@ def test_database_accepts_grid_interactions_and_indicators(seeded: Session, doc_
 def test_prompt_states_priorities_and_v7_rules() -> None:
     rules = extract.RULES
     assert rules.index("unmanned systems") < rules.index("human smuggling")
-    for phrase in ("11. uxs.", "12. energy_theft.", "Police or military drones",
-                   "never infer a site", "Never name the person", "drones; cash"):  # fmt: skip
+    for phrase in ("11. uxs.", "12. grid_interaction.", "13. energy_indicators.",
+                   "Police or military drones", "never infer a site", "Never name the person",
+                   "drones; cash", "crypto-mining equipment;"):  # fmt: skip
         assert phrase in rules, phrase
+    assert (
+        rules.index("unmanned systems")
+        < rules.index("electrical grid")
+        < rules.index("human smuggling")
+    )
+
+
+# --------------------------------------------------------------------------- grid (v11)
+
+
+def test_v11_grid_categories_match_the_database() -> None:
+    from typing import get_args  # noqa: PLC0415
+
+    from app.db import models  # noqa: PLC0415
+
+    assert get_args(extract.GridKind) == models.GRID_INTERACTIONS
+    assert get_args(extract.EnergyIndicator) == models.ENERGY_INDICATORS
+
+
+def test_grid_kinds_and_indicators_are_stored(seeded: Session, doc_id: int) -> None:
+    payload = json.loads(json.dumps(GOOD))
+    payload["events"] = [
+        _event(
+            event_type="Violence against civilians",
+            grid_interaction="attack_on_utility_workers",
+            energy_indicators=["outage_in_contested_area", "fuel_theft", "fuel_theft"],
+        ),
+        _event(event_type="Strategic developments", energy_indicators=["mining_equipment_seized"]),
+    ]
+    payload["seizures"][0] |= {"substance": "Cryptocurrency mining equipment", "quantity": 40,
+                               "unit": "units"}  # fmt: skip
+    _run(_resp(payload))
+    attack, raid = seeded.scalars(select(Event).order_by(Event.source_key)).all()
+    assert (attack.grid_interaction, attack.energy_method) == ("attack_on_utility_workers", None)
+    assert attack.energy_indicators == ["outage_in_contested_area", "fuel_theft"]
+    assert (raid.grid_interaction, raid.energy_indicators) == (None, ["mining_equipment_seized"])
+    seizure = seeded.scalars(select(Seizure)).one()
+    assert (seizure.substance, seizure.low_priority) == ("crypto-mining equipment", False)
+
+
+THEFT = {"method": "meter_bypass", "powered": [], "facilitator": "electrician", "scale": None}
+
+
+@pytest.mark.parametrize(
+    ("kind", "detail", "stored_kind", "stored_method"),
+    [
+        (None, None, None, None),
+        (None, THEFT, "theft", "meter_bypass"),  # a v10-style theft case
+        ("theft", THEFT, "theft", "meter_bypass"),
+        ("theft", None, "theft", "unknown"),  # the case is kept; the method is unknown
+        ("infrastructure_theft", THEFT, "infrastructure_theft", None),  # copper is not power
+    ],
+)
+def test_grid_kind_and_theft_detail_are_made_consistent(
+    seeded: Session,
+    doc_id: int,
+    kind: str | None,
+    detail: dict[str, Any] | None,
+    stored_kind: str | None,
+    stored_method: str | None,
+) -> None:
+    payload = json.loads(json.dumps(GOOD))
+    payload["events"] = [_event(grid_interaction=kind, energy_theft=detail)]
+    _run(_resp(payload))
+    ev = seeded.scalars(select(Event)).one()
+    assert (ev.grid_interaction, ev.energy_method) == (stored_kind, stored_method)
 
 
 # --------------------------------------------------------------------------- seizures (v6)

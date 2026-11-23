@@ -34,7 +34,7 @@ import datetime as dt
 import hashlib
 import logging
 import re
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import ColumnElement, Select, delete, func, or_, select
@@ -44,7 +44,7 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.models import Event, GridClassification, Source
 from app.db.session import session_factory
-from app.enrich.extract import EnergyTheftDetail
+from app.enrich.extract import EnergyIndicator, EnergyTheftDetail, GridKind
 from app.enrich.llm import batch as llm_batch
 from app.enrich.llm.client import BudgetPausedError, Gateway, Provenance
 from app.enrich.llm.pricing import HAIKU
@@ -68,15 +68,6 @@ CANDIDATE_PATTERN = (
     r"|huachicol|fuel theft|(stole|steal|stealing|stolen) fuel|pipeline|PEMEX"
     r"|clandestine tap|illegal tap|fuel tapp)"
 )
-
-GridKind = Literal[
-    "theft", "deliberate_outage_or_sabotage", "attack_on_utility_workers",
-    "extortion_or_service_control", "infrastructure_theft", "utility_withdrawal",
-]  # fmt: skip
-EnergyIndicator = Literal[
-    "mining_equipment_seized", "high_load_site", "outage_in_contested_area",
-    "utility_insider_reported", "fuel_theft",
-]  # fmt: skip
 
 
 class GridVerdict(BaseModel):

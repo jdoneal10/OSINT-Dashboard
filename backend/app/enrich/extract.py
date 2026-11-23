@@ -67,7 +67,10 @@ log = logging.getLogger(__name__)
 # v10: same instructions; PUBLISHED is the local day with its weekday and time, not the UTC
 #     day. A calendar line and a date rule were tested and not used: both made the model
 #     drop real events (ADR 0004 amendment 2)
-PROMPT_VERSION = "extract-v10"
+# v11: criminal interaction with the grid (ADR 0014): rule 12 becomes grid_interaction with
+#     theft as one of six kinds, rule 13 adds energy indicators, and crypto-mining equipment
+#     becomes a seizure item
+PROMPT_VERSION = "extract-v11"
 # The owner's labels are on v9, and v10 differs from it only in dates. The labeling top-up
 # and `make eval` stay on v9 until the owner moves them, and `make reextract` leaves v9
 # records alone: their dates are fixed by reviewed correction, not by replacing the records.
@@ -122,6 +125,16 @@ EnergyPowered = Literal[
 EnergyFacilitator = Literal[
     "utility_employee", "contractor", "electrician", "official", "property_manager",
     "none_reported",
+]  # fmt: skip
+# ADR 0014 (owner framework §2): one grid-interaction kind per event; indicators suggest theft
+# without claiming it. Shared with the ACLED grid pass.
+GridKind = Literal[
+    "theft", "deliberate_outage_or_sabotage", "attack_on_utility_workers",
+    "extortion_or_service_control", "infrastructure_theft", "utility_withdrawal",
+]  # fmt: skip
+EnergyIndicator = Literal[
+    "mining_equipment_seized", "high_load_site", "outage_in_contested_area",
+    "utility_insider_reported", "fuel_theft",
 ]  # fmt: skip
 
 
@@ -183,8 +196,14 @@ class ExtractedEvent(BaseModel):
     uxs: UxsDetail | None = Field(
         default=None, description="Set when criminal unmanned systems are involved"
     )
+    grid_interaction: GridKind | None = Field(
+        default=None, description="Criminal interaction with the electrical grid (rule 12)"
+    )
     energy_theft: EnergyTheftDetail | None = Field(
-        default=None, description="Set for a reported case of criminal electricity theft"
+        default=None, description="Only when grid_interaction is theft (rule 12)"
+    )
+    energy_indicators: list[EnergyIndicator] = Field(
+        default_factory=list, max_length=5, description="Energy indicators reported (rule 13)"
     )
 
 
@@ -286,7 +305,8 @@ RULES = """You extract structured intelligence from news articles and official p
 (Spanish or English) about transnational criminal organizations in Mexico, Central America and \
 the U.S. Southwest border. The output feeds an analyst's database; precision matters more \
 than coverage. PRIORITIES, in order: (1) criminal use of unmanned systems (drones, ground and \
-maritime robots) and electricity theft by criminal groups; (2) human smuggling and threats \
+maritime robots) and criminal interaction with the electrical grid, including electricity \
+theft; (2) human smuggling and threats \
 to the U.S.-Mexico border such as criminal drone incursions, laser strikes, gunfire at or \
 across the border, attacks on border personnel, and cross-border tunnels; (3) everything \
 else in scope.
@@ -326,26 +346,26 @@ threats against unarmed people, including bodies found with signs of violence.
    - Protests: peaceful demonstrations.
    - Strategic developments: arrests, seizures without violence, lab discoveries, \
 designations, indictments, extraditions, truces, territory changes without fighting.
-5. Seizures. Record seizures of drugs, precursor or essential chemicals, firearms, \
-ammunition, explosives, cash and drones, plus contraband smuggled through a port or border \
-crossing (substance "contraband" followed by the goods, e.g. "contraband cigarettes"). \
+5. Seizures. Record seizures of drugs, precursor or essential chemicals, firearms, ammunition, \
+explosives, cash, drones and crypto-mining equipment, plus contraband smuggled through a port or \
+border crossing (substance "contraband" followed by the goods, e.g. "contraband cigarettes"). \
 Laboratories count only if materials were seized. See SEIZURE RULES below.
 6. Organizations: list each criminal organization, faction, gang or armed group named, and \
 any government force (e.g. SEMAR, Guardia Nacional, CBP). Use the canonical name from the \
 KNOWN ORGANIZATIONS list when the text refers to one of them by an alias.
-7. Relevance. Set "relevant" to true when the article is about any of: organized-crime \
-activity in Mexico, Central America or the U.S. border region; human smuggling or migrant \
-smuggling; criminal use of unmanned systems (rule 11) or electricity theft tied to criminal \
-activity (rule 12); threats to the border (rule 9); actions against criminal groups operating \
-in the region (arrests, prosecutions, extraditions, sanctions, designations), wherever they \
-happen; seizures of drugs, precursors, weapons or cash linked to the region; or U.S.-Mexico \
-border context: border-security policy, crossing and port-of-entry developments (closures, \
-customs cooperation, trade-fraud enforcement) and official border enforcement statistics \
-(context only: no events, see rule 10). Set it to false, with empty lists, for: ordinary \
-politics, business, sport or entertainment; crime with no organized-crime or border link, \
-including sexual exploitation or fraud by individuals or networks not tied to cartels or \
-smuggling; and crime in South America, the Caribbean or elsewhere unless the article ties it \
-to Mexico, Central America or the U.S. border (country profiles of those places too).
+7. Relevance. Set "relevant" to true when the article is about any of: organized-crime activity in \
+Mexico, Central America or the U.S. border region; human smuggling or migrant smuggling; criminal \
+use of unmanned systems (rule 11) or criminal interaction with the electrical grid (rule 12); \
+threats to the border (rule 9); actions against criminal groups operating in the region (arrests, \
+prosecutions, extraditions, sanctions, designations), wherever they happen; seizures of drugs, \
+precursors, weapons or cash linked to the region; or U.S.-Mexico border context: border-security \
+policy, crossing and port-of-entry developments (closures, customs cooperation, trade-fraud \
+enforcement) and official border enforcement statistics (context only: no events, see rule 10). \
+Set it to false, with empty lists, for: ordinary politics, business, sport or entertainment; crime \
+with no organized-crime or border link, including sexual exploitation or fraud by individuals or \
+networks not tied to cartels or smuggling; and crime in South America, the Caribbean or elsewhere \
+unless the article ties it to Mexico, Central America or the U.S. border (country profiles of \
+those places too).
 8. "summary_en" is always in English.
 9. border_threat. For each event, set border_threat to one of: human_smuggling (smuggling \
 loads, stash houses, smuggling deaths, smuggling organizations and their prosecution), \
@@ -378,12 +398,30 @@ the text's precision; never the units, positions or response (rule 10).
    - payloads: explosive_or_grenade, ied, camera_or_thermal, release_mechanism, supply, \
 loudspeaker_or_light; none_reported when the text names none.
    - Police or military drones are not criminal unmanned systems: never set uxs for them.
-12. energy_theft. Set energy_theft on an event that reports electricity stolen by or for \
-criminal activity: a raid, discovery, investigation, prosecution or official statement about \
-a site, network or facilitator. Report the case; never infer a site from consumption, \
-location or appearance. Household "diablitos" with no criminal-group, drug, mining or \
-storage link are not in scope (relevant false unless the article has another in-scope \
-event). Fuel theft (huachicol) is not electricity theft.
+12. grid_interaction. Set at most one kind on an event in which the text ties criminal or \
+armed actors (a named group or cartel, organized crime, armed men, gunmen) to the electrical \
+grid; otherwise null. If several apply, take the first:
+   - theft: electricity stolen by or for criminal activity: a raid, discovery, \
+investigation, prosecution or official statement about a site, network or facilitator, \
+including illegal hookups described in other words ("se colgaban de la red", "toma ilegal \
+de luz"). Report the case; never infer a site from consumption, location or appearance.
+   - attack_on_utility_workers: criminal or armed actors attack, kill, kidnap, threaten or \
+rob crews of the CFE or its contractors (the workers are victims: by role, never in persons).
+   - deliberate_outage_or_sabotage: criminal or armed actors cut power or damage \
+substations, towers, lines or transformers on purpose, including during roadblocks or clashes. \
+The grid must be what they targeted: power lost as a side effect of another attack (a burning \
+vehicle or building that damages lines) is not a kind; see outage_in_contested_area.
+   - extortion_or_service_control: a criminal group charges for, rations, controls or cuts \
+power to a community, or extorts the utility or its contractors.
+   - infrastructure_theft: theft of transformers, cable or copper that the text ties to a \
+criminal group.
+   - utility_withdrawal: the CFE or its contractors suspend work or service in an area \
+because of insecurity or criminal threats.
+   Not kinds: residents protesting over power service, rates or outages; ordinary outages, \
+accidents and weather; theft by thieves the text does not tie to a criminal group; \
+household "diablitos" with no criminal-group, drug, mining or storage link (relevant false \
+unless the article has another in-scope event).
+   energy_theft: fill it only when grid_interaction is theft, else null.
    - method: meter_bypass, illegal_line_connection, transformer_or_feeder_tampering, \
 insider_facilitation, unknown.
    - powered, as reported: crypto_mining, cultivation, drug_lab, warehouse_or_storage, \
@@ -392,6 +430,22 @@ refrigeration, communications, residential_compound, other.
 official, property_manager, none_reported. Never name the person.
    - scale: the kW, MW or equipment count the text gives (e.g. "300 mining rigs", \
 "2 MW"), else null.
+13. energy_indicators. On any event, list the facts below that the text reports (empty if \
+none). They suggest electricity theft without claiming it: never set grid_interaction or \
+energy_theft because of them.
+   - mining_equipment_seized: cryptocurrency-mining equipment found in a raid or seizure \
+(also a seizure, substance "crypto-mining equipment").
+   - high_load_site: a grow, lab or compound that the text reports with heavy electrical \
+equipment (grow lights, air conditioning, generators, refrigeration). The equipment must be \
+named in the text; a lab, greenhouse or plantation alone does not count.
+   - outage_in_contested_area: an outage across an area (a town, neighborhood or region) \
+that the text places where a criminal group operates or fights. Power cut to one house or \
+building does not count, nor does a protest over outages alone.
+   - utility_insider_reported: a CFE or utility employee reported as linked to a criminal \
+group.
+   - fuel_theft: fuel theft by a criminal group (pipeline taps, huachicol, stolen fuel). Not \
+fuel smuggling or tax fraud ("huachicol fiscal", imported fuel declared as something else). \
+Fuel theft is never the theft kind.
 
 SEIZURE RULES
 S1. Not seizures: auctions, forfeiture, return or destruction of goods seized earlier; \
@@ -432,7 +486,7 @@ announced, use null.
 SEIZURE SUBSTANCES
 fentanyl; methamphetamine; cocaine; heroin; marijuana; opium gum; unidentified drug; \
 precursor chemicals; firearms; ammunition; magazines; explosives; drones; cash; \
-contraband <goods>"""
+crypto-mining equipment; contraband <goods>"""
 
 
 def build_system(session: Session) -> str:
@@ -507,6 +561,13 @@ _SUBSTANCE_SYNONYMS = {
     "drones (uas)": "drones",
     "uav": "drones",
     "uavs": "drones",
+    "cryptocurrency mining equipment": "crypto-mining equipment",
+    "crypto mining equipment": "crypto-mining equipment",
+    "crypto-mining rigs": "crypto-mining equipment",
+    "crypto mining rigs": "crypto-mining equipment",
+    "cryptocurrency mining rigs": "crypto-mining equipment",
+    "bitcoin mining equipment": "crypto-mining equipment",
+    "equipo de minería de criptomonedas": "crypto-mining equipment",
 }
 _UNIDENTIFIED = (
     "illicit substance",
@@ -576,6 +637,24 @@ def seizure_low_priority(substance: str, quantity: Decimal | None, unit: str | N
         return False
     kg = quantity * _KG_PER_UNIT[unit]
     return kg < LOW_PRIORITY_KG.get(name, DEFAULT_LOW_PRIORITY_KG)
+
+
+def grid_fields(e: ExtractedEvent) -> tuple[str | None, EnergyTheftDetail | None]:
+    """The event's grid-interaction kind and theft detail, made consistent (ADR 0014).
+
+    The database stores the theft detail exactly when the kind is ``theft``. A named
+    non-theft kind wins over a stray detail (copper theft is not electricity theft); a detail
+    with no kind is a theft case, as under extract-v10; a theft kind with no detail keeps the
+    case with method and facilitator unknown rather than dropping it.
+    """
+    kind, detail = e.grid_interaction, e.energy_theft
+    if kind not in (None, "theft"):
+        return kind, None
+    if detail is not None:
+        return "theft", detail
+    if kind == "theft":
+        return kind, EnergyTheftDetail(method="unknown", facilitator="none_reported")
+    return None, None
 
 
 _PRECISION = {"day": 1, "week": 2, "month": 3, "unknown": 3}
@@ -663,6 +742,7 @@ def store_extraction(
         when, exact = _date(e.event_date, fallback_date)
         geo = geocode(session, place=e.location.place, municipality=e.location.municipality,
                       state=e.location.state, country=e.location.country)  # fmt: skip
+        kind, theft = grid_fields(e)
         ev = Event(
             source_id=doc.source_id,
             source_key=f"{prefix}e{i}",
@@ -682,12 +762,12 @@ def store_extraction(
             uxs_platform=e.uxs.platform if e.uxs else None,
             uxs_missions=list(dict.fromkeys(e.uxs.missions)) if e.uxs else [],
             uxs_payloads=list(dict.fromkeys(e.uxs.payloads)) if e.uxs else [],
-            energy_method=e.energy_theft.method if e.energy_theft else None,
-            energy_powered=list(dict.fromkeys(e.energy_theft.powered)) if e.energy_theft else [],
-            energy_facilitator=e.energy_theft.facilitator if e.energy_theft else None,
-            energy_scale=e.energy_theft.scale if e.energy_theft else None,
-            # Until extract-v11 adds the other kinds (ADR 0014), only a theft case sets this.
-            grid_interaction="theft" if e.energy_theft else None,
+            energy_method=theft.method if theft else None,
+            energy_powered=list(dict.fromkeys(theft.powered)) if theft else [],
+            energy_facilitator=theft.facilitator if theft else None,
+            energy_scale=theft.scale if theft else None,
+            grid_interaction=kind,
+            energy_indicators=list(dict.fromkeys(e.energy_indicators)),
             admin1_code=geo.admin1_code if geo else None,
             admin2_code=geo.admin2_code if geo else None,
             admin1_name=e.location.state,
