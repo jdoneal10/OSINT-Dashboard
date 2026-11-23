@@ -77,9 +77,10 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 - `cd backend && uv run python -m app.enrich.actors --rebuild` — re-run actor normalization over all events
 - `cd backend && uv run python -m app.enrich.llm.check` — verify the stored Anthropic key (free Models API call; never prints the key)
 - `make pipeline [STAGE=...]` — enrichment pass: dedupe, local filter, Haiku extract, cluster/Admiralty, Sonnet analyze
-- `make reextract` — queue documents extracted under an older prompt version; the next pipeline run submits them as one Batch API job (50% price)
+- `cd backend && uv run python -m app.enrich.person_repair [--apply]` — re-apply the person safeguards and match keys to stored records (reports only without `--apply`; ADR 0013 amendment 1)
+- `make reextract` — queue documents extracted under an older prompt version (except `extract-v9`, the labeled one, and hand-corrected documents; ADR 0004 amendment 2); the next pipeline run submits them as one Batch API job (50% price)
 - `cd backend && uv run python -m app.reports.charts.demo_charts` — render notional samples of each INTSUM chart type to `data/chart_samples/` (gitignored)
-- `make eval [MODELS=qwen3:4b,gemma3:4b] [PROMPT=extract-v3]` — precision/filter-recall report from the owner's labels into `docs/evaluations/` (model comparison uses local Ollama only)
+- `make eval [MODELS=qwen3:4b,gemma3:4b] [PROMPT=extract-v3]` — precision/filter-recall report from the owner's labels into `docs/evaluations/` (model comparison uses local Ollama only); the default prompt is the labeled `extract-v9`
 
 ## Engineering conventions
 - **Ingesters are idempotent.** Upsert on a stable source key; re-running a pull never duplicates rows. Store every raw pull in `data/raw/<source>/<date>/` before parsing.

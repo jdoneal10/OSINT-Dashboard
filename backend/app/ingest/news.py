@@ -36,6 +36,7 @@ from app.ingest.articles import (
 )
 from app.ingest.feeds import Feed
 from app.ingest.http import PoliteClient
+from app.ingest.publication import page_time
 from app.ingest.raw import write_raw
 from app.ingest.runs import (
     DeferredRun,
@@ -294,6 +295,9 @@ def ingest_feed(
                         text = article.text
                         title = title or article.title
                         published = published or article.published
+                        if feed.discovery == "gdelt" and published:
+                            page = article.html.decode("utf-8", errors="replace")
+                            published = page_time(page, published)
             with session_factory()() as session, session.begin():
                 result = upsert_document(
                     session,

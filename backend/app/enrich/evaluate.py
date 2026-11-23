@@ -396,7 +396,7 @@ def haiku_relevance(
     out = HaikuRelevance(prompt_version=extract.PROMPT_VERSION)
     for d in sorted(docs, key=lambda x: x.document_id):
         doc = session.get_one(Document, d.document_id)
-        source = session.get_one(Source, doc.source_id).name
+        source = session.get_one(Source, doc.source_id)
         result = gateway.call(
             stage="extract", model=HAIKU, prompt_version=extract.PROMPT_VERSION,
             system=system, user=extract.build_user(doc, source),
@@ -596,7 +596,7 @@ def run(
 ) -> Path:
     """Write the report. ``haiku_gateway`` enables the paid Haiku relevance dry run."""
     settings = get_settings()
-    version = prompt_version or extract.PROMPT_VERSION
+    version = prompt_version or extract.LABELED_VERSION
     threshold = settings.relevance_threshold
     with session_factory()() as session:
         rec = record_precision(session, version)
@@ -622,7 +622,7 @@ def run(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.enrich.evaluate")
-    parser.add_argument("--prompt-version", help=f"default: {extract.PROMPT_VERSION}")
+    parser.add_argument("--prompt-version", help=f"default: {extract.LABELED_VERSION}")
     parser.add_argument(
         "--compare-models",
         help="comma-separated Ollama models to re-score the labeled documents with",

@@ -6,6 +6,7 @@ import DesignationsPage from './pages/DesignationsPage'
 import DocumentPage from './pages/DocumentPage'
 import LabelingPage from './pages/LabelingPage'
 import MapPage from './pages/MapPage'
+import MergeReviewPage from './pages/MergeReviewPage'
 import NewsPage from './pages/NewsPage'
 import PersonPage from './pages/PersonPage'
 import PersonsPage from './pages/PersonsPage'
@@ -25,6 +26,7 @@ export const routes: RouteObject[] = [
       { path: 'priority', element: <PriorityPage /> },
       { path: 'priority/:topic', element: <PriorityPage /> },
       { path: 'persons', element: <PersonsPage /> },
+      { path: 'persons/review', element: <MergeReviewPage /> },
       { path: 'persons/:id', element: <PersonPage /> },
       { path: 'designations', element: <DesignationsPage /> },
       { path: 'labeling', element: <LabelingPage /> },

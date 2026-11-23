@@ -45,6 +45,7 @@ from app.db.models import (
     seizure_documents,
 )
 from app.db.session import get_session
+from app.enrich import identity
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 DB = Annotated[Session, Depends(get_session)]
@@ -144,6 +145,7 @@ class DocPersonClaim(BaseModel):
     kind: str  # role | alias | nationality | status | title | organization | event
     value: str
     event_id: int | None = None
+    evidence: str | None = None
 
 
 class DocPersonOut(BaseModel):
@@ -185,7 +187,9 @@ def persons_for(session: Session, document_id: int) -> list[DocPersonOut]:
         .where(PersonAttribute.document_id == document_id)
         .order_by(PersonAttribute.id)
     ):
-        claims.setdefault(a.person_id, []).append(DocPersonClaim(kind=a.attribute, value=a.value))
+        claims.setdefault(a.person_id, []).append(
+            DocPersonClaim(kind=a.attribute, value=a.value, evidence=a.evidence)
+        )
     for o, org in session.execute(
         select(PersonOrganization, Actor.canonical_name)
         .join(Actor, Actor.id == PersonOrganization.actor_id)
@@ -198,13 +202,16 @@ def persons_for(session: Session, document_id: int) -> list[DocPersonOut]:
         claims.setdefault(e.person_id, []).append(
             DocPersonClaim(kind="event", value=e.role, event_id=e.event_id)
         )
+    if not claims:
+        return []
+    ids = identity.load(session)  # hidden if any record merged with it is a U.S. person
     people = session.scalars(select(Person).where(Person.id.in_(claims)).order_by(Person.id))
     return [
         DocPersonOut(
             id=p.id,
             display_name=p.display_name,
-            us_person=p.us_person,
-            disputed=p.disputed,
+            us_person=ids.us_person(p.id),
+            disputed=ids.disputed(p.id),
             claims=claims[p.id],
         )
         for p in people

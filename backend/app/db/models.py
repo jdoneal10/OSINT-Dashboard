@@ -34,6 +34,7 @@ from sqlalchemy import (
     UniqueConstraint,
     false,
     func,
+    text,
     true,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -585,7 +586,7 @@ class Person(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     display_name: Mapped[str] = mapped_column(String(256))  # as the first source wrote it
     # Normalized full name used to match reports of the same person; NULL when the name is too
-    # thin to match safely (one word, or a placeholder such as "N").
+    # thin to match safely (under three name words, a nickname, or a placeholder such as "N").
     name_key: Mapped[str | None] = mapped_column(String(256), index=True)
     # Reported U.S. citizen, resident or U.S.-located: hidden from person views and search by
     # default (hard rule 3; the owner's EO 12333 boundary). Set by any citing record.
@@ -665,6 +666,43 @@ class PersonEvent(PersonCitationMixin, TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(32))
+
+
+class PersonMerge(TimestampMixin, Base):
+    """The owner's decision that record ``member_id`` is the same person as ``into_id``.
+
+    Nothing moves: each record keeps its name, claims, citations and labels, and views read
+    the linked records as one identity. Undoing sets ``undone_at`` (ADR 0013 amendment 1).
+    """
+
+    __tablename__ = "person_merges"
+    __table_args__ = (
+        CheckConstraint("member_id <> into_id", "not_self"),
+        Index(
+            "uq_person_merges_active_member", "member_id", unique=True,
+            postgresql_where=text("undone_at IS NULL"),
+        ),
+    )  # fmt: skip
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
+    into_id: Mapped[int] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"), index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    undone_at: Mapped[dt.datetime | None] = mapped_column()
+
+
+class PersonDistinction(TimestampMixin, Base):
+    """The owner's decision that two records are not the same person."""
+
+    __tablename__ = "person_distinctions"
+    __table_args__ = (
+        CheckConstraint("a_id < b_id", "ordered"),
+        UniqueConstraint("a_id", "b_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    a_id: Mapped[int] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
+    b_id: Mapped[int] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"), index=True)
 
 
 # --------------------------------------------------------------------------- analysis & ops

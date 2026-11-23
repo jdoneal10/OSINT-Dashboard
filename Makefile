@@ -56,7 +56,7 @@ reference-inegi: ## Download (resumable, ~45 min) and load INEGI municipalities 
 pipeline: ## Enrichment pass: dedupe, local filter, Haiku extract, cluster, Admiralty, Sonnet
 	$(BACKEND) $(UV) python -m app.enrich.pipeline $(if $(STAGE),--stage $(STAGE),)
 
-reextract: ## Queue documents extracted under an older prompt; the pipeline sends them as a Batch API job
+reextract: ## Queue documents extracted under an older prompt (not v9, labeled or hand-corrected); the pipeline sends them as a Batch API job
 	cd backend && uv run python -m app.enrich.extract --reextract
 
 eval: ## Precision/recall report from hand labels -> docs/evaluations (MODELS=qwen3:4b,gemma3:4b to compare filters)

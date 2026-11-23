@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Document, Label, LLMBatch, LLMQuarantine, LLMUsage
+from app.db.models import Annotation, Document, Label, LLMBatch, LLMQuarantine, LLMUsage
 from app.enrich import extract
 from app.enrich.llm.client import Gateway
 from app.enrich.llm.pricing import HAIKU
@@ -239,3 +239,24 @@ def test_rejected_retry_is_quarantined_and_collection_continues(
     q = seeded.scalars(select(LLMQuarantine)).one()
     assert (q.document_id, q.reason, q.attempts) == (a, "request_rejected", 2)
     assert seeded.scalars(select(LLMBatch)).one().status == "collected"
+
+
+def test_reextraction_skips_hand_corrected_documents(
+    seeded: Session, three_docs: list[int]
+) -> None:
+    corrected, noted, plain = three_docs
+    for target in three_docs:
+        doc = seeded.get_one(Document, target)
+        doc.pipeline_status, doc.prompt_version = "extracted", "extract-v1"
+    extract.mark_corrected(seeded, corrected, "synthetic date fix")
+    extract.mark_corrected(seeded, corrected, "synthetic date fix")  # idempotent
+    # An ordinary note, or a mark on another table's row, protects nothing.
+    seeded.add(Annotation(target_table="documents", target_id=noted, body="A synthetic note."))
+    seeded.add(
+        Annotation(target_table="events", target_id=plain, body=f"{extract.CORRECTED} synthetic")
+    )
+    seeded.commit()
+    notes = seeded.scalars(select(Annotation).where(Annotation.target_id == corrected)).all()
+    assert len(notes) == 1
+    assert extract.mark_for_reextraction() == 2
+    assert _statuses(seeded, three_docs) == ["extracted", "relevant", "relevant"]

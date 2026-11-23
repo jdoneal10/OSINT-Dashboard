@@ -115,6 +115,19 @@ const person: PersonDetail = {
   roles: ['leader'],
   organizations: ['Cartel de Jalisco Nueva Generacion'],
   n_sources: 1,
+  n_documents: 1,
+  n_records: 1,
+  records: [
+    {
+      id: 5,
+      display_name: 'Ramón Sintético Pérez',
+      sources: ['Quadratín Michoacán'],
+      us_person: false,
+      merge_id: null,
+      into_id: null,
+    },
+  ],
+  distinct_from: [],
   last_reported_on: '2026-11-10',
   us_person: false,
   disputed: false,
@@ -123,6 +136,8 @@ const person: PersonDetail = {
     {
       kind: 'role',
       value: 'leader',
+      record_id: 5,
+      reported_name: 'Ramón Sintético Pérez',
       actor_id: null,
       event_id: null,
       event_date: null,
@@ -139,6 +154,8 @@ const person: PersonDetail = {
     },
     {
       kind: 'organization',
+      record_id: 5,
+      reported_name: 'Ramón Sintético Pérez',
       value: 'leader: Cartel de Jalisco Nueva Generacion',
       actor_id: 2,
       event_id: null,
@@ -324,5 +341,79 @@ describe('Person labeling', () => {
         field: 'excluded_category',
       })
     })
+  })
+})
+
+describe('Merge review', () => {
+  const candidate = (id: number, name: string, selected: boolean, source: string) => ({
+    person: { ...person, id, display_name: name, claims: undefined },
+    sources: [source],
+    aliases: ['El Grillo'],
+    evidence: null,
+    selected,
+    reasons: ['names agree', 'same alias'],
+    warning: null,
+  })
+  const suggestions = {
+    hidden_us_persons: 1,
+    items: [
+      {
+        primary_id: 7,
+        us_person: false,
+        candidates: [
+          candidate(7, 'Darío Sintético Vega', true, 'Outlet A'),
+          candidate(8, 'Darío "N"', true, 'Agency B'),
+          candidate(9, 'Darío "N"', false, 'Agency C'),
+        ],
+      },
+    ],
+  }
+  const posts = (mock: ReturnType<typeof renderAt>['fetchMock'], path: string) =>
+    mock.mock.calls.filter(([u, init]) => init?.method === 'POST' && String(u).includes(path))
+
+  it('merges only the ticked records, and only on a click', async () => {
+    const { fetchMock } = renderAt('/persons/review', {
+      '/persons/merge-suggestions': suggestions,
+      '/persons/merges': { ...person, id: 7 },
+    })
+    expect(await screen.findByText(/suggestion\(s\) involving a U.S. person/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Same person: record 9')).not.toBeChecked()
+    expect(posts(fetchMock, '/persons/merges')).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: /Merge 2 records/ }))
+    await waitFor(() => {
+      const [call] = posts(fetchMock, '/persons/merges')
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ person_ids: [7, 8], primary_id: 7 })
+    })
+  })
+
+  it('records a not-the-same decision', async () => {
+    const { fetchMock } = renderAt('/persons/review', {
+      '/persons/merge-suggestions': suggestions,
+      '/persons/distinctions': {},
+    })
+    fireEvent.click(await screen.findByLabelText('Record 9 is not the same person'))
+    await waitFor(() => {
+      const [call] = posts(fetchMock, '/persons/distinctions')
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ person_id: 7, other_ids: [9] })
+    })
+  })
+
+  it('shows each published name and undoes a merge', async () => {
+    const member = {
+      id: 6,
+      display_name: 'Ramón "N"',
+      sources: ['Agency B'],
+      us_person: false,
+      merge_id: 31,
+      into_id: 5,
+    }
+    const { fetchMock } = renderAt('/persons/5', {
+      '/persons/5': { ...person, n_records: 2, records: [...person.records, member] },
+      '/persons/merges': {},
+    })
+    expect(await screen.findByText('Ramón "N"')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Named as' })).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Undo merge of record 6'))
+    await waitFor(() => expect(posts(fetchMock, '/persons/merges/31/undo')).toHaveLength(1))
   })
 })

@@ -257,6 +257,11 @@ export function PersonsTable({
                     U.S. person · hidden from person views
                   </span>
                 )}
+                {[...new Set(p.claims.map((c) => c.evidence).filter(Boolean))].map((quote) => (
+                  <p key={quote} className="text-ink-500 mt-1 italic">
+                    “{quote}”
+                  </p>
+                ))}
                 {p.disputed && (
                   <span className="ml-1 rounded border border-rose-500/40 px-1 text-[10px] text-rose-300">
                     disputed

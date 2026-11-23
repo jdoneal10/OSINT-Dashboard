@@ -12,9 +12,10 @@ from app.core.config import get_settings
 from app.db.models import Alert, Document, IngestRun, Source
 from app.ingest import feeds as feed_registry
 from app.ingest import news
-from app.ingest.articles import canonical_url
+from app.ingest.articles import canonical_url, upsert_document
 from app.ingest.feeds import load_feeds
 from app.ingest.http import PoliteClient
+from app.ingest.runs import source_id
 
 FIX = Path(__file__).parent / "fixtures" / "news"
 ROBOTS = "User-agent: *\nDisallow: /private/\n"
@@ -331,3 +332,15 @@ def test_listing_reads_links_from_a_javascript_listing() -> None:
     assert entries[0].title == "AGENCIA SINTÉTICA ASEGURA DRON CON EXPLOSIVOS EN MICHOACÁN"
     # 15:46 in Mexico City (UTC-6, no daylight saving) is 21:46 UTC.
     assert entries[0].published == dt.datetime(2026, 11, 20, 21, 46, tzinfo=dt.UTC)
+
+
+def test_upsert_stores_text_without_related_lines(session: Session) -> None:
+    feed = next(f for f in feed_registry.active() if f.text == "full")
+    feed_registry.sync_sources(session)
+    session.flush()
+    stored = upsert_document(
+        session, source_id=source_id(session, feed.slug), feed=feed,
+        url="https://example.org/related", title="T", summary=None, published=None, raw_path=None,
+        text="Cuerpo sintético.\nTe puede interesar: Otro titular sintético",
+    )  # fmt: skip
+    assert session.get_one(Document, stored.id).original_text == "Cuerpo sintético."

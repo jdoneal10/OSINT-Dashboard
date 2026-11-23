@@ -30,6 +30,7 @@ from app.db.models import (
 from app.db.session import session_factory
 from app.enrich.llm.client import BudgetPausedError, Gateway, Provenance
 from app.enrich.llm.pricing import SONNET
+from app.ingest.publication import published_day
 
 log = logging.getLogger(__name__)
 
@@ -110,17 +111,17 @@ def build_input(
             )
             continue
         docs = session.execute(
-            select(Document, Source.name, Source.reliability)
+            select(Document, Source.name, Source.slug, Source.reliability)
             .join(event_documents, event_documents.c.document_id == Document.id)
             .join(Source, Source.id == Document.source_id)
             .where(event_documents.c.event_id == ev.id)
         ).all()
-        for doc, src_name, grade in docs:
+        for doc, src_name, slug, grade in docs:
             if doc.id not in doc_ids:
                 doc_ids.append(doc.id)
             lines.append(
                 f"[document {doc.id}] {src_name} (reliability {grade}), published "
-                f"{doc.published_at.date() if doc.published_at else 'unknown'}\n"
+                f"{published_day(doc, slug) if doc.published_at else 'unknown'}\n"
                 f"  reported: type={ev.event_type}; date={ev.event_date}; "
                 f"fatalities={ev.fatalities}; place={ev.location_name}, {ev.admin2_name}, "
                 f"{ev.admin1_name}\n  summary: {doc.translated_text or doc.title or ''}"

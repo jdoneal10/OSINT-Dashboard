@@ -32,6 +32,7 @@ from app.core.config import get_settings
 from app.db.models import (
     Actor,
     ActorAlias,
+    Annotation,
     Document,
     Event,
     Label,
@@ -42,12 +43,13 @@ from app.db.models import (
     seizure_documents,
 )
 from app.db.session import session_factory
-from app.enrich import persons
+from app.enrich import person_guard, persons, text_guard
 from app.enrich.actors import ActorIndex
 from app.enrich.geocode import geocode, in_aoi
 from app.enrich.llm import batch as llm_batch
 from app.enrich.llm.client import BudgetPausedError, Gateway, Provenance
 from app.enrich.llm.pricing import HAIKU
+from app.ingest import publication
 from app.ingest.acled import RELIABILITY_CONFIDENCE
 from app.reference.normalize import normalize_alias
 
@@ -62,7 +64,14 @@ log = logging.getLogger(__name__)
 # v8: persons linked to criminal activity, with safeguards (hard rule 3; ADR 0008, 0013)
 # v9: same instructions as v8, returned as a forced tool call: the v8 schema exceeds the
 #     structured-output grammar limit, so no v8 request ever succeeded (ADR 0004 amendment)
-PROMPT_VERSION = "extract-v9"
+# v10: same instructions; PUBLISHED is the local day with its weekday and time, not the UTC
+#     day. A calendar line and a date rule were tested and not used: both made the model
+#     drop real events (ADR 0004 amendment 2)
+PROMPT_VERSION = "extract-v10"
+# The owner's labels are on v9, and v10 differs from it only in dates. The labeling top-up
+# and `make eval` stay on v9 until the owner moves them, and `make reextract` leaves v9
+# records alone: their dates are fixed by reviewed correction, not by replacing the records.
+LABELED_VERSION = "extract-v9"
 MAX_TEXT_CHARS = 30_000
 
 EventType = Literal[
@@ -442,11 +451,17 @@ def build_system(session: Session) -> str:
     return RULES + "\n\nKNOWN ORGANIZATIONS\n" + "\n".join(lines)
 
 
-def build_user(doc: Document, source_name: str) -> str:
-    published = doc.published_at.date().isoformat() if doc.published_at else "unknown"
+def shown_text(doc: Document) -> str:
+    """The title and text the model is shown; person names are checked against it."""
+    body = (doc.original_text or doc.summary or "")[:MAX_TEXT_CHARS]
+    return f"{doc.title or ''}\n{body}"
+
+
+def build_user(doc: Document, source: Source) -> str:
+    published = publication.describe(doc, source.slug)
     body = doc.original_text or doc.summary or ""
     return (
-        f"SOURCE: {source_name}\nPUBLISHED: {published}\nURL: {doc.source_url or ''}\n"
+        f"SOURCE: {source.name}\n{published}\nURL: {doc.source_url or ''}\n"
         f"TITLE: {doc.title or ''}\n\nTEXT:\n{body[:MAX_TEXT_CHARS]}"
     )
 
@@ -584,12 +599,27 @@ def _actor_ids(
     return out
 
 
+def _named(ex: Extraction, text: str) -> tuple[list[str], dict[str, str]]:
+    """The people free text may name, and corrections for names the text does not contain."""
+    listed: list[str] = []
+    renamed: dict[str, str] = {}
+    for p in ex.persons:
+        if p.reported_minor:
+            continue
+        aliases = [a for a in p.aliases if person_guard.in_text(a, text)]
+        if name := person_guard.supported_name(p.name, text, aliases):
+            listed += [name, *aliases]
+            if name != p.name:
+                renamed[p.name] = name
+    return listed, renamed
+
+
 def store_extraction(
     session: Session, doc: Document, ex: Extraction, *, model: str, tokens: tuple[int, int]
 ) -> dict[str, int]:
     source = session.get_one(Source, doc.source_id)
     confidence: Decimal | None = RELIABILITY_CONFIDENCE.get(source.reliability)
-    fallback_date = (doc.published_at or doc.retrieved_at).date()
+    fallback_date = publication.published_day(doc, source.slug)
     now = dt.datetime.now(dt.UTC)
     llm = {
         "llm_model": model,
@@ -607,8 +637,16 @@ def store_extraction(
             Seizure.source_id == doc.source_id, Seizure.source_key.like(prefix + "%")
         )
     )
+    prior = persons.prior_records(session, doc.id)
     persons.clear_document(session, doc.id)  # person_events also go with the events above
-    doc.translated_text = ex.summary_en
+    listed, renamed = _named(ex, shown_text(doc))
+
+    def safe(value: str) -> str:
+        for wrong, right in renamed.items():
+            value = value.replace(wrong, right)
+        return text_guard.clean_text(value, listed)
+
+    doc.translated_text = safe(ex.summary_en)
     for k, v in llm.items():
         setattr(doc, k, v)
     doc.pipeline_status = "extracted" if ex.relevant else "filtered_out"
@@ -634,7 +672,7 @@ def store_extraction(
             event_date=when,
             event_type=e.event_type,
             sub_event_type=e.sub_event_type,
-            description=e.description,
+            description=safe(e.description),
             fatalities=e.fatalities,
             geom=func.ST_GeogFromText(geo.ewkt) if geo else None,
             country_iso3=geo.country_iso3 if geo else None,
@@ -659,7 +697,7 @@ def store_extraction(
                 "perpetrators": e.perpetrators,
                 "targets": e.targets,
                 "injured": e.injured,
-                "evidence": e.evidence,
+                "evidence": text_guard.clean_quote(e.evidence, listed),
                 "location": e.location.model_dump(),
                 "geocode_match": geo.matched if geo else None,
             },
@@ -718,6 +756,8 @@ def store_extraction(
             [(event_ids[x.event_index], x.role) for x in p.events if x.event_index < len(event_ids)]
             for p in ex.persons
         ],
+        text=shown_text(doc),
+        prior=prior,
     )
     persons.delete_uncited(session)
     return {"events": len(ex.events), "seizures": len(ex.seizures), "persons": n_persons}
@@ -729,11 +769,11 @@ EFFORT = "low"
 
 def _item(session: Session, doc_id: int) -> llm_batch.BatchItem:
     doc = session.get_one(Document, doc_id)
-    source_name = session.get_one(Source, doc.source_id).name
+    source = session.get_one(Source, doc.source_id)
     return llm_batch.BatchItem(
         custom_id=f"doc-{doc_id}",
         document_id=doc_id,
-        user=build_user(doc, source_name),
+        user=build_user(doc, source),
         provenance=Provenance(document_ids=(doc_id,)),
     )
 
@@ -855,21 +895,43 @@ def run_extract(limit: int = 50, gateway: Gateway | None = None) -> dict[str, in
     return counts
 
 
+CORRECTED = "Hand-corrected:"
+
+
+def mark_corrected(session: Session, document_id: int, what: str) -> None:
+    """Note that the owner corrected this document's derived records, so re-extraction skips it.
+
+    Re-extraction deletes and rebuilds the summary, events, seizures and person claims, which
+    would undo the correction. Call this in the transaction that makes the correction. The
+    note is an annotation, so it is never sent to the model.
+    """
+    body = f"{CORRECTED} {what}"
+    target = {"target_table": "documents", "target_id": document_id}
+    if not session.scalar(select(Annotation.id).filter_by(**target, body=body).limit(1)):
+        session.add(Annotation(**target, body=body))
+        session.flush()
+
+
 def mark_for_reextraction() -> int:
     """Queue documents Haiku processed under an older prompt version (a backfill; batched).
 
     Covers documents it extracted and documents it judged not relevant. Documents whose
     records the owner has labeled are skipped: re-extraction would replace those records,
-    and their labels must keep judging the version they were made on.
+    and their labels must keep judging the version they were made on. So are documents
+    marked by ``mark_corrected``.
     """
+    corrected = select(Annotation.target_id).where(
+        Annotation.target_table == "documents", Annotation.body.startswith(CORRECTED)
+    )
     labeled = select(Label.document_id).where(Label.target_table.in_(("events", "seizures")))
     with session_factory()() as session, session.begin():
         docs = session.scalars(
             select(Document).where(
                 Document.pipeline_status.in_(("extracted", "filtered_out")),
                 Document.prompt_version.is_not(None),  # Haiku has seen it
-                Document.prompt_version != PROMPT_VERSION,
+                Document.prompt_version.not_in((PROMPT_VERSION, LABELED_VERSION)),
                 Document.id.not_in(labeled),
+                Document.id.not_in(corrected),
             )
         ).all()
         for doc in docs:
@@ -896,7 +958,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--reextract",
         action="store_true",
-        help=f"queue documents extracted under a prompt other than {PROMPT_VERSION}",
+        help=f"queue documents extracted before {LABELED_VERSION}; skips labeled and corrected",
     )
     parser.add_argument(
         "--reprioritize",

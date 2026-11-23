@@ -92,3 +92,45 @@ Extraction schemas have **no fields for individuals**. Prompts instruct the mode
   - **Fix:** the schema builder now keeps field names. Extraction's nullable and list fields default to empty, so an omission validates; the schema sent still lists every property as required.
   - **Same version:** every v9 document that named a person had failed, so no stored v9 record came from the flawed schema, and the version stays `extract-v9`.
   - **Recovery:** the 114 documents were requeued and resubmitted as one batch.
+
+## Amendment (2026-11-22): related-story headlines removed from article text
+
+- **What happened.** Full-text extraction kept other articles' headlines. All 73 stored Quadratín articles began with one, and 131 articles from Línea Directa, InSight Crime, DroneLife, Zeta and Aristegui had labeled related-story lines or lists. In document 1929 a stray headline became event 268299, a false domestic-violence charge against a named person.
+- **Fix (`app/ingest/related.py`).** Quadratín's headline cards are pruned before extraction. Labeled related-story lines ("Te puede interesar leer:", "SEE ALSO:", "Read more:" and their lists) are removed in `upsert_document`, so page fetches and RSS bodies are both covered. Dataminr alerts are stored by their own ingester and carry no such block.
+- **Correction (owner-approved, 2026-11-22).** Removed event 268299, its single-event cluster 276, person 101's "charged" status and that event link, and re-parsed document 1929's text from its saved page. Labels were not changed; label 592 still judges the deleted event.
+- **Cleanup (owner-approved "Clean and correct", 2026-11-22).** Removed 311 stray lines from those 203 stored articles (deletion only, hashes updated, pipeline status untouched), took the borrowed text out of six summaries (documents 1520, 1538, 1559, 1650, 1705, 1981) and out of event 268053's description (marked `corrected`). Labels, person claims and all other records were not changed.
+- **The first fix was incomplete.** The cleanup's dry run found wordings it missed ("No deje de leer", "Siga leyendo", "Debería leer", "Tiene que leer", "Lee", "Nota sugerida", "Sugerido", "Prodría interesarle", "Más en <section>", "Más de la LMP") and bare link paths in Infobae live blogs. All are now removed at ingest. The labels are a list, so a new wording gets through until it is added.
+- **Second cleanup (owner-approved "Clean those too", 2026-11-22).** Removed 38 lines from the eight articles those forms had reached (1312, 1351, 1356, 1417, 1560, 2128, 2170, 2188) and took related-story content out of three summaries (1351, 1984, 2053). 2170 and 2188 had been sent in batch 23 before cleaning. Their texts were cleaned before collection, and review of the results found nothing taken from the removed lines.
+- **Open.** Label 592 still judges the deleted event 268299.
+
+## Amendment 2 (2026-11-22): dates are local days (owner-approved "Fix dates")
+
+- **What was wrong.**
+  - Every day derived from a report was its UTC day: the day shown to Haiku, fallback event and seizure dates, "reported on", and the day shown to Sonnet. An evening report in Mexico was dated tomorrow.
+  - Haiku got no weekday, so it misread "este sábado".
+  - CBP release dates were read day-first when both numbers were 12 or less (10 November became 11 October: 10 documents).
+  - GDELT feeds stored the time GDELT saw the article (0.5 to 3 hours late) instead of the page's publication time.
+- **Fix.**
+  - CBP's month-first release date is read from the page and checked against its weekday.
+  - Each active feed declares its newsroom's time zone in `feeds.yaml`, and `app/ingest/publication.py` gives the local day to every derived date. Dataminr uses Mexico City. A bare date (midnight UTC) is not converted.
+  - GDELT feeds prefer the page's own timestamp when it has an offset and is not later than the time seen.
+  - `published_at` stays a UTC instant.
+- **Prompt (extract-v10).** The instructions are unchanged. Only the PUBLISHED line changes: local day, weekday and local time. On 64 stored articles run twice each, events dated after publication went from 13 to 0, undated events from 40 to 23, and relevance was unchanged (125 of 128 judged relevant).
+- **Tested and rejected.** A line listing the previous days made Haiku judge two relevant reports irrelevant in 5 of 5 runs. A written date rule was also unstable. Re-test on repeated runs before adding either.
+- **Labels and re-extraction.** The owner's labels are on extract-v9. The labeling top-up and `make eval` stay on v9 (`LABELED_VERSION`) until the owner moves them, and `make reextract` does not replace v9 records.
+- **Stored dates (owner-approved "Apply A, B, D", 2026-11-22).** Applied from the reviewed list (`data/raw/_reviews/date-corrections-20261122.json`, SHA-256 `9c2f2c21d35c48250270717d31a1389359b9c3327d97f432d6beb038ed369fda`, gitignored; it holds every old value):
+  - A: 24 records moved to the day the article states.
+  - B: 78 records dated after their report moved to the local publication day, which is the latest possible day. Their precision was kept.
+  - D: 23 publication times, 283 person-claim "reported on" dates and 44 cluster date ranges.
+  - The 80 corrected events carry `date_corrected` (old day, old precision, basis). Seizures have no such field, so their old days are in the list only. Labels, cluster membership and assessments were not changed.
+- **Wording (owner-approved "Fix wording", 2026-11-22).** Summaries 1540, 1560 and 1176 now give the corrected day. Assessments 6, 9 and 14 were replaced by new Sonnet assessments (30, 31, 29) made from the corrected dates.
+- **Known, not changed.** The defensa.com feed sends Madrid wall time without an offset, stored as UTC: its times are an hour late (two in summer), its days are right.
+- **Year (owner-approved "Remove it", 2026-11-22).** Summaries 1176 and 657 no longer put the businessman's case in 2024; their articles give that year only for the journalist's kidnapping. No year was added.
+- **Assessment 21 (owner-approved "Redo it", 2026-11-22).** Replaced by assessment 32, made from the corrected summaries. It no longer attributes a 19 November date to Borderland Beat. Same incident, toll (3) and confidence; the likelihood field went from very likely to likely.
+- **Group C (owner-approved "Apply all nine", 2026-11-22).**
+  - Re-dated: 267866 (3 November), 268228, 268247, 268354 and 268240 (20 November), 268022 (13 May, from document 891) and 268386 (21 November 2026, the latest possible day). Each carries `date_corrected` with its basis.
+  - Kept: 268071 (21 November; its article gives two accounts).
+  - Split: 267866 moved from cluster 106, a different incident, to its own cluster 309.
+  - Deleted: seizure 103, an embassy post about a 2025 seizure with no month, place or amount. Full row in `data/raw/_backups/osint-before-group-c-20261122T201919Z.dump`.
+- **Re-extraction keeps hand corrections (owner-approved "Protect them", 2026-11-22).** `make reextract` skips a document with an annotation starting `Hand-corrected:` (`extract.mark_corrected`). The ten corrected documents it would have queued are marked: 59, 424, 489, 638, 903, 910, 933, 945, 1098, 1136. Any later hand correction must call `mark_corrected` in the same transaction.
+- **All corrected documents marked (owner-approved "Mark them too", 2026-11-22).** A comparison of every backup with the live database found 121 hand-corrected documents; all are now marked, each with its correction. Moving `LABELED_VERSION` off v9 would have queued 59 of them (the rest are also labeled); with the marks it queues none.

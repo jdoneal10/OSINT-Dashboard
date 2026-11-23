@@ -490,7 +490,10 @@ export interface PersonSummary {
   display_name: string
   roles: string[]
   organizations: string[]
+  /** Distinct outlets; outlets may reprint one another. */
   n_sources: number
+  n_documents: number
+  n_records: number
   last_reported_on: string | null
   us_person: boolean
   disputed: boolean
@@ -516,18 +519,53 @@ export interface PersonCitation {
 export interface PersonClaim {
   kind: 'role' | 'alias' | 'nationality' | 'status' | 'title' | 'organization' | 'event'
   value: string
+  record_id: number
+  /** The name this claim's source published. */
+  reported_name: string
   actor_id: number | null
   event_id: number | null
   event_date: string | null
   citation: PersonCitation
 }
 
+export interface PersonRecord {
+  id: number
+  display_name: string
+  sources: string[]
+  us_person: boolean
+  /** Undo this to separate the record; null on the record whose name is shown. */
+  merge_id: number | null
+  into_id: number | null
+}
+
 export interface PersonDetail extends PersonSummary {
   dispute_note: string | null
   claims: PersonClaim[]
+  records: PersonRecord[]
+  distinct_from: { id: number; person_id: number; display_name: string }[]
+}
+
+export interface MergeSuggestion {
+  primary_id: number
+  us_person: boolean
+  candidates: {
+    person: PersonSummary
+    sources: string[]
+    aliases: string[]
+    evidence: string | null
+    selected: boolean
+    reasons: string[]
+    warning: string | null
+  }[]
+}
+
+export interface MergeSuggestionList {
+  items: MergeSuggestion[]
+  hidden_us_persons: number
 }
 
 export interface DocPersonClaim {
+  evidence?: string | null
   kind: string
   value: string
   event_id: number | null

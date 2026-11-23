@@ -245,6 +245,13 @@ export const usePerson = (id: number | null, includeUs = false) =>
     retry: false,
   })
 
+export const useMergeSuggestions = (includeUs: boolean) =>
+  useQuery({
+    queryKey: ['persons', 'suggestions', includeUs],
+    queryFn: ({ signal }) =>
+      api.mergeSuggestions({ include_us_persons: includeUs || undefined }, { signal }),
+  })
+
 export function usePersonMutations() {
   const qc = useQueryClient()
   const refresh = () => qc.invalidateQueries({ queryKey: ['persons'] })
@@ -252,6 +259,19 @@ export function usePersonMutations() {
     dispute: useMutation({
       mutationFn: (v: { id: number; disputed: boolean; note?: string | null }) =>
         api.disputePerson(v.id, { disputed: v.disputed, note: v.note }),
+      onSuccess: refresh,
+    }),
+    merge: useMutation({
+      mutationFn: (v: { person_ids: number[]; primary_id: number }) => api.mergePersons(v),
+      onSuccess: refresh,
+    }),
+    undo: useMutation({ mutationFn: (id: number) => api.undoMerge(id), onSuccess: refresh }),
+    distinct: useMutation({
+      mutationFn: (v: { person_id: number; other_ids: number[] }) => api.markDistinct(v),
+      onSuccess: refresh,
+    }),
+    clearDistinct: useMutation({
+      mutationFn: (id: number) => api.clearDistinct(id),
       onSuccess: refresh,
     }),
     remove: useMutation({ mutationFn: (id: number) => api.deletePerson(id), onSuccess: refresh }),

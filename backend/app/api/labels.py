@@ -38,7 +38,7 @@ from app.db.models import (
     seizure_documents,
 )
 from app.db.session import get_session
-from app.enrich.extract import PROMPT_VERSION as EXTRACT_VERSION
+from app.enrich.extract import LABELED_VERSION as EXTRACT_VERSION
 
 router = APIRouter(prefix="/labels", tags=["labels"])
 DB = Annotated[Session, Depends(get_session)]

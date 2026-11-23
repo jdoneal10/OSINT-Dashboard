@@ -4,6 +4,7 @@
 #   rss      - the outlet's RSS feed (url)
 #   listing  - an HTML listing page parsed for article links (url)
 #   gdelt    - GDELT DOC 2.0 queries filtered to this domain (no RSS available)
+# timezone: the newsroom's zone; its calendar day dates each report (ADR 0004 amendment 2)
 # text:
 #   full     - fetch and store the article body (trafilatura) for translation/extraction
 #   summary  - keep only title + feed teaser + link (full text paywalled or unavailable)
@@ -25,6 +26,7 @@ feeds:
     domain: www.justice.gov
     country: USA
     language: en
+    timezone: UTC  # the feed gives a date (12:00 UTC), not a time
     discovery: rss
     url: https://www.justice.gov/news/rss?type=press_release&m=1
     text: full
@@ -39,6 +41,7 @@ feeds:
     domain: www.cbp.gov
     country: USA
     language: en
+    timezone: UTC  # the listing gives a date, not a time
     discovery: listing
     url: https://www.cbp.gov/newsroom/media-releases/all
     link_pattern: ^/newsroom/(local|national)-media-release/[a-z0-9-]+$
@@ -59,6 +62,7 @@ feeds:
     domain: www.gob.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: listing
     url: https://www.gob.mx/semar/es/archivo/prensa
     link_pattern: ^/semar/prensa/[a-z0-9-]+$
@@ -80,6 +84,7 @@ feeds:
     domain: www.gob.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: listing
     url: https://www.gob.mx/fgr/es/archivo/prensa
     link_pattern: ^/fgr/prensa/[a-z0-9-]+$
@@ -101,6 +106,7 @@ feeds:
     domain: www.gob.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: listing
     url: https://www.gob.mx/guardianacional/es/archivo/prensa
     link_pattern: ^/guardianacional/prensa/[a-z0-9-]+$
@@ -122,6 +128,7 @@ feeds:
     domain: www.gob.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: listing
     url: https://www.gob.mx/defensa/es/archivo/prensa
     link_pattern: ^/defensa/prensa/[a-z0-9-]+$
@@ -143,6 +150,7 @@ feeds:
     domain: www.gob.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: listing
     url: https://www.gob.mx/sspc/es/archivo/prensa
     link_pattern: ^/sspc/prensa/[a-z0-9-]+$
@@ -165,6 +173,7 @@ feeds:
     domain: insightcrime.org
     country: USA
     language: en
+    timezone: America/Bogota
     discovery: rss
     url: https://insightcrime.org/feed/
     text: full  # feed carries full content
@@ -181,6 +190,7 @@ feeds:
     domain: zetatijuana.com
     country: MEX
     language: es
+    timezone: America/Tijuana
     discovery: rss
     url: https://zetatijuana.com/feed/
     text: full
@@ -209,6 +219,7 @@ feeds:
     domain: www.proceso.com.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: gdelt  # no RSS advertised
     text: full
     reliability: B
@@ -225,6 +236,7 @@ feeds:
     domain: www.milenio.com
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: gdelt  # no RSS advertised
     text: full
     reliability: B
@@ -241,6 +253,7 @@ feeds:
     domain: www.elnorte.com
     country: MEX
     language: es
+    timezone: America/Monterrey
     discovery: rss
     url: https://www.elnorte.com/rss/portada.xml
     text: summary  # article bodies are paywalled
@@ -272,6 +285,7 @@ feeds:
     domain: www.quadratin.com.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: rss
     url: https://www.quadratin.com.mx/feed/
     text: full
@@ -288,6 +302,7 @@ feeds:
     domain: changoonga.com
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: rss
     url: https://changoonga.com/feed/
     text: full
@@ -303,6 +318,7 @@ feeds:
     domain: www.noroeste.com.mx
     country: MEX
     language: es
+    timezone: America/Mazatlan
     discovery: gdelt  # no RSS found 2026-11-20
     text: full
     reliability: B
@@ -317,6 +333,7 @@ feeds:
     domain: lineadirectaportal.com
     country: MEX
     language: es
+    timezone: America/Mazatlan  # Sinaloa, UTC-7
     discovery: rss
     url: https://lineadirectaportal.com/feed
     text: full
@@ -332,6 +349,7 @@ feeds:
     domain: www.suasnews.com
     country: GBR
     language: en
+    timezone: Europe/London
     discovery: rss
     url: https://www.suasnews.com/feed/
     text: full
@@ -348,6 +366,7 @@ feeds:
     domain: www.unmannedairspace.info
     country: GBR
     language: en
+    timezone: Europe/London
     discovery: rss
     url: https://www.unmannedairspace.info/feed/
     text: full
@@ -363,6 +382,7 @@ feeds:
     domain: dronelife.com
     country: USA
     language: en
+    timezone: America/New_York
     discovery: rss
     url: https://dronelife.com/feed/
     text: full
@@ -391,6 +411,7 @@ feeds:
     domain: www.elfinanciero.com.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: rss
     url: https://www.elfinanciero.com.mx/arc/outboundfeeds/rss/category/nacional/?outputType=xml
     text: full
@@ -406,6 +427,7 @@ feeds:
     domain: www.infobae.com
     country: ARG
     language: es
+    timezone: America/Mexico_City  # the Mexico desk, not Buenos Aires
     discovery: rss
     url: https://www.infobae.com/arc/outboundfeeds/rss/category/mexico/?outputType=xml
     text: full
@@ -422,6 +444,7 @@ feeds:
     domain: oem.com.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: gdelt
     text: full
     reliability: B
@@ -436,6 +459,7 @@ feeds:
     domain: aristeguinoticias.com
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: gdelt
     text: full
     reliability: B
@@ -450,6 +474,7 @@ feeds:
     domain: latinus.us
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: gdelt
     text: full
     reliability: B
@@ -464,6 +489,7 @@ feeds:
     domain: lasillarota.com
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: gdelt
     text: full
     reliability: B
@@ -478,6 +504,7 @@ feeds:
     domain: www.ejecentral.com.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: gdelt
     text: full
     reliability: B
@@ -492,6 +519,7 @@ feeds:
     domain: www.contramuro.com
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: rss
     url: https://www.contramuro.com/feed/
     text: full
@@ -507,6 +535,7 @@ feeds:
     domain: www.elimparcial.com
     country: MEX
     language: es
+    timezone: America/Hermosillo
     discovery: gdelt
     text: full
     reliability: B
@@ -521,6 +550,7 @@ feeds:
     domain: www.borderlandbeat.com
     country: USA
     language: en
+    timezone: America/Phoenix
     discovery: rss
     url: https://www.borderlandbeat.com/feeds/posts/default?alt=rss
     text: full
@@ -537,6 +567,7 @@ feeds:
     domain: smallwarsjournal.com
     country: USA
     language: en
+    timezone: America/New_York
     discovery: rss
     url: https://smallwarsjournal.com/feed/
     text: full
@@ -553,6 +584,7 @@ feeds:
     domain: www.energiaestrategica.com
     country: ARG
     language: es
+    timezone: America/Argentina/Buenos_Aires
     discovery: gdelt
     text: full
     reliability: C
@@ -567,6 +599,7 @@ feeds:
     domain: www.infodefensa.com
     country: ESP
     language: es
+    timezone: Europe/Madrid
     discovery: gdelt
     text: full
     reliability: C
@@ -581,6 +614,7 @@ feeds:
     domain: www.defensa.com
     country: ESP
     language: es
+    timezone: UTC  # the feed sends Madrid wall time with no offset, stored as UTC
     discovery: rss
     url: https://www.defensa.com/rss/
     text: full
@@ -597,6 +631,7 @@ feeds:
     domain: www.armyrecognition.com
     country: BEL
     language: en
+    timezone: Europe/Brussels
     discovery: gdelt
     text: full
     reliability: C
@@ -611,6 +646,7 @@ feeds:
     domain: www.texastribune.org
     country: USA
     language: en
+    timezone: America/Chicago
     discovery: rss
     url: https://feeds.texastribune.org/feeds/main/
     text: full
@@ -627,6 +663,7 @@ feeds:
     domain: www.defensenews.com
     country: USA
     language: en
+    timezone: America/New_York
     discovery: rss
     url: https://www.defensenews.com/feed/
     text: full

@@ -70,6 +70,12 @@ export default function PersonsPage() {
             />
             Include U.S. persons
           </label>
+          <Link
+            to="/persons/review"
+            className="border-ink-700 text-ink-100 hover:border-ink-500 rounded border px-2 py-1 text-xs"
+          >
+            Review duplicates
+          </Link>
         </header>
         {includeUs && (
           <p className="rounded border border-amber-700/60 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
@@ -95,7 +101,13 @@ export default function PersonsPage() {
                   <th className="py-1 pr-3 font-medium">Name (as reported)</th>
                   <th className="py-1 pr-3 font-medium">Reported role</th>
                   <th className="py-1 pr-3 font-medium">Organizations</th>
-                  <th className="py-1 pr-3 font-medium">Sources</th>
+                  <th
+                    className="py-1 pr-3 font-medium"
+                    title="Distinct outlets. Outlets may reprint one another, so this is not a count of independent confirmations."
+                  >
+                    Outlets
+                  </th>
+                  <th className="py-1 pr-3 font-medium">Articles</th>
                   <th className="py-1 font-medium">Last reported</th>
                 </tr>
               </thead>
@@ -109,6 +121,9 @@ export default function PersonsPage() {
                       >
                         {p.display_name}
                       </Link>
+                      {p.n_records > 1 && (
+                        <span className="text-ink-500 ml-2">{p.n_records} records merged</span>
+                      )}
                       {p.disputed && <Chip tone="rose">disputed</Chip>}
                       {p.us_person && <Chip tone="amber">U.S. person</Chip>}
                     </td>
@@ -120,6 +135,7 @@ export default function PersonsPage() {
                       {p.organizations.join(', ') || '—'}
                     </td>
                     <td className="text-ink-300 py-1.5 pr-3 tabular-nums">{p.n_sources}</td>
+                    <td className="text-ink-300 py-1.5 pr-3 tabular-nums">{p.n_documents}</td>
                     <td className="text-ink-300 py-1.5 tabular-nums">
                       {p.last_reported_on ?? '—'}
                     </td>

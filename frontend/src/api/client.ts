@@ -26,6 +26,7 @@ import type {
   MonthCount,
   MunicipalityProps,
   NodeProps,
+  MergeSuggestionList,
   PersonDetail,
   PersonPage,
   PersonSummary,
@@ -71,7 +72,7 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T
 }
 
-function sendJson<T>(method: 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
+function sendJson<T>(method: 'PUT' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
   return getJson<T>(path, {
     method,
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
@@ -102,6 +103,14 @@ export const api = {
     getJson<PersonDetail>(`/persons/${id}${toQuery(params)}`, init),
   disputePerson: (id: number, body: { disputed: boolean; note?: string | null }) =>
     sendJson<PersonSummary>('PUT', `/persons/${id}/dispute`, body),
+  mergeSuggestions: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<MergeSuggestionList>(`/persons/merge-suggestions${toQuery(params)}`, init),
+  mergePersons: (body: { person_ids: number[]; primary_id: number }) =>
+    sendJson<PersonSummary>('POST', '/persons/merges', body),
+  undoMerge: (id: number) => sendJson<undefined>('POST', `/persons/merges/${id}/undo`),
+  markDistinct: (body: { person_id: number; other_ids: number[] }) =>
+    sendJson<undefined>('POST', '/persons/distinctions', body),
+  clearDistinct: (id: number) => sendJson<undefined>('DELETE', `/persons/distinctions/${id}`),
   deletePerson: (id: number) => sendJson<undefined>('DELETE', `/persons/${id}`),
   eventTimeseries: (params: Record<string, unknown>, init?: RequestInit) =>
     getJson<MonthCount[]>(`/events/timeseries${toQuery(params)}`, init),

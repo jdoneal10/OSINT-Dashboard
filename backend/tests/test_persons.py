@@ -22,9 +22,18 @@ from app.enrich import extract
 from app.enrich.persons import clean_value, name_key
 from tests.test_extract import GOOD, _resp, _run, doc_id  # noqa: F401 — doc_id is a fixture
 
+# Person names must appear in the cited text to be stored (ADR 0013 amendment 1).
+NAMED = (
+    "Ramón Sintético Pérez", "Beto Sintético Gil", "Ana Sintética Ruiz", "Menor Sintético Uno",
+    "Carl Synthetic Doe", "El Sintético", "La Ana", "Juan N", "+52 664 123 4567",
+)  # fmt: skip
+
 
 @pytest.fixture
-def doc(doc_id: int) -> int:  # noqa: F811 — test_extract's document fixture
+def doc(seeded: Session, doc_id: int) -> int:  # noqa: F811 — test_extract's document fixture
+    document = seeded.get_one(Document, doc_id)
+    document.original_text = f"{document.original_text}\n" + "; ".join(NAMED)
+    seeded.commit()
     return doc_id
 
 

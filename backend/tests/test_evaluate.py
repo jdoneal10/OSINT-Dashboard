@@ -14,7 +14,7 @@ from app.enrich import evaluate, extract
 from app.enrich.local_filter import FilterOutput
 
 NOW = dt.datetime(2026, 11, 10, tzinfo=dt.UTC)
-V = extract.PROMPT_VERSION
+V = extract.LABELED_VERSION
 
 
 def _doc(session: Session, sid: int, key: str, status: str, score: str) -> int:
