@@ -236,6 +236,17 @@ ENERGY_FACILITATORS = (
     "utility_employee", "contractor", "electrician", "official", "property_manager",
     "none_reported",
 )  # fmt: skip
+# Criminal interaction with the electrical grid (ADR 0014; framework §2). "theft" is the
+# reported electricity-theft case and goes with the energy_* detail above.
+GRID_INTERACTIONS = (
+    "theft", "deliberate_outage_or_sabotage", "attack_on_utility_workers",
+    "extortion_or_service_control", "infrastructure_theft", "utility_withdrawal",
+)  # fmt: skip
+# Reported facts that suggest theft without claiming it; never a theft case on their own.
+ENERGY_INDICATORS = (
+    "mining_equipment_seized", "high_load_site", "outage_in_contested_area",
+    "utility_insider_reported", "fuel_theft",
+)  # fmt: skip
 
 
 class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
@@ -260,6 +271,12 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
         _check_null_or_in("energy_facilitator", ENERGY_FACILITATORS, "energy_facilitator"),
         CheckConstraint(
             "(energy_method IS NULL) = (energy_facilitator IS NULL)", "energy_theft_complete"
+        ),
+        _check_null_or_in("grid_interaction", GRID_INTERACTIONS, "grid_interaction"),
+        _check_array_in("energy_indicators", ENERGY_INDICATORS, "energy_indicators"),
+        CheckConstraint(
+            "(energy_method IS NOT NULL) = (grid_interaction IS NOT DISTINCT FROM 'theft')",
+            "grid_theft_detail",
         ),
     )
 
@@ -307,6 +324,12 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     )
     energy_facilitator: Mapped[str | None] = mapped_column(String(32))
     energy_scale: Mapped[str | None] = mapped_column(String(200))  # as reported, never estimated
+    # ADR 0014: the kind of reported grid interaction ("theft" exactly when energy_method is
+    # set) and any reported indicators. Both as reported; never inferred from a site.
+    grid_interaction: Mapped[str | None] = mapped_column(String(40), index=True)
+    energy_indicators: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)), default=list, server_default="{}"
+    )
 
 
 # actor1..assoc_actor2 mirror ACLED's dyad exactly (no perpetrator/target semantics);

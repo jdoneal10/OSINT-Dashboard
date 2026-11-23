@@ -686,6 +686,8 @@ def store_extraction(
             energy_powered=list(dict.fromkeys(e.energy_theft.powered)) if e.energy_theft else [],
             energy_facilitator=e.energy_theft.facilitator if e.energy_theft else None,
             energy_scale=e.energy_theft.scale if e.energy_theft else None,
+            # Until extract-v11 adds the other kinds (ADR 0014), only a theft case sets this.
+            grid_interaction="theft" if e.energy_theft else None,
             admin1_code=geo.admin1_code if geo else None,
             admin2_code=geo.admin2_code if geo else None,
             admin1_name=e.location.state,

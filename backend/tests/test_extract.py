@@ -284,6 +284,9 @@ def test_uxs_and_energy_theft_are_stored(seeded: Session, doc_id: int) -> None:
     )
     assert (power.energy_powered, power.energy_scale) == (["crypto_mining"], "300 mining rigs")
     assert (power.uxs_activity, power.uxs_missions) == (None, [])
+    # ADR 0014: a theft case is the "theft" grid interaction; other events have none.
+    assert (power.grid_interaction, drone.grid_interaction) == ("theft", None)
+    assert power.energy_indicators == drone.energy_indicators == []
     assert {e.prompt_version for e in (drone, power)} == {extract.PROMPT_VERSION}
 
 
@@ -303,16 +306,43 @@ def test_database_rejects_categories_outside_the_framework(seeded: Session, doc_
     for values in (
         {"uxs_activity": "employment"},  # platform missing
         {"uxs_activity": "employment", "uxs_platform": "fpv", "uxs_missions": ["joyride"]},
-        {"energy_method": "meter_bypass"},  # facilitator missing
+        {"grid_interaction": "theft", "energy_method": "meter_bypass"},  # facilitator missing
         {
+            "grid_interaction": "theft",
             "energy_method": "meter_bypass",
             "energy_facilitator": "none_reported",
             "energy_powered": ["casino"],
         },
+        # ADR 0014: theft detail and the "theft" kind go together; kinds and indicators
+        # come only from the framework lists.
+        {"energy_method": "meter_bypass", "energy_facilitator": "none_reported"},
+        {"grid_interaction": "theft"},
+        {"grid_interaction": "power_outage"},
+        {"energy_indicators": ["suspicious_building"]},
     ):
         with pytest.raises(IntegrityError):
             seeded.execute(update(Event).values(**values))
         seeded.rollback()
+
+
+def test_database_accepts_grid_interactions_and_indicators(seeded: Session, doc_id: int) -> None:
+    from sqlalchemy import update  # noqa: PLC0415
+
+    _run(_resp(GOOD))
+    seeded.execute(
+        update(Event).values(
+            grid_interaction="deliberate_outage_or_sabotage",
+            energy_indicators=[
+                "outage_in_contested_area",
+                "utility_insider_reported",
+                "fuel_theft",
+            ],
+        )
+    )
+    seeded.flush()
+    ev = seeded.scalars(select(Event)).first()
+    assert ev is not None
+    assert (ev.grid_interaction, ev.energy_method) == ("deliberate_outage_or_sabotage", None)
 
 
 def test_prompt_states_priorities_and_v7_rules() -> None:

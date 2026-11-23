@@ -23,7 +23,7 @@ A personal, unclassified OSINT workspace that collects, geolocates, and analyzes
 6. **U.S. legal and policy actions.** What FTO designations, OFAC sanctions, and DOJ indictments target these groups, and when?
 7. **Indications and warning.** What new indicators should trigger an alert?
 8. **Unmanned systems (top priority).** Which cartels use drones, UGVs and USVs, for what missions, acquired and adapted how, and is their use escalating (from camera drones to FPV and weaponized systems, coordinated operations)? Seven PIRs are listed in `docs/framework/uxs-and-electricity-theft.md` §1 (ADR 0009).
-9. **Electricity theft (top priority).** Which criminal organizations and facilitators steal electricity, by what methods, to power what (crypto mining, cultivation, labs, storage), where and at what scale? Seven PIRs are listed in framework §2 (ADR 0009).
+9. **Electricity theft (top priority).** Which criminal organizations and facilitators steal electricity, by what methods, to power what (crypto mining, cultivation, labs, storage), where and at what scale? Seven PIRs are listed in framework §2 (ADR 0009). Covers criminal interaction with the grid (sabotage, attacks on utility workers, extortion or control of service, infrastructure theft, utility withdrawal) and reported indicators, with municipal assessments labeled as analysis (ADR 0014).
 
 Priority tiers (ADR 0009): IRs 8 and 9 first; human smuggling and border threats (ADR 0007) second; all other IRs third.
 
