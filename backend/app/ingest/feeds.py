@@ -35,6 +35,8 @@ class Feed(BaseModel):
     discovery: Literal["rss", "listing", "gdelt"]
     url: HttpUrl | None = None
     link_pattern: str | None = None
+    # Query values that name an article on a listing (FGR's ``suri``); others are dropped.
+    link_query: list[str] = []
     text: Literal["full", "summary"]
     reliability: Literal["A", "B", "C", "D", "E", "F"]
     status: Literal["active", "pending"]

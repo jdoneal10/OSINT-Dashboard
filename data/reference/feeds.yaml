@@ -81,25 +81,29 @@ feeds:
 
   - slug: fgr
     name: Fiscalía General de la República (FGR) — prensa
-    domain: www.gob.mx
+    domain: www.fgr.org.mx
     country: MEX
     language: es
     timezone: America/Mexico_City
     discovery: listing
-    url: https://www.gob.mx/fgr/es/archivo/prensa
-    link_pattern: ^/fgr/prensa/[a-z0-9-]+$
+    url: https://www.fgr.org.mx/es/FGR/Prensa
+    # Each release is /es/FGR/Prensa/_rid/61/_mod/story named by its suri query value.
+    link_pattern: ^/es/FGR/Prensa/_rid/61/_mod/story$
+    link_query: [suri]
     text: full
     reliability: B
     status: active
     terms_note: >-
-      Mexican government publication. gob.mx terms (re-read 2026-11-20): personal,
-      non-commercial viewing and downloading; no public display, redistribution or transfer
-      (same handling as all gob.mx feeds, ADR 0010). robots.txt has no group for our client.
-      The listing answers with JavaScript; links are read from its markup strings. HTTP 200 again on 2026-11-20 (500 in Phase 2).
-      Official claims are self-reported; corroborate.
+      FGR's own site (checked 2026-11-22). FGR stopped publishing press releases on gob.mx in
+      January 2023 (that archive ends at DPE/0088/2023, 13 January 2023), so the feed moved here.
+      No robots.txt (404) and no terms of use, copyright notice or reuse statement on the home,
+      press or privacy pages; handled like the gob.mx feeds (personal, non-commercial use; no
+      public display, redistribution or transfer). Pages are ISO-8859-1 although their meta tag
+      says UTF-8; the server's header is used. Cards give the day only. Official claims are
+      self-reported; corroborate.
     sources:
-      - {title: "FGR prensa", publisher: Gobierno de México — FGR, url: "https://www.gob.mx/fgr/es/archivo/prensa", accessed: 2026-11-20}
-      - {title: "Términos y condiciones de uso", publisher: Gobierno de México, url: "https://www.gob.mx/terminos", accessed: 2026-11-20}
+      - {title: "FGR — Prensa", publisher: Fiscalía General de la República, url: "https://www.fgr.org.mx/es/FGR/Prensa", accessed: 2026-11-22}
+      - {title: "Avisos de Privacidad", publisher: Fiscalía General de la República, url: "https://www.fgr.org.mx/swb/transparencia/AvisosPrivacidad", accessed: 2026-11-22}
 
   - slug: guardia-nacional
     name: Guardia Nacional — prensa

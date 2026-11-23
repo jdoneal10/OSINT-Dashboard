@@ -107,3 +107,12 @@ The owner reports explicit written permission from DroneLife for this dashboard,
 - **Effect:** automated collection (RSS plus full article text) is authorized for this project. DroneLife is active with `text: full` and reliability C.
 - **AI processing:** the terms have no AI clause, so DroneLife content goes through the normal LLM stages.
 - **Unchanged:** personal, non-commercial use only; no redistribution. The feed entry in `feeds.yaml` records this.
+
+## Amendment 3 (2026-11-22): FGR feed moved to fgr.org.mx
+Owner-approved ("Move it", 2026-11-22).
+
+- **Why.** FGR stopped publishing press releases on gob.mx in January 2023. Even sorted newest first, that archive ends at DPE/0088/2023 (13 January 2023), so the feed kept finding the same nine releases. Current releases are on FGR's own site, `www.fgr.org.mx/es/FGR/Prensa`.
+- **Terms.** No robots.txt (404). No terms of use, copyright notice or reuse statement on the home, press or privacy pages (checked 2026-11-22). The feed is handled like the gob.mx feeds: personal, non-commercial use, with no public display, redistribution or transfer. Reliability B, full text. `docs/data-sources.md` has its own row, and the feed host is allowed as a registered feed.
+- **Parsing.** Each release is `/es/FGR/Prensa/_rid/61/_mod/story` named by its `suri` query value. A new feed field, `link_query`, keeps only that value, so one release is one entry. Listings are decoded with the charset the server declares (ISO-8859-1 here, although the page's meta tag says UTF-8). A card's `span.fecha` day is stored as a bare date, and titles read "Comunicado FGR 835/26. Headline".
+- **TLS.** The server sends only its leaf certificate. The public intermediate (DigiCert Global G2 TLS RSA SHA256 2020 CA1, from the leaf's own CA Issuers URL) is bundled in `data/reference/tls/intermediates.pem` and added to certifi's roots for chain building (`app/ingest/tls.py`). Chains must still end at a certifi root; verification stays on.
+- **First pull.** Twenty releases from 20–22 November 2026 were stored with full text. The nine 2023 releases stored from gob.mx were not changed.

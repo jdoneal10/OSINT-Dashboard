@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from pathlib import Path
 
 import httpx
@@ -332,6 +333,38 @@ def test_listing_reads_links_from_a_javascript_listing() -> None:
     assert entries[0].title == "AGENCIA SINTÉTICA ASEGURA DRON CON EXPLOSIVOS EN MICHOACÁN"
     # 15:46 in Mexico City (UTC-6, no daylight saving) is 21:46 UTC.
     assert entries[0].published == dt.datetime(2026, 11, 20, 21, 46, tzinfo=dt.UTC)
+
+
+def test_listing_keeps_only_named_query_values_and_reads_card_dates() -> None:
+    """FGR names each release by its ``suri`` query value; the listing is ISO-8859-1."""
+    content = (FIX / "fgr-listing.html").read_bytes()
+    entries = news.parse_listing(
+        content,
+        "https://www.fgr.org.mx/es/FGR/Prensa",
+        r"^/es/FGR/Prensa/_rid/61/_mod/story$",
+        link_query=("suri",),
+        encoding="ISO-8859-1",
+    )
+    story = "https://www.fgr.org.mx/es/FGR/Prensa/_rid/61/_mod/story?suri="
+    assert [e.url for e in entries] == [
+        story + "http%3A%2F%2Fwww.FGR.swb%23fgr_Boletin%3A90002",
+        story + "http%3A%2F%2Fwww.FGR.swb%23fgr_Boletin%3A90001",
+    ]  # one entry per release; the home, privacy and pagination links are left out
+    assert entries[0].title == (
+        "Comunicado FGR 902/26. "
+        "FGR sintética obtiene vinculación a proceso contra una persona en Culiacán"
+    )
+    # A card gives the day only: stored as midnight UTC, which publication.py reads as a bare date.
+    assert entries[0].published == dt.datetime(2026, 11, 20, tzinfo=dt.UTC)
+    assert entries[1].published == dt.datetime(2026, 11, 19, tzinfo=dt.UTC)
+
+
+def test_fgr_feed_points_at_the_fgr_site() -> None:
+    registry = load_feeds(get_settings().reference_dir / "feeds.yaml")
+    feed = next(f for f in registry if f.slug == "fgr" and f.status == "active")
+    assert feed.domain == "www.fgr.org.mx"
+    assert feed.link_query == ["suri"]
+    assert re.search(feed.link_pattern or "", "/es/FGR/Prensa/_rid/61/_mod/story")
 
 
 def test_upsert_stores_text_without_related_lines(session: Session) -> None:

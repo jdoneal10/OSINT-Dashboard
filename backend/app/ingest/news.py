@@ -17,7 +17,7 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 import feedparser
@@ -129,14 +129,27 @@ def _script_fragments(text: str) -> list[Any]:
     return out
 
 
-def parse_listing(content: bytes, base_url: str, link_pattern: str) -> list[Entry]:
+def parse_listing(
+    content: bytes,
+    base_url: str,
+    link_pattern: str,
+    *,
+    link_query: tuple[str, ...] | list[str] = (),
+    encoding: str | None = None,
+) -> list[Entry]:
+    """Article links on a listing page.
+
+    ``link_query`` names the query values that identify an article (FGR's ``suri``); links
+    without them are skipped and every other value is dropped, so one article is one entry.
+    ``encoding`` is the charset the server declared; it wins over the page's own meta tag.
+    """
     pattern = re.compile(link_pattern)
     host = urlsplit(base_url).netloc.lower()
-    text = content.decode("utf-8", errors="replace")
+    text = content.decode(encoding or "utf-8", errors="replace")
     fragments = _script_fragments(text) if ".append(" in text else []
     roots = [*fragments] if fragments and not text.lstrip().startswith("<") else []
     if not roots:
-        roots = [lxml_html.fromstring(content), *fragments]
+        roots = [lxml_html.fromstring(text if encoding else content), *fragments]
     seen: dict[str, Entry] = {}
     for root in roots:
         for a in root.iter("a"):
@@ -146,10 +159,70 @@ def parse_listing(content: bytes, base_url: str, link_pattern: str) -> list[Entr
             url = urljoin(base_url, href)
             parts = urlsplit(url)
             # Only the agency's own articles: same host, matching path.
-            if parts.netloc.lower() == host and pattern.search(parts.path) and url not in seen:
-                title = a.get("aria-label") or " ".join(a.text_content().split()) or None
+            if parts.netloc.lower() != host or not pattern.search(parts.path):
+                continue
+            if link_query:
+                kept = [(k, v) for k, v in parse_qsl(parts.query) if k in link_query]
+                if not kept:
+                    continue
+                url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(kept), ""))
+            title = (
+                _card_title(a) or a.get("aria-label") or " ".join(a.text_content().split()) or None
+            )
+            known = seen.get(url)
+            if known is None:
                 seen[url] = Entry(url=url, title=title, published=_listed_time(a))
+            elif known.title is None and title:
+                # A card's image link comes first and carries no text; keep its titled twin.
+                published = _listed_time(a) or known.published
+                seen[url] = Entry(url=url, title=title, published=published)
     return list(seen.values())
+
+
+def _declared_charset(content_type: str) -> str | None:
+    m = re.search(r"charset=([\w-]+)", content_type, re.I)
+    return m.group(1) if m else None
+
+
+def _card_title(a: Any) -> str | None:
+    """FGR cards: ``span.numBoletin`` and ``span.titBoletin`` -> "Comunicado FGR 1/26. Headline"."""
+
+    def span(cls: str) -> str:
+        el = a.find(f".//span[@class='{cls}']")
+        return " ".join(el.text_content().split()) if el is not None else ""
+
+    headline = span("titBoletin")
+    if not headline:
+        return None
+    number = span("numBoletin")
+    return f"{number}. {headline}" if number else headline
+
+
+_MONTHS = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7,
+    "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+}  # fmt: skip
+_SPANISH_DAY = re.compile(r"(\d{1,2})\s+de\s+([a-záéíóú]+)\s+(?:de\s+|del\s+)?(\d{4})", re.I)
+
+
+def _card_day(a: Any) -> dt.datetime | None:
+    """``<span class="fecha">22 de noviembre de 2026</span>`` in the link's card (FGR).
+
+    The card gives the day only, so it is stored as midnight UTC, which
+    ``app.ingest.publication`` reads as a bare date rather than converting it."""
+    for el in (a, *a.iterancestors()):
+        stamp = el.find(".//span[@class='fecha']")
+        if stamp is None:
+            continue
+        m = _SPANISH_DAY.search(stamp.text_content())
+        month = _MONTHS.get(m.group(2).lower()) if m else None
+        if not m or not month:
+            return None
+        try:
+            return dt.datetime(int(m.group(3)), month, int(m.group(1)), tzinfo=dt.UTC)
+        except ValueError:
+            return None
+    return None
 
 
 def _listed_time(a: Any) -> dt.datetime | None:
@@ -159,7 +232,7 @@ def _listed_time(a: Any) -> dt.datetime | None:
     stamp = card.find(".//time") if card is not None else None
     raw = stamp.get("datetime") if stamp is not None else None
     if not raw:
-        return None
+        return _card_day(a)
     try:
         naive = dt.datetime.fromisoformat(raw)
     except ValueError:
@@ -208,7 +281,13 @@ def discover(
         resp = client.get(str(feed.url))
         resp.raise_for_status()
         run.raw_paths.append(str(write_raw(feed.slug, run.id, "listing.html", resp.content).path))
-        return parse_listing(resp.content, str(feed.url), feed.link_pattern or "")
+        return parse_listing(
+            resp.content,
+            str(feed.url),
+            feed.link_pattern or "",
+            link_query=feed.link_query,
+            encoding=_declared_charset(resp.headers.get("content-type", "")),
+        )
     # gdelt: from the last successful run's end (capped), to now
     now = dt.datetime.now(dt.UTC).replace(microsecond=0)
     last = last_successful_params(f"news-{feed.slug}") or {}
