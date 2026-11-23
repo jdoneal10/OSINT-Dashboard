@@ -275,7 +275,8 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     admin2_code: Mapped[str | None] = mapped_column(String(16))
     # 1 = exact point, 2 = near/municipality, 3 = admin1 or coarser (ACLED-style scale).
     geo_precision: Mapped[int | None] = mapped_column(SmallInteger)
-    # 1 = exact day, 2 = within a week, 3 = within a month (ACLED-style scale).
+    # 1 = exact day, 2 = within a week, 3 = a month or less precise, including an unknown date
+    # or one taken from publication (ACLED-style scale).
     time_precision: Mapped[int | None] = mapped_column(SmallInteger)
     admin1_name: Mapped[str | None] = mapped_column(String(128))
     admin2_name: Mapped[str | None] = mapped_column(String(128))

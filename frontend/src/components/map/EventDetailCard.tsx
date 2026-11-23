@@ -6,7 +6,9 @@ import { PriorityDetail } from '../news/RecordTables'
 import { eventColor } from './eventColors'
 
 const GEO = { 1: 'exact location', 2: 'near location', 3: 'regional (admin-level)' } as const
-const TIME = { 1: 'exact day', 2: 'within a week', 3: 'within a month' } as const
+// 3 covers a month-level date, an unknown one and a date taken from publication (extract.py);
+// ACLED's 3 is likewise a month or vaguer.
+const TIME = { 1: 'exact day', 2: 'within a week', 3: 'month or less precise' } as const
 const ROLE = {
   actor1: 'Actor 1',
   actor2: 'Actor 2',
@@ -74,7 +76,7 @@ export default function EventDetailCard({ id, onClose }: Props) {
             <dt className="text-ink-500">Precision</dt>
             <dd>
               {GEO[data.geo_precision as keyof typeof GEO] ?? 'unknown'};{' '}
-              {TIME[data.time_precision as keyof typeof TIME] ?? 'unknown'}
+              {TIME[data.time_precision as keyof typeof TIME] ?? 'not recorded'}
             </dd>
             <dt className="text-ink-500">Confidence</dt>
             <dd>
