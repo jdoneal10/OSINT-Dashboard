@@ -20,13 +20,13 @@ A sample of 13 digests (2026-11-16 14:00 to 2026-11-17 18:00 HST, 193 alerts) wa
 - **Telegram-sourced alerts** also fall under the owner's Telegram agreement (ADR 0010, Amendment 1).
 
 ## Decision
-1. **Collection (owner side).** The owner runs a Gmail connector on the personal account. Twice a day, at 00:45 and 12:45 HST, it saves each digest's body, word for word, as a `.txt` file in `data/raw/dataminr/inbox/` (gitignored). The dashboard never signs in to Gmail, stores no mail credential, and makes no outbound call for this source, so the outbound allowlist is unchanged.
-2. **Ingest (dashboard side).** A worker job (`dataminr`, every 30 minutes) and `make ingest SOURCE=dataminr`:
+1. **Collection (owner side).** The owner runs a Gmail connector on the personal account. Once a day, at 09:00 HST, it saves each digest's body, word for word, as a `.txt` file in `data/raw/dataminr/inbox/` (gitignored). The dashboard never signs in to Gmail, stores no mail credential, and makes no outbound call for this source, so the outbound allowlist is unchanged.
+2. **Ingest (dashboard side).** A worker job (`dataminr`, daily at 10:00 HST) and `make ingest SOURCE=dataminr`:
    - parse each inbox file into alerts; the stable key is Dataminr's alert ID;
    - copy the file to `data/raw/dataminr/<date>/` and remove it from the inbox only after its alerts are committed; a re-delivered file is recognized by its hash and is not ingested twice;
    - store each alert as a `documents` row: caption, place, source type, the original post (marked as an excerpt; Dataminr truncates it) and Dataminr's translation, time converted to UTC, link to the original post;
    - never store the First Alert redirect links (they carry an account key) or fetch alert images;
-   - raise a `feed_gap` alert when a digest window is missing between received digests, and a `feed_stalled` alert when no new window has ended for 15 hours (one missed delivery).
+   - raise a `feed_gap` alert when a digest window is missing between received digests, and a `feed_stalled` alert when no new window has ended for 22 hours (a missed day; see the schedule changes below).
 3. **X content and sensitive events.** X-sourced alerts about protests, rallies, marches, strikes or sit-ins are dropped at ingest (the X term above; the project tracks TCO activity, not civil unrest). Blockades are **not** dropped by this rule, because cartel blockades (narcobloqueos) are threat activity. No profiling of people by protected category, ever.
 4. **Relevance, with the owner's critical-infrastructure rule.** Alerts go through the local relevance filter like every document. **Owner decision (2026-11-17):** criminal or deliberate harm to critical infrastructure is kept even when the model scores it low, because TCO ties to infrastructure incidents can go unseen at first (fuel theft, extortion of utilities, attacks on telecom). The rule is deterministic keyword matching (`app/enrich/infrastructure.py`), applies to **all sources**, and records itself in `relevance_model` (`…+infra-v2`). A document is kept when it either:
    - names an inherently criminal activity: fuel theft, illegal pipeline taps (huachicol, tomas clandestinas), cable, copper, water or electricity theft; or
@@ -44,6 +44,9 @@ A sample of 13 digests (2026-11-16 14:00 to 2026-11-17 18:00 HST, 193 alerts) wa
 
 ## Schedule change (2026-11-18)
 First Alert digests moved from 2-hour windows to **twice daily**, covering 00:00–12:00 and 12:00–24:00 HST. The owner's connector now runs at 00:45 and 12:45 HST. Parsing and gap detection already handle windows of any length. The stall threshold went from 12 to 15 hours: with 12-hour windows, a 12-hour threshold would fire every night just before the 00:45 delivery.
+
+## Schedule change (2026-11-22)
+The owner now receives First Alert digests by email at 06:00 and 18:00 HST, and the connector saves both once a day at 09:00 HST. The worker's `dataminr` job moved from every 30 minutes to once a day at 10:00 HST (`Pacific/Honolulu`), and the 20:10 UTC pipeline pass picks the digests up. The stall threshold went from 15 to 22 hours. At the 10:00 check, the newest window on time ended about 4 hours earlier. One missing or late digest leaves it about 16 hours behind, which gap detection flags once the next digest lands. A whole missed day leaves it about 28 hours behind, which the stall alert flags.
 
 ## Consequences
 - The project gains near-real-time social-media and public-Telegram coverage, the gap ADR 0010 left open, without an API key or an outbound connection.

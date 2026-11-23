@@ -47,10 +47,11 @@ log = logging.getLogger(__name__)
 
 SOURCE = "dataminr"
 JOB = "dataminr"
-# Digests cover 12-hour windows (00:00-12:00 and 12:00-24:00 HST) and the owner's connector
-# saves them at 00:45 and 12:45 HST, so a healthy feed is at most ~13 h behind. 15 h flags one
-# missed delivery about two hours late without firing just before each on-time delivery.
-STALL_HOURS = 15
+# Digests arrive by email at 06:00 and 18:00 HST; the owner's connector saves both at 09:00 HST
+# and the worker checks once, at 10:00 HST. On time, the newest window ended ~4 h before the
+# check; one missing or late digest leaves it ~16 h behind (gap detection flags that once the
+# next digest lands); a whole missed day leaves it ~28 h behind. 22 h flags only the last.
+STALL_HOURS = 22
 GAP_LOOKBACK_DAYS = 14
 
 # Time-zone abbreviations First Alert may print, mapped to IANA zones.

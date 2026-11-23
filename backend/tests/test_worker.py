@@ -23,6 +23,13 @@ def test_scheduler_registers_source_jobs() -> None:
     assert "day_of_week='sun'" in str(jobs["acled-deleted"].trigger)
     assert "minute='10,40'" in str(jobs["pipeline"].trigger)
     assert "hour='*/6'" in str(jobs["news-gdelt"].trigger)
+    # Once a day, an hour after the owner's 09:00 HST connector run (ADR 0012).
+    dataminr_trigger = jobs["dataminr"].trigger
+    assert str(dataminr_trigger.timezone) == "Pacific/Honolulu"
+    nxt = dataminr_trigger.get_next_fire_time(None, dt.datetime(2026, 11, 22, 12, tzinfo=dt.UTC))
+    assert nxt == dt.datetime(2026, 11, 22, 20, tzinfo=dt.UTC)
+    later = dataminr_trigger.get_next_fire_time(nxt, nxt + dt.timedelta(minutes=1))
+    assert later - nxt == dt.timedelta(days=1)
 
 
 def test_scheduled_ingest_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:

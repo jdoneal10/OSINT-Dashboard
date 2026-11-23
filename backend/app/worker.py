@@ -127,9 +127,9 @@ SCHEDULED_JOBS: list[tuple[str, Callable[[], object], CronTrigger]] = [
     ("cbp", cbp.run_remote, CronTrigger(hour=12, minute=0, timezone="UTC")),
     ("news-feeds", news_feeds, CronTrigger(minute=5, timezone="UTC")),
     ("news-gdelt", news_gdelt, CronTrigger(hour="*/6", minute=20, timezone="UTC")),
-    # Dataminr digests land in data/raw/dataminr/inbox/ from the owner's Gmail connector
-    # (00:45 and 12:45 HST); checking every 30 min picks them up before the next pipeline pass.
-    ("dataminr", dataminr.run_inbox, CronTrigger(minute="5,35", timezone="UTC")),
+    # Dataminr digests land in data/raw/dataminr/inbox/ from the owner's Gmail connector at
+    # 09:00 HST (ADR 0012); one daily check an hour later feeds the 20:10 UTC pipeline pass.
+    ("dataminr", dataminr.run_inbox, CronTrigger(hour=10, minute=0, timezone="Pacific/Honolulu")),
     ("pipeline", run_pipeline, CronTrigger(minute="10,40", timezone="UTC")),
     ("designations", designations.run_designations, CronTrigger(hour=13, minute=0, timezone="UTC")),
     ("sesnsp-reminder", sesnsp_reminder, CronTrigger(day=26, hour=14, minute=0, timezone="UTC")),
