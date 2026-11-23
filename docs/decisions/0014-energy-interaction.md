@@ -1,6 +1,6 @@
 # ADR 0014: Energy interaction: reported grid interactions, indicators and municipal assessments
 
-- **Status:** Accepted by the owner, 2026-11-22 (see Owner decisions). Step 2 (schema) is built; the rest is not.
+- **Status:** Accepted by the owner, 2026-11-22 (see Owner decisions). Built: schema (step 2) and the ACLED pass (step 5).
 - **Relates to:** ADR 0008 (hard rules), ADR 0009 (UxS and electricity-theft focus), ADR 0012
   (critical-infrastructure keep rule), owner framework `docs/framework/uxs-and-electricity-theft.md` §2.
 
@@ -128,3 +128,20 @@ A new analytic job, in the pattern of the existing Sonnet corroboration stage (`
   `events.energy_indicators` with check constraints (theft detail set exactly when the kind is
   `theft`). Extraction stores a theft case as `theft`; the other kinds and indicators wait for
   the ACLED pass and extract-v11.
+- 2026-11-22: ACLED pass built (`app/enrich/acled_grid.py`, pipeline stage `grid`, prompt
+  `grid-v3`). ACLED events whose notes mention the grid, utility crews, cable theft or fuel
+  theft (2,359 at the start) go to Haiku one per request; the verdict is stored on the event and
+  its provenance (model, prompt version, tokens, notes hash, evidence quote) in
+  `grid_classifications` (migration 0018). A quote not found in the note is quarantined. An
+  ACLED edit to a note queues the event again; an edit that drops the grid terms clears the
+  verdict. Before the full run, 50 real-time samples were checked by hand: two prompt fixes
+  followed (an outage indicator needs an area, not one house; fuel thieves named as actors
+  count as fuel theft). The full run was submitted as two batches.
+- 2026-11-22, results: 2,359 events classified for $0.10; 69 carry a grid-interaction kind
+  (45 deliberate outage or sabotage, 19 attacks on utility workers, 4 extortion or service
+  control, 1 infrastructure theft; none is a theft case) and 362 carry indicators (313 fuel
+  theft, 49 area outages). The quote check was widened to accept the ACLED actors line, ellipses
+  and stray brackets (each fragment must still be verbatim); one event stays quarantined because
+  the model's quote exceeds 200 characters. Not yet measured: precision. A random check of 12
+  kinds found one error (rioters holding a CFE worker during a price protest, tagged as an
+  attack), which the owner's labels should decide before any prompt change.

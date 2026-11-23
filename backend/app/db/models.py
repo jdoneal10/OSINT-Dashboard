@@ -332,6 +332,30 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     )
 
 
+GRID_CLASSIFICATION_STATUSES = ("batched", "done", "quarantined")
+
+
+class GridClassification(LLMDerivedMixin, TimestampMixin, Base):
+    """The ACLED grid pass's verdict on one event's notes (ADR 0014; app.enrich.acled_grid).
+
+    The verdict itself lives on the event (``grid_interaction``, ``energy_indicators`` and,
+    for theft, the ``energy_*`` detail); this row holds its provenance. ``notes_sha256`` is
+    the hash of the notes that were classified, so an ACLED edit queues the event again.
+    """
+
+    __tablename__ = "grid_classifications"
+    __table_args__ = (_check_in("status", GRID_CLASSIFICATION_STATUSES, "status"),)
+
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    notes_sha256: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    # Short quote from the notes behind the verdict (checked against them before storing).
+    evidence: Mapped[str | None] = mapped_column(String(400))
+    classified_at: Mapped[dt.datetime | None] = mapped_column()
+
+
 # actor1..assoc_actor2 mirror ACLED's dyad exactly (no perpetrator/target semantics);
 # perpetrator/target are reserved for LLM-derived roles from Phase 2.
 ACTOR_ROLES = (
@@ -875,7 +899,7 @@ class ClusterAssessment(LLMDerivedMixin, TimestampMixin, Base):
     cited_event_ids: Mapped[list[int]] = mapped_column(default=list)
 
 
-QUARANTINE_STAGES = ("filter", "extract", "analyze")
+QUARANTINE_STAGES = ("filter", "extract", "analyze", "grid")
 
 
 class LLMQuarantine(TimestampMixin, Base):
