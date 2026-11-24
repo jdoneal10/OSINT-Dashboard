@@ -134,7 +134,8 @@ def test_phase3_counts_current_grid_labels(
         body = {"event_id": grid[key], "verdict": verdict, "wrong": wrong}
         assert client.put("/grid/labels", json=body).status_code == 200
     report = phase3(session, extract.PROMPT_VERSION)
-    assert (report.priority.n, report.priority.correct) == (4, 2)
+    assert (report.energy.n, report.energy.correct) == (4, 2)
+    assert report.uxs.n == 0
     assert {k: (p.n, p.correct) for k, p in report.grid.by_source.items()} == {
         "acled": (3, 1), "news": (1, 1)}  # fmt: skip
     items = {k: (p.n, p.correct) for k, p in report.grid.items.items()}
@@ -144,13 +145,13 @@ def test_phase3_counts_current_grid_labels(
         "fuel_theft": (2, 1),
         "attack_on_utility_workers": (1, 1),
     }
-    assert phase3_verdict(report).startswith("**INSUFFICIENT SAMPLE**: 4 of 50")
+    assert phase3_verdict(report).startswith("**INSUFFICIENT SAMPLE**: UxS 0 of 50, energy 4 of 50")
     # A reclassified event's label is left out until it is labeled again.
     session.execute(update(Event).where(Event.id == grid["fuel2"]).values(energy_indicators=[],
                     grid_interaction="infrastructure_theft"))  # fmt: skip
     session.commit()
     report = phase3(session, extract.PROMPT_VERSION)
-    assert (report.priority.n, report.grid.stale) == (3, 1)
+    assert (report.energy.n, report.grid.stale) == (3, 1)
 
 
 def test_reextraction_keeps_grid_labeled_documents(

@@ -461,6 +461,8 @@ export interface TopicMonth {
 export interface TopicSummary {
   total: number
   sources: number
+  /** ACLED-derived events in the view (the ACLED passes); the view then carries attribution. */
+  acled_events: number
   months: TopicMonth[]
   breakdown: Record<string, Record<string, number>>
   states: Record<string, number>
@@ -583,29 +585,45 @@ export interface DocPerson {
   claims: DocPersonClaim[]
 }
 
-/** Owner label on one event's grid verdict (ADR 0014 step 6); ACLED or news. */
-export interface GridLabelRecord {
+/**
+ * Owner label on one event's topic verdict: grid (ADR 0014 step 6) or UxS (ADR 0009
+ * amendment 1); ACLED or news. The fields the labeling page uses.
+ */
+export interface TopicLabelRecord {
   id: number
   event_id: number
   verdict: Verdict
-  /** Partly wrong: "kind" and/or the indicators that are wrong. */
+  /** Partly wrong: the items that are wrong. */
   wrong: string[]
-  /** The verdict judged, frozen when the label was saved. */
-  judged_kind: string | null
-  judged_indicators: string[]
   prompt_version: string | null
   note: string | null
   updated_at: string
 }
 
-export interface GridLabelInput {
+/** Grid label; the verdict judged is frozen when the label is saved. */
+export interface GridLabelRecord extends TopicLabelRecord {
+  judged_kind: string | null
+  judged_indicators: string[]
+}
+
+/** UxS label; the verdict judged is frozen when the label is saved. */
+export interface UxsLabelRecord extends TopicLabelRecord {
+  judged_activity: string
+  judged_platform: string
+  judged_missions: string[]
+  judged_payloads: string[]
+}
+
+export interface TopicLabelInput {
   event_id: number
   verdict: Verdict
   wrong: string[]
   note?: string | null
 }
+export type GridLabelInput = TopicLabelInput
 
-export interface GridReviewItem {
+/** One event in a topic review (grid or UxS). */
+export interface TopicReviewItem {
   event_id: number
   source: string
   source_key: string
@@ -616,21 +634,36 @@ export interface GridReviewItem {
   admin2_name: string | null
   description: string | null
   actors: string[]
-  kind: string | null
-  indicators: string[]
   evidence: string | null
   prompt_version: string | null
   document_ids: number[]
-  /** The kind, or the first indicator when there is no kind. */
+  /** The group the review interleaves by (grid: kind or first indicator; UxS: activity). */
   stratum: string
-  label: GridLabelRecord | null
+  label: TopicLabelRecord | null
   /** Reclassified since it was labeled: the label judged another verdict. */
   stale: boolean
 }
 
-export interface GridReview {
+export interface GridReviewItem extends TopicReviewItem {
+  kind: string | null
+  indicators: string[]
+  label: GridLabelRecord | null
+}
+
+export interface UxsReviewItem extends TopicReviewItem {
+  activity: string
+  platform: string
+  missions: string[]
+  payloads: string[]
+  label: UxsLabelRecord | null
+}
+
+export interface TopicReview<T extends TopicReviewItem = TopicReviewItem> {
   size: number
+  /** Current labels only; a stale label is to do again. */
   labeled: number
   strata: Record<string, number>
-  items: GridReviewItem[]
+  items: T[]
 }
+export type GridReview = TopicReview<GridReviewItem>
+export type UxsReview = TopicReview<UxsReviewItem>

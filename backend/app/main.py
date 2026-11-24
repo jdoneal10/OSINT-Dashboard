@@ -27,6 +27,7 @@ from app.api import (
     persons,
     priority,
     reference,
+    uxs_labels,
 )
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -57,7 +58,7 @@ def create_app() -> FastAPI:
             "POST",
             "PUT",
             "DELETE",
-        ],  # writes: /labels, /grid/labels; POST: /charts/render
+        ],  # writes: /labels, /grid/labels, /uxs/labels; POST: /charts/render
         allow_headers=["*"],
     )
     app.include_router(health.router)
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
         llm,
         labels,
         grid_labels,
+        uxs_labels,
         charts,
         persons,
         priority,

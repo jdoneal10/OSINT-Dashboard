@@ -48,6 +48,7 @@ class LadderOut(BaseModel):
 class TopicOut(BaseModel):
     total: int
     sources: int
+    acled_events: int  # ACLED-derived events in the view (ACLED attribution required)
     months: list[MonthRow]
     breakdown: dict[str, dict[str, int]]
     states: dict[str, int]
@@ -63,6 +64,7 @@ def _topic(s: TopicSummary) -> dict[str, object]:
     return {
         "total": s.total,
         "sources": s.sources,
+        "acled_events": s.acled_events,
         "months": [MonthRow(month=m, counts=dict(c)) for m, c in sorted(s.months.items())],
         "breakdown": {k: dict(c.most_common()) for k, c in s.breakdown.items()},
         "states": dict(s.states.most_common()),

@@ -76,6 +76,7 @@ class LadderRow:
 class TopicSummary:
     total: int = 0
     sources: int = 0
+    acled_events: int = 0  # ACLED-derived events (the ACLED passes): the view needs attribution
     months: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
     breakdown: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
     states: Counter[str] = field(default_factory=Counter)
@@ -97,17 +98,19 @@ def _month(d: dt.date) -> str:
     return d.strftime("%Y-%m")
 
 
-def _sources(session: Session, ids: list[int]) -> int:
+def _sources(session: Session, ids: list[int]) -> tuple[int, int]:
+    """Distinct sources behind the events, and how many of the events are ACLED's."""
     if not ids:
-        return 0
-    return (
-        session.scalar(
-            select(func.count(func.distinct(Source.id)))
-            .join(Event, Event.source_id == Source.id)
-            .where(Event.id.in_(ids))
+        return 0, 0
+    row = session.execute(
+        select(
+            func.count(func.distinct(Source.id)),
+            func.count(Event.id).filter(Source.slug == "acled"),
         )
-        or 0
-    )
+        .join(Event, Event.source_id == Source.id)
+        .where(Event.id.in_(ids))
+    ).one()
+    return int(row[0]), int(row[1])
 
 
 def uxs_summary(
@@ -135,7 +138,7 @@ def uxs_summary(
         rung = uxs_rung(ev.uxs_platform, ev.uxs_payloads or [])
         by_rung[rung].add(ev.event_date, use=activity == EMPLOYMENT)
     out.total = len(ids)
-    out.sources = _sources(session, ids)
+    out.sources, out.acled_events = _sources(session, ids)
     return out
 
 
@@ -159,5 +162,5 @@ def energy_summary(
         if ev.admin1_name:
             out.states[ev.admin1_name] += 1
     out.total = len(ids)
-    out.sources = _sources(session, ids)
+    out.sources, out.acled_events = _sources(session, ids)
     return out

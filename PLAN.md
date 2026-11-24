@@ -157,7 +157,7 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 - Views: UxS and electricity-theft panels (map, trend, escalation ladder), person view, labeling fields for the new categories and the person safeguards (done 2026-11-20: `/priority` page and API, People list and detail with dispute/delete, `uxs`/`energy_theft` event label fields, per-document person labels with safeguard flags, Phase 3 section in `make eval`; ladder rungs 6–8 not yet captured by extraction)
 - Re-extraction through the Batch API
 
-**Exit criteria:** IRs 8 and 9 answerable from the dashboard with cited records; ≥ 85% precision on the new fields over a labeled UxS/energy sample; zero labeled person-safeguard violations (contact details, victims or journalists recorded as persons, uncited attributes).
+**Exit criteria:** IRs 8 and 9 answerable from the dashboard with cited records; ≥ 85% strict precision on the new fields over a labeled UxS sample and, separately, a labeled energy sample (50 records each; ADR 0009 amendment 1); zero labeled person-safeguard violations (contact details, victims or journalists recorded as persons, uncited attributes).
 
 ### Phase 4 — Precursors and routes (~3 weeks)
 - `chemical_watchlist.yaml` with HS-code mapping (DEA SSL, INCB, InSight Crime)

@@ -15,8 +15,6 @@ ACLED notes are shown here for the owner's own review (ADR 0006); nothing leaves
 from __future__ import annotations
 
 import datetime as dt
-import hashlib
-from collections import defaultdict
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -25,20 +23,12 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.db.models import (
-    GRID_LABEL_ITEMS,
-    Event,
-    GridClassification,
-    GridLabel,
-    Source,
-    event_documents,
-)
+from app.api.label_review import actors, document_ids, interleave
+from app.db.models import GRID_LABEL_ITEMS, Event, GridClassification, GridLabel, Source
 from app.db.session import get_session
 
 router = APIRouter(prefix="/grid", tags=["grid labels"])
 DB = Annotated[Session, Depends(get_session)]
-
-ACLED_ACTOR_KEYS = ("actor1", "assoc_actor_1", "actor2", "assoc_actor_2")
 
 
 class GridLabelIn(BaseModel):
@@ -84,7 +74,7 @@ class GridReviewItem(BaseModel):
 
 class GridReview(BaseModel):
     size: int
-    labeled: int
+    labeled: int  # current labels only; a stale label is to do again
     strata: dict[str, int]
     items: list[GridReviewItem]
 
@@ -109,17 +99,6 @@ def has_grid_output() -> Any:
 
 def stratum(kind: str | None, indicators: list[str]) -> str:
     return kind or (indicators[0] if indicators else "none")
-
-
-def _rank(event_id: int) -> str:
-    return hashlib.sha256(f"grid-label-sample:{event_id}".encode()).hexdigest()
-
-
-def _actors(ev: Event, slug: str) -> list[str]:
-    attrs = ev.attributes or {}
-    if slug == "acled":
-        return [str(attrs[k]) for k in ACLED_ACTOR_KEYS if attrs.get(k)]
-    return [str(a) for a in (attrs.get("perpetrators") or []) + (attrs.get("targets") or [])]
 
 
 def _version(session: Session, ev: Event, slug: str) -> str | None:
@@ -152,24 +131,10 @@ def review(
         lab.event_id: lab
         for lab in session.scalars(select(GridLabel).where(GridLabel.event_id.in_(ids)))
     }
-    docs: dict[int, list[int]] = defaultdict(list)
-    for ev_id, doc_id in session.execute(
-        select(event_documents.c.event_id, event_documents.c.document_id).where(
-            event_documents.c.event_id.in_(ids)
-        )
-    ):
-        docs[ev_id].append(doc_id)
-    groups: dict[str, list[Any]] = defaultdict(list)
-    for row in sorted(rows, key=lambda r: _rank(r[0].id)):
-        ev = row[0]
-        groups[stratum(ev.grid_interaction, list(ev.energy_indicators or []))].append(row)
-    counts = {k: len(v) for k, v in sorted(groups.items())}
-    ordered: list[Any] = []
-    queues = [list(groups[k]) for k in sorted(groups)]
-    while any(queues):
-        for q in queues:
-            if q:
-                ordered.append(q.pop(0))
+    docs = document_ids(session, ids)
+    counts, ordered = interleave(
+        rows, lambda ev: stratum(ev.grid_interaction, list(ev.energy_indicators or []))
+    )
     current = sum(1 for r in rows if (lab := labels.get(r[0].id)) and not lab.is_stale(r[0]))
     items = []
     for ev, slug, gc_evidence, gc_version in ordered[:limit]:
@@ -186,12 +151,12 @@ def review(
                 admin1_name=ev.admin1_name,
                 admin2_name=ev.admin2_name,
                 description=ev.description,
-                actors=_actors(ev, slug),
+                actors=actors(ev, slug),
                 kind=ev.grid_interaction,
                 indicators=indicators,
                 evidence=gc_evidence if slug == "acled" else (ev.attributes or {}).get("evidence"),
                 prompt_version=gc_version if slug == "acled" else ev.prompt_version,
-                document_ids=sorted(docs.get(ev.id, [])),
+                document_ids=docs.get(ev.id, []),
                 stratum=stratum(ev.grid_interaction, indicators),
                 label=label_out(lab) if lab else None,
                 stale=lab.is_stale(ev) if lab else False,

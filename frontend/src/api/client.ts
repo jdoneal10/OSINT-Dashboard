@@ -10,9 +10,9 @@ import type {
   CrimeChoropleth,
   CrimeMethodology,
   DesignationPage,
-  GridLabelInput,
-  GridLabelRecord,
-  GridReview,
+  TopicLabelInput,
+  TopicLabelRecord,
+  TopicReview,
   DocumentDetail,
   DocumentPage,
   EventDetail,
@@ -83,6 +83,8 @@ function sendJson<T>(method: 'PUT' | 'POST' | 'DELETE', path: string, body?: unk
   })
 }
 
+export type LabelTopic = 'grid' | 'uxs'
+
 export const api = {
   health: (init?: RequestInit) => getJson<Health>('/health', init),
   aoi: (phase = 1, init?: RequestInit) =>
@@ -147,8 +149,11 @@ export const api = {
     getJson<LabelQueue>(`/labels/queue${toQuery(params)}`, init),
   putLabel: (body: LabelInput) => sendJson<LabelRecord>('PUT', '/labels', body),
   deleteLabel: (id: number) => sendJson<undefined>('DELETE', `/labels/${id}`),
-  gridReview: (params: Record<string, unknown>, init?: RequestInit) =>
-    getJson<GridReview>(`/grid/review${toQuery(params)}`, init),
-  putGridLabel: (body: GridLabelInput) => sendJson<GridLabelRecord>('PUT', '/grid/labels', body),
-  deleteGridLabel: (id: number) => sendJson<undefined>('DELETE', `/grid/labels/${id}`),
+  /** Topic label reviews: grid (ADR 0014) and UxS (ADR 0009 amendment 1). */
+  topicReview: (topic: LabelTopic, params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<TopicReview>(`/${topic}/review${toQuery(params)}`, init),
+  putTopicLabel: (topic: LabelTopic, body: TopicLabelInput) =>
+    sendJson<TopicLabelRecord>('PUT', `/${topic}/labels`, body),
+  deleteTopicLabel: (topic: LabelTopic, id: number) =>
+    sendJson<undefined>('DELETE', `/${topic}/labels/${id}`),
 }

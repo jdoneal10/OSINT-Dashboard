@@ -173,9 +173,14 @@ export default function LabelingPage() {
         <div className="border-ink-700 space-y-1.5 border-b px-4 py-3">
           <div className="flex items-baseline justify-between">
             <h1 className="text-ink-100 text-sm font-semibold">Precision labeling</h1>
-            <Link to="/labeling/grid" className="text-[11px] text-sky-300 hover:underline">
-              Grid labeling →
-            </Link>
+            <span className="flex gap-2 text-[11px]">
+              <Link to="/labeling/uxs" className="text-sky-300 hover:underline">
+                UxS →
+              </Link>
+              <Link to="/labeling/grid" className="text-sky-300 hover:underline">
+                Grid →
+              </Link>
+            </span>
           </div>
           {queue.data && (
             <>

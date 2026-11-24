@@ -142,6 +142,22 @@ export default function PriorityPage() {
         <Panel title="Recent events" aside="Newest first; open a source document for the text">
           <RecentEvents topic={topic} start={params.start} />
         </Panel>
+
+        {summary && summary.acled_events > 0 && (
+          <p className="text-ink-500 text-[11px] leading-relaxed">
+            {summary.acled_events.toLocaleString()} of these events come from ACLED (Armed Conflict
+            Location &amp; Event Data),{' '}
+            <a
+              href="https://acleddata.com"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline"
+            >
+              acleddata.com
+            </a>
+            , classified from ACLED's event notes.
+          </p>
+        )}
       </div>
     </div>
   )

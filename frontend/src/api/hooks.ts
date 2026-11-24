@@ -5,8 +5,8 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { api } from './client'
-import type { GridLabelInput, LabelInput } from './types'
+import { api, type LabelTopic } from './client'
+import type { LabelInput, TopicLabelInput, TopicReview, TopicReviewItem } from './types'
 
 export const useHealth = () =>
   useQuery({
@@ -205,22 +205,29 @@ export function useLabelMutations(documentId: number) {
   return { save, remove }
 }
 
-/** Grid-verdict review (ADR 0014 step 6): ACLED and news events with a kind or indicator. */
-export const useGridReview = (source: 'all' | 'acled' | 'news') =>
+/**
+ * Topic label reviews: grid (ADR 0014 step 6) and UxS (ADR 0009 amendment 1). ACLED and news
+ * events carrying the topic's fields.
+ */
+export const useTopicReview = <T extends TopicReviewItem>(
+  topic: LabelTopic,
+  source: 'all' | 'acled' | 'news',
+) =>
   useQuery({
-    queryKey: ['grid', 'review', source],
-    queryFn: ({ signal }) => api.gridReview({ source }, { signal }),
+    queryKey: [topic, 'review', source],
+    queryFn: ({ signal }) =>
+      api.topicReview(topic, { source }, { signal }) as Promise<TopicReview<T>>,
   })
 
-export function useGridLabelMutations() {
+export function useTopicLabelMutations(topic: LabelTopic) {
   const qc = useQueryClient()
-  const refresh = () => qc.invalidateQueries({ queryKey: ['grid', 'review'] })
+  const refresh = () => qc.invalidateQueries({ queryKey: [topic, 'review'] })
   const save = useMutation({
-    mutationFn: (body: GridLabelInput) => api.putGridLabel(body),
+    mutationFn: (body: TopicLabelInput) => api.putTopicLabel(topic, body),
     onSuccess: refresh,
   })
   const remove = useMutation({
-    mutationFn: (id: number) => api.deleteGridLabel(id),
+    mutationFn: (id: number) => api.deleteTopicLabel(topic, id),
     onSuccess: refresh,
   })
   return { save, remove }

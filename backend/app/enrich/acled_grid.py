@@ -31,19 +31,18 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import hashlib
 import logging
-import re
 from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import ColumnElement, Select, delete, func, or_, select
+from sqlalchemy import Select, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.models import Event, GridClassification, Source
 from app.db.session import session_factory
+from app.enrich.acled_notes import build_user, current_notes_hash, notes_hash, quote_found
 from app.enrich.extract import EnergyIndicator, EnergyTheftDetail, GridKind
 from app.enrich.llm import batch as llm_batch
 from app.enrich.llm.client import BudgetPausedError, Gateway, Provenance
@@ -146,49 +145,6 @@ Never name a person. Never describe the positions, units or response of security
 """
 
 
-def notes_hash(notes: str) -> str:
-    return hashlib.sha256(notes.encode("utf-8")).hexdigest()
-
-
-def _normalized(text: str) -> str:
-    return " ".join(text.split()).casefold()
-
-
-def _actors(ev: Event) -> str:
-    attrs = ev.attributes or {}
-    keys = ("actor1", "assoc_actor_1", "actor2", "assoc_actor_2")
-    return "; ".join(str(attrs[k]) for k in keys if attrs.get(k))
-
-
-# A quote may join fragments with an ellipsis or ";", carry the prompt's "Actors:"/"Note:"
-# labels, or end with a stray bracket; each remaining fragment must still be verbatim.
-_QUOTE_SPLIT = re.compile(r"\.\.\.|\u2026|;|\bactors:|\bnote:", re.IGNORECASE)
-
-
-def quote_found(quote: str, ev: Event) -> bool:
-    """True if every fragment of ``quote`` appears in the event's actors or notes (ACLED's text,
-    which is all the model was shown besides the header)."""
-    source = _normalized(f"{_actors(ev)} {ev.description or ''}")
-    fragments = [_normalized(f).strip(" .,;:'\"{}[]") for f in _QUOTE_SPLIT.split(quote)]
-    fragments = [f for f in fragments if len(f) >= 3]
-    return bool(fragments) and all(f in source for f in fragments)
-
-
-def build_user(ev: Event) -> str:
-    actors = _actors(ev)
-    place = ", ".join(p for p in (ev.admin2_name, ev.admin1_name) if p)
-    return (
-        f"ACLED event {ev.source_key} ({ev.event_date.isoformat()}; {place or 'place unknown'}; "
-        f"{ev.event_type} / {ev.sub_event_type or '-'})\n"
-        f"Actors: {actors or 'not given'}\n"
-        f"Note: {ev.description or ''}"
-    )
-
-
-def _current_hash() -> ColumnElement[str]:
-    return func.encode(func.sha256(func.convert_to(Event.description, "UTF8")), "hex")
-
-
 def candidates() -> Select[int]:
     """ACLED events whose notes match and have no current verdict (none, or stale)."""
     g = GridClassification
@@ -203,7 +159,7 @@ def candidates() -> Select[int]:
             or_(
                 g.event_id.is_(None),
                 (g.status != "batched")
-                & ((g.notes_sha256 != _current_hash()) | (g.prompt_version != PROMPT_VERSION)),
+                & ((g.notes_sha256 != current_notes_hash()) | (g.prompt_version != PROMPT_VERSION)),
             ),
         )
         .order_by(Event.event_date.desc(), Event.id)
@@ -226,7 +182,7 @@ def clear_stale(session: Session) -> int:
             .join(Event, Event.id == g.event_id)
             .where(
                 g.status != "batched",
-                g.notes_sha256 != _current_hash(),
+                g.notes_sha256 != current_notes_hash(),
                 or_(
                     Event.description.is_(None),
                     Event.description.op("!~*")(CANDIDATE_PATTERN),

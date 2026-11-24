@@ -39,6 +39,7 @@ from app.db.models import (
     Label,
     Seizure,
     Source,
+    UxsLabel,
     actor_events,
     event_documents,
     seizure_documents,
@@ -999,7 +1000,7 @@ def mark_for_reextraction() -> int:
     """Queue documents Haiku processed under an older prompt version (a backfill; batched).
 
     Covers documents it extracted and documents it judged not relevant. Documents whose
-    records the owner has labeled (record labels, or grid labels on their events) are
+    records the owner has labeled (record labels, or grid or UxS labels on their events) are
     skipped: re-extraction would replace those records, and their labels must keep judging
     the version they were made on. So are documents marked by ``mark_corrected``.
     """
@@ -1010,6 +1011,9 @@ def mark_for_reextraction() -> int:
     grid_labeled = select(event_documents.c.document_id).join(
         GridLabel, GridLabel.event_id == event_documents.c.event_id
     )
+    uxs_labeled = select(event_documents.c.document_id).join(
+        UxsLabel, UxsLabel.event_id == event_documents.c.event_id
+    )
     with session_factory()() as session, session.begin():
         docs = session.scalars(
             select(Document).where(
@@ -1018,6 +1022,7 @@ def mark_for_reextraction() -> int:
                 Document.prompt_version.not_in((PROMPT_VERSION, LABELED_VERSION)),
                 Document.id.not_in(labeled),
                 Document.id.not_in(grid_labeled),
+                Document.id.not_in(uxs_labeled),
                 Document.id.not_in(corrected),
             )
         ).all()

@@ -12,6 +12,7 @@ import NewsPage from './pages/NewsPage'
 import PersonPage from './pages/PersonPage'
 import PersonsPage from './pages/PersonsPage'
 import PriorityPage from './pages/PriorityPage'
+import UxsLabelingPage from './pages/UxsLabelingPage'
 
 export const routes: RouteObject[] = [
   {
@@ -32,6 +33,7 @@ export const routes: RouteObject[] = [
       { path: 'designations', element: <DesignationsPage /> },
       { path: 'labeling', element: <LabelingPage /> },
       { path: 'labeling/grid', element: <GridLabelingPage /> },
+      { path: 'labeling/uxs', element: <UxsLabelingPage /> },
       { path: 'labeling/:id', element: <LabelingPage /> },
     ],
   },

@@ -72,6 +72,7 @@ def topics(seeded: Session) -> dict[str, int]:
 def test_uxs_summary_and_ladder(client: TestClient, topics: dict[str, int]) -> None:
     body = client.get("/priority/uxs").json()
     assert (body["total"], body["sources"]) == (3, 1)  # out-of-AOI event left out
+    assert body["acled_events"] == 0  # all news-derived here
     assert body["breakdown"]["activity"] == {"employment": 2, "recovery_or_seizure": 1}
     assert body["breakdown"]["platform"] == {"suas_multirotor": 2, "fpv": 1}
     assert [m["month"] for m in body["months"]] == ["2026-10", "2026-11"]

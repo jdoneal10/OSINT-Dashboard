@@ -332,6 +332,7 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
     )
 
 
+# Statuses of an ACLED note pass verdict (grid and UxS passes).
 GRID_CLASSIFICATION_STATUSES = ("batched", "done", "quarantined")
 
 
@@ -344,6 +345,28 @@ class GridClassification(LLMDerivedMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "grid_classifications"
+    __table_args__ = (_check_in("status", GRID_CLASSIFICATION_STATUSES, "status"),)
+
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    notes_sha256: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    # Short quote from the notes behind the verdict (checked against them before storing).
+    evidence: Mapped[str | None] = mapped_column(String(400))
+    classified_at: Mapped[dt.datetime | None] = mapped_column()
+
+
+class UxsClassification(LLMDerivedMixin, TimestampMixin, Base):
+    """The ACLED UxS pass's verdict on one event's notes (ADR 0009 amendment 1;
+    app.enrich.acled_uxs).
+
+    The verdict itself lives on the event (``uxs_activity``, ``uxs_platform``,
+    ``uxs_missions``, ``uxs_payloads``); this row holds its provenance. ``notes_sha256`` is
+    the hash of the notes that were classified, so an ACLED edit queues the event again.
+    """
+
+    __tablename__ = "uxs_classifications"
     __table_args__ = (_check_in("status", GRID_CLASSIFICATION_STATUSES, "status"),)
 
     event_id: Mapped[int] = mapped_column(
@@ -899,7 +922,7 @@ class ClusterAssessment(LLMDerivedMixin, TimestampMixin, Base):
     cited_event_ids: Mapped[list[int]] = mapped_column(default=list)
 
 
-QUARANTINE_STAGES = ("filter", "extract", "analyze", "grid")
+QUARANTINE_STAGES = ("filter", "extract", "analyze", "grid", "uxs")
 
 
 class LLMQuarantine(TimestampMixin, Base):
@@ -1068,6 +1091,58 @@ class GridLabel(TimestampMixin, Base):
         return self.judged_kind != ev.grid_interaction or sorted(
             self.judged_indicators or []
         ) != sorted(ev.energy_indicators or [])
+
+
+# Items a "partly wrong" UxS label can name: the activity, the platform, or one of the
+# missions or payloads the event carries.
+UXS_LABEL_ITEMS = ("activity", "platform", *UXS_MISSIONS, *UXS_PAYLOADS)
+
+
+class UxsLabel(TimestampMixin, Base):
+    """Owner's hand label on one event's UxS verdict (ADR 0009 amendment 1).
+
+    Judges only the UxS fields (activity, platform, missions, payloads), for ACLED events (the
+    UxS pass) and news events (extraction) alike. ``correct``: every field right. ``partial``:
+    ``wrong`` names the items that are wrong. ``incorrect``: no criminal unmanned system at
+    all. The verdict judged is frozen on the label (``judged_*``, ``prompt_version``): if the
+    event is later reclassified, the label still says what it judged, and the evaluation
+    leaves it out as stale.
+    """
+
+    __tablename__ = "uxs_labels"
+    __table_args__ = (
+        _check_in("verdict", LABEL_VERDICTS, "verdict"),
+        _check_in("judged_activity", UXS_ACTIVITIES, "judged_activity"),
+        _check_in("judged_platform", UXS_PLATFORMS, "judged_platform"),
+        _check_array_in("judged_missions", UXS_MISSIONS, "judged_missions"),
+        _check_array_in("judged_payloads", UXS_PAYLOADS, "judged_payloads"),
+        _check_array_in("wrong", UXS_LABEL_ITEMS, "wrong"),
+        CheckConstraint("(verdict = 'partial') = (cardinality(wrong) > 0)", "partial_names_items"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), unique=True)
+    verdict: Mapped[str] = mapped_column(String(16))
+    wrong: Mapped[list[str]] = mapped_column(ARRAY(String(40)), default=list, server_default="{}")
+    judged_activity: Mapped[str] = mapped_column(String(32))
+    judged_platform: Mapped[str] = mapped_column(String(32))
+    judged_missions: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)), default=list, server_default="{}"
+    )
+    judged_payloads: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)), default=list, server_default="{}"
+    )
+    prompt_version: Mapped[str | None] = mapped_column(String(32))
+    note: Mapped[str | None] = mapped_column(Text)
+
+    def is_stale(self, ev: Event) -> bool:
+        """True if the event was reclassified after labeling (the label judged another verdict)."""
+        return (
+            self.judged_activity != ev.uxs_activity
+            or self.judged_platform != ev.uxs_platform
+            or sorted(self.judged_missions or []) != sorted(ev.uxs_missions or [])
+            or sorted(self.judged_payloads or []) != sorted(ev.uxs_payloads or [])
+        )
 
 
 PLACE_TYPES = ("state", "municipality", "locality")

@@ -14,6 +14,7 @@ vi.mock('../components/map/OperationalMap', () => ({ default: () => <div /> }))
 const uxs: UxsSummary = {
   total: 3,
   sources: 2,
+  acled_events: 1,
   months: [
     { month: '2026-10', counts: { employment: 1 } },
     { month: '2026-11', counts: { employment: 1, recovery_or_seizure: 1 } },
@@ -182,7 +183,7 @@ function renderAt(path: string, extra: Record<string, unknown> = {}) {
     '/events/geojson': { type: 'FeatureCollection', features: [], truncated: false },
     '/events': { items: [attack], next_cursor: null },
     '/priority/uxs': uxs,
-    '/priority/energy-theft': { ...uxs, total: 0, sources: 0, months: [], breakdown: {}, states: {} },
+    '/priority/energy-theft': { ...uxs, total: 0, sources: 0, acled_events: 0, months: [], breakdown: {}, states: {} },
     '/persons': { items: [{ ...person, claims: undefined }], total: 1 },
     '/persons/5': person,
     ...extra,
@@ -212,6 +213,7 @@ describe('Priority topics', () => {
     const urls = fetchMock.mock.calls.map(([u]) => String(u))
     expect(urls.some((u) => u.includes('/events?') && u.includes('topic=uxs'))).toBe(true)
     expect(urls.some((u) => u.includes('/events/geojson') && u.includes('topic=uxs'))).toBe(true)
+    expect(screen.getByText(/1 of these events come from ACLED/)).toBeInTheDocument()
   })
 
   it('switches to electricity theft and shows the empty state', async () => {
@@ -221,6 +223,7 @@ describe('Priority topics', () => {
       await screen.findByText(/No electricity theft events in this period/),
     ).toBeInTheDocument()
     expect(screen.getByText(/Sites are never inferred/)).toBeInTheDocument()
+    expect(screen.queryByText(/come from ACLED/)).not.toBeInTheDocument()
   })
 })
 
@@ -453,7 +456,7 @@ describe('Grid labeling (ADR 0014)', () => {
     expect(screen.getByText('Indicator: Outage in contested area')).toBeInTheDocument()
     expect(screen.getByText('“burned a substation”')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Partly wrong' }))
-    fireEvent.click(screen.getByLabelText('Kind (Deliberate outage or sabotage)'))
+    fireEvent.click(screen.getByLabelText('Kind: Deliberate outage or sabotage'))
     fireEvent.click(screen.getByRole('button', { name: 'Save partial' }))
     await waitFor(() => {
       const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')
@@ -504,11 +507,74 @@ describe('Grid labeling (ADR 0014)', () => {
       '/grid/labels': {},
     })
     fireEvent.click(await screen.findByRole('button', { name: 'Partly wrong' }))
-    fireEvent.click(screen.getByLabelText('Kind (Deliberate outage or sabotage)'))
+    fireEvent.click(screen.getByLabelText('Kind: Deliberate outage or sabotage'))
     fireEvent.click(screen.getByRole('button', { name: 'Save partial' }))
     await waitFor(() => {
       const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')
       expect(JSON.parse(String(put?.[1]?.body)).wrong).toEqual(['kind'])
+    })
+  })
+})
+
+describe('UxS labeling (ADR 0009 amendment 1)', () => {
+  const item = {
+    event_id: 51,
+    source: 'acled',
+    source_key: 'SYN9',
+    event_date: '2026-11-02',
+    event_type: 'Explosions/Remote violence',
+    sub_event_type: 'Air/drone strike',
+    admin1_name: 'Michoacán',
+    admin2_name: null,
+    description: 'SYNTHETIC. Members of a criminal group used drones to launch explosives.',
+    actors: ['Unidentified Armed Group (Mexico)'],
+    activity: 'employment',
+    platform: 'unknown',
+    missions: ['attack'],
+    payloads: ['explosive_or_grenade'],
+    evidence: 'used drones to launch explosives',
+    prompt_version: 'uxs-v3',
+    document_ids: [],
+    stratum: 'employment',
+    label: null,
+    stale: false,
+  }
+  const review = { size: 1, labeled: 0, strata: { employment: 1 }, items: [item] }
+
+  it('shows the UxS fields and saves a partly wrong label naming a payload', async () => {
+    const { fetchMock } = renderAt('/labeling/uxs', { '/uxs/review': review, '/uxs/labels': {} })
+    expect(await screen.findByText('ACLED SYN9')).toBeInTheDocument()
+    for (const chip of [
+      'Activity: Use',
+      'Platform: Unknown',
+      'Mission: Attack',
+      'Payload: Explosive or grenade',
+    ])
+      expect(screen.getByText(chip)).toBeInTheDocument()
+    expect(screen.getByText(/0 of 1 events labeled · Use 1/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Partly wrong' }))
+    fireEvent.click(screen.getByLabelText('Payload: Explosive or grenade'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save partial' }))
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')
+      expect(String(put?.[0])).toContain('/uxs/labels')
+      expect(JSON.parse(String(put?.[1]?.body))).toEqual({
+        event_id: 51,
+        verdict: 'partial',
+        wrong: ['explosive_or_grenade'],
+        note: null,
+      })
+    })
+  })
+
+  it('saves a wrong verdict and links to the other labeling pages', async () => {
+    const { fetchMock } = renderAt('/labeling/uxs', { '/uxs/review': review, '/uxs/labels': {} })
+    expect(await screen.findByRole('link', { name: 'Grid labeling →' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Record labeling →' })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Wrong' }))
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')
+      expect(JSON.parse(String(put?.[1]?.body))).toMatchObject({ verdict: 'incorrect', wrong: [] })
     })
   })
 })
