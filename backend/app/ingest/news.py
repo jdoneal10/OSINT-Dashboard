@@ -56,7 +56,9 @@ GDELT_MIN_INTERVAL = 20.0  # GDELT asks for one request per 5 s; it still answer
 GDELT_BACKOFF_INITIAL = 30.0
 GDELT_LOOKBACK = dt.timedelta(days=3)  # first run / gap cap
 # The worker queries GDELT every 6 hours; a refused run is deferred (not an error) while the
-# next run's window would still reach back to the last success.
+# next run's window would still reach back to the last success, or when the feed has never
+# succeeded (its window is always the full lookback). GDELT refuses even a first request after
+# hours of quiet (checked 2026-11-24), so the retries, not slower requests, are what get through.
 GDELT_SCHEDULE_INTERVAL = dt.timedelta(hours=6)
 # Alert once a feed has missed this many runs in a row (owner decision 2026-11-15).
 STALL_ALERT_MISSES = 2
@@ -296,6 +298,11 @@ def discover(
         start = max(start, dt.datetime.fromisoformat(last["until"]) - dt.timedelta(hours=1))
     run.params["until"] = now.isoformat()
     resp = gdelt_client.get(GDELT_URL, params=gdelt_params(feed.domain, start, now), crawl=False)
+    if resp.status_code == 429 and not last.get("until"):
+        # Never succeeded: every run queries the full lookback, so a refusal loses nothing.
+        raise DeferredRun(
+            "GDELT 429 after retries; no earlier success, next run queries the lookback"
+        )
     if resp.status_code == 429 and _next_run_covers(last, now):
         raise DeferredRun(
             f"GDELT 429 after retries; next run resumes from {last['until']} (within lookback)"

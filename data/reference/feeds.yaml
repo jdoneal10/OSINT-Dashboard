@@ -244,7 +244,7 @@ feeds:
     discovery: gdelt  # no RSS advertised
     text: full
     reliability: B
-    status: active
+    status: paused  # GDELT returned no articles from this domain, even with no search terms (checked 2026-11-24)
     terms_note: >-
       Aviso legal prohibits copying even non-commercially without written permission and
       limits use to the site's own means. Processed under the owner's accepted-risk policy
@@ -326,7 +326,7 @@ feeds:
     discovery: gdelt  # no RSS found 2026-11-20
     text: full
     reliability: B
-    status: active
+    status: paused  # GDELT returned no articles from this domain, even with no search terms (checked 2026-11-24)
     terms_note: >-
       Sinaloa regional press. robots.txt allows our client and AI agents. Terms: content is for personal, non-commercial use (same handling as Ríodoce). No RSS found, so GDELT discovery.
     sources:
@@ -482,7 +482,7 @@ feeds:
     discovery: gdelt
     text: full
     reliability: B
-    status: active
+    status: paused  # GDELT returned no articles from this domain, even with no search terms (checked 2026-11-24)
     terms_note: >-
       Investigative national press. No RSS found; GDELT discovery. robots.txt allows our client and AI agents (2026-11-20). No terms page found (2026-11-20).
     sources:
@@ -592,7 +592,7 @@ feeds:
     discovery: gdelt
     text: full
     reliability: C
-    status: active
+    status: paused  # GDELT returned no articles from this domain, even with no search terms (checked 2026-11-24)
     terms_note: >-
       Latin American energy trade press (electricity-theft context, IR 9). No RSS found; GDELT discovery. robots.txt allows our client and AI agents (2026-11-20). No terms page found (2026-11-20).
     sources:

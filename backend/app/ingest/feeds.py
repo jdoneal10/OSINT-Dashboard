@@ -39,7 +39,8 @@ class Feed(BaseModel):
     link_query: list[str] = []
     text: Literal["full", "summary"]
     reliability: Literal["A", "B", "C", "D", "E", "F"]
-    status: Literal["active", "pending"]
+    # pending: not yet working; paused: stopped on purpose (the comment says why)
+    status: Literal["active", "pending", "paused"]
     terms_note: str
     # The newsroom's time zone; its calendar day dates the report (app/ingest/publication.py).
     timezone: str = "UTC"

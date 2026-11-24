@@ -7,7 +7,7 @@
 - cbp: daily 12:00; two page checks, ingests only when a new CBP file appears
 - news-feeds: hourly at :05; RSS and listing-page feeds in data/reference/feeds.yaml
 - news-gdelt: every 6 hours at :20; GDELT DOC queries for outlets without RSS, one feed
-  every 30 minutes (GDELT refused back-to-back feeds with 429s; 48-hour run 2026-11-16)
+  at a time, up to 30 minutes apart and spaced so the cycle ends within the 6 hours
 - pipeline: every 30 minutes at :10/:40; dedupe, local filter, Haiku extract, cluster,
   Admiralty, Sonnet analyze. The Claude gateway checks the monthly budget before every call
   and pauses the API stages at the threshold; the local stages keep running.
@@ -72,17 +72,35 @@ def news_feeds() -> int:
     return news.run_news([f.slug for f in feeds.active() if f.discovery != "gdelt"])
 
 
-GDELT_FEED_SPACING_S = 30 * 60
+GDELT_CYCLE_S = 6 * 60 * 60  # the news-gdelt trigger interval
+GDELT_CYCLE_MARGIN_S = 15 * 60
+# A refused feed takes about 8.5 minutes: five tries 30 s, 1, 2 and 4 min apart.
+GDELT_FEED_WORST_S = 10 * 60
+GDELT_FEED_SPACING_MAX_S = 30 * 60
+GDELT_FEED_SPACING_MIN_S = 5 * 60
+
+
+def gdelt_spacing(n_feeds: int) -> float:
+    """Seconds between GDELT feeds: at most 30 minutes, and short enough that a cycle where
+    every feed is refused still ends before the next trigger. A cycle that ran past 6 hours
+    made the scheduler skip the next one, so each feed ran every 12 hours (2026-11-24)."""
+    if n_feeds < 2:
+        return 0.0
+    budget = GDELT_CYCLE_S - GDELT_CYCLE_MARGIN_S - n_feeds * GDELT_FEED_WORST_S
+    spacing = budget / (n_feeds - 1)
+    return float(max(GDELT_FEED_SPACING_MIN_S, min(GDELT_FEED_SPACING_MAX_S, spacing)))
 
 
 def news_gdelt(sleep: Callable[[float], None] = time.sleep) -> int:
-    """One GDELT feed at a time, ``GDELT_FEED_SPACING_S`` apart. A feed that fails outside
-    its own run (for example the database unreachable before it starts) is logged and the
-    next feed still runs."""
+    """One GDELT feed at a time, ``gdelt_spacing`` apart. A feed that fails outside its own
+    run (for example the database unreachable before it starts) is logged and the next feed
+    still runs."""
     rc = 0
-    for i, slug in enumerate(f.slug for f in feeds.active("gdelt")):
+    slugs = [f.slug for f in feeds.active("gdelt")]
+    spacing = gdelt_spacing(len(slugs))
+    for i, slug in enumerate(slugs):
         if i:
-            sleep(GDELT_FEED_SPACING_S)
+            sleep(spacing)
         try:
             rc |= news.run_news([slug])
         except Exception:

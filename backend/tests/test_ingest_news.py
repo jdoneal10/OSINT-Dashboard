@@ -220,14 +220,17 @@ def _gdelt_runs(session: Session) -> list[tuple[str, str | None]]:
     return [(r.status, r.error) for r in rows]
 
 
-def test_gdelt_429_without_prior_success_is_an_error(seeded: Session) -> None:
+def test_gdelt_429_without_prior_success_is_deferred(seeded: Session) -> None:
+    """A feed that never succeeded queries the full lookback every run, so a refusal loses
+    nothing (Noroeste's 429s were recorded as errors until 2026-11-24)."""
     site = Site()
     _gdelt_refusing(site)
     _run(site, "test-gdelt")
     ((status, error),) = _gdelt_runs(seeded)
-    assert status == "error"
+    assert status == "deferred"
     assert error is not None
     assert "429" in error
+    assert "no earlier success" in error
 
 
 def test_gdelt_429_within_lookback_is_deferred_and_alerts_once_per_streak(
