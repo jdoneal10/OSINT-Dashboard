@@ -424,7 +424,10 @@ def run_news(slugs: list[str] | None = None, client: PoliteClient | None = None)
             except Exception:
                 failures += 1
                 log.exception("feed %s failed (recorded in ingest_runs)", feed.slug)
-            _alert_if_stalled(feed)
+            try:
+                _alert_if_stalled(feed)
+            except Exception:
+                log.exception("stall check for feed %s failed", feed.slug)
     finally:
         if owns:
             client.close()

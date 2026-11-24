@@ -1,6 +1,7 @@
 """Scheduler entrypoint: heartbeat plus scheduled source pulls (times in UTC).
 
-- heartbeat: every N minutes; liveness row in ingest_runs (shown in /health)
+- heartbeat: every N minutes; liveness row in ingest_runs (shown in /health); also records
+  run ends that an unreachable database kept from being written (app.ingest.runs)
 - acled-events: daily 11:00; ACLED incremental pull since the last watermark
 - acled-deleted: Sundays 11:30; ACLED deleted-events reconciliation (weekly upstream)
 - cbp: daily 12:00; two page checks, ingests only when a new CBP file appears
@@ -15,7 +16,9 @@
   the owner to download the new municipal file when the newest snapshot is > 40 days old
 
 A failing job is logged (and recorded in ingest_runs when it got that far) and never
-stops the scheduler. Set OSINT_SCHEDULED_INGEST=false to run the heartbeat only.
+stops the scheduler; one failing GDELT feed never stops the others. On start, runs left
+"running" by ended processes are closed as errors. Set OSINT_SCHEDULED_INGEST=false to run
+the heartbeat only.
 """
 
 from __future__ import annotations
@@ -37,12 +40,13 @@ from app.core.logging import configure_logging
 from app.db.models import Alert, CrimeIncidence, IngestRun
 from app.db.session import session_factory
 from app.enrich import pipeline
-from app.ingest import acled, cbp, dataminr, designations, feeds, news
+from app.ingest import acled, cbp, dataminr, designations, feeds, news, runs
 
 log = logging.getLogger("app.worker")
 
 
 def heartbeat() -> None:
+    runs.flush_unfinished()
     now = dt.datetime.now(dt.UTC)
     with session_factory()() as session, session.begin():
         session.add(IngestRun(job="heartbeat", started_at=now, finished_at=now, status="ok"))
@@ -72,12 +76,18 @@ GDELT_FEED_SPACING_S = 30 * 60
 
 
 def news_gdelt(sleep: Callable[[float], None] = time.sleep) -> int:
-    """One GDELT feed at a time, ``GDELT_FEED_SPACING_S`` apart."""
+    """One GDELT feed at a time, ``GDELT_FEED_SPACING_S`` apart. A feed that fails outside
+    its own run (for example the database unreachable before it starts) is logged and the
+    next feed still runs."""
     rc = 0
     for i, slug in enumerate(f.slug for f in feeds.active("gdelt")):
         if i:
             sleep(GDELT_FEED_SPACING_S)
-        rc |= news.run_news([slug])
+        try:
+            rc |= news.run_news([slug])
+        except Exception:
+            rc |= 1
+            log.exception("GDELT feed %s failed; continuing with the next feed", slug)
     return rc
 
 
@@ -170,6 +180,10 @@ def main() -> None:
         scheduler.shutdown(wait=False)
 
     signal.signal(signal.SIGTERM, _stop)
+    try:
+        runs.close_orphaned_runs()
+    except Exception:
+        log.exception("could not close runs left running by ended processes")
     log.info("worker started; jobs: %s", [job.id for job in scheduler.get_jobs()])
     with contextlib.suppress(KeyboardInterrupt):
         scheduler.start()

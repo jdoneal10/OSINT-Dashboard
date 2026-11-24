@@ -874,6 +874,9 @@ class IngestRun(Base):
     raw_path: Mapped[str | None] = mapped_column(Text)
     params: Mapped[dict[str, Any]] = mapped_column(default=dict)
     error: Mapped[str | None] = mapped_column(Text)
+    # Process that started the run, so a run its process never closed can be found
+    # (app.ingest.runs.close_orphaned_runs). NULL for heartbeats and pre-0021 rows.
+    pid: Mapped[int | None] = mapped_column(Integer)
 
 
 # --------------------------------------------------------------------------- Phase 2 pipeline
