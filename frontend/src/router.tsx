@@ -4,6 +4,7 @@ import BorderPage from './pages/BorderPage'
 import ClusterPage from './pages/ClusterPage'
 import DesignationsPage from './pages/DesignationsPage'
 import DocumentPage from './pages/DocumentPage'
+import GridLabelingPage from './pages/GridLabelingPage'
 import LabelingPage from './pages/LabelingPage'
 import MapPage from './pages/MapPage'
 import MergeReviewPage from './pages/MergeReviewPage'
@@ -30,6 +31,7 @@ export const routes: RouteObject[] = [
       { path: 'persons/:id', element: <PersonPage /> },
       { path: 'designations', element: <DesignationsPage /> },
       { path: 'labeling', element: <LabelingPage /> },
+      { path: 'labeling/grid', element: <GridLabelingPage /> },
       { path: 'labeling/:id', element: <LabelingPage /> },
     ],
   },

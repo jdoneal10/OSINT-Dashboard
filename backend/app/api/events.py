@@ -212,6 +212,8 @@ class EventOut(BaseModel):
     energy_powered: list[str] = []
     energy_facilitator: str | None = None
     energy_scale: str | None = None
+    grid_interaction: str | None = None  # ADR 0014
+    energy_indicators: list[str] = []
     evidence: str | None  # supporting quote from the source text (news-derived only)
     actors: list[dict[str, Any]]
     document_ids: list[int]  # documents this event was derived from (empty for ACLED)
@@ -265,6 +267,8 @@ def event_out(
         energy_powered=list(ev.energy_powered or []),
         energy_facilitator=ev.energy_facilitator,
         energy_scale=ev.energy_scale,
+        grid_interaction=ev.grid_interaction,
+        energy_indicators=list(ev.energy_indicators or []),
         evidence=(ev.attributes or {}).get("evidence"),
         actors=actors.get(ev.id, []),
         document_ids=docs.get(ev.id, []),

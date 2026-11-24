@@ -171,7 +171,12 @@ export default function LabelingPage() {
         className="border-ink-700 bg-ink-900 flex w-72 shrink-0 flex-col border-r"
       >
         <div className="border-ink-700 space-y-1.5 border-b px-4 py-3">
-          <h1 className="text-ink-100 text-sm font-semibold">Precision labeling</h1>
+          <div className="flex items-baseline justify-between">
+            <h1 className="text-ink-100 text-sm font-semibold">Precision labeling</h1>
+            <Link to="/labeling/grid" className="text-[11px] text-sky-300 hover:underline">
+              Grid labeling →
+            </Link>
+          </div>
           {queue.data && (
             <>
               <div className="bg-ink-700 h-1.5 overflow-hidden rounded">

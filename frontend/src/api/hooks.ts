@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { api } from './client'
-import type { LabelInput } from './types'
+import type { GridLabelInput, LabelInput } from './types'
 
 export const useHealth = () =>
   useQuery({
@@ -200,6 +200,27 @@ export function useLabelMutations(documentId: number) {
   })
   const remove = useMutation({
     mutationFn: (id: number) => api.deleteLabel(id),
+    onSuccess: refresh,
+  })
+  return { save, remove }
+}
+
+/** Grid-verdict review (ADR 0014 step 6): ACLED and news events with a kind or indicator. */
+export const useGridReview = (source: 'all' | 'acled' | 'news') =>
+  useQuery({
+    queryKey: ['grid', 'review', source],
+    queryFn: ({ signal }) => api.gridReview({ source }, { signal }),
+  })
+
+export function useGridLabelMutations() {
+  const qc = useQueryClient()
+  const refresh = () => qc.invalidateQueries({ queryKey: ['grid', 'review'] })
+  const save = useMutation({
+    mutationFn: (body: GridLabelInput) => api.putGridLabel(body),
+    onSuccess: refresh,
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => api.deleteGridLabel(id),
     onSuccess: refresh,
   })
   return { save, remove }

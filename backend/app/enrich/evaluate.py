@@ -33,6 +33,9 @@ Definitions
   the extraction prompt's own relevant/not-relevant decision on every relevance-labeled
   document, compared with the owner's answer. Nothing is stored; calls are logged to
   ``llm_usage`` like any other. Unweighted: it measures the prompt, not the pipeline.
+- **Grid labels** (ADR 0014): ``grid_labels`` judge an event's grid kind and indicators,
+  ACLED or news. Current labels join the Phase 3 priority sample (one verdict per event);
+  stale ones (the event was reclassified after labeling) are left out and counted.
 - Missed records (extraction recall) cannot be measured from record labels; they are out of
   scope for this report.
 """
@@ -55,7 +58,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Document, Event, Label, Seizure, Source
+from app.db.models import Document, Event, GridLabel, Label, Seizure, Source
 from app.db.session import session_factory
 from app.enrich import extract
 from app.enrich.llm.client import Gateway, Provenance
@@ -186,12 +189,54 @@ def record_precision(session: Session, prompt_version: str) -> RecordReport:
 
 
 @dataclass
+class GridReport:
+    """Grid labels (ADR 0014 step 6): whole-verdict precision by source, and per item.
+
+    Per item (each kind, each indicator): a judgment is right unless the label is "wrong" or
+    names that item as wrong. Stale labels (the event was reclassified after labeling) are
+    left out and counted.
+    """
+
+    by_source: dict[str, Precision] = field(default_factory=dict)
+    items: dict[str, Precision] = field(default_factory=dict)
+    versions: Counter[str] = field(default_factory=Counter)
+    stale: int = 0
+
+
+@dataclass
 class Phase3Report:
-    priority: Precision  # labeled events carrying UxS or electricity-theft detail
+    priority: Precision  # UxS / electricity-theft record labels plus grid labels
     priority_errors: Counter[str]
     persons: Precision
     person_errors: Counter[str]
     violations: list[tuple[int, int, list[str]]]  # (document, person, safeguard fields)
+    grid: GridReport = field(default_factory=GridReport)
+
+
+def grid_report(session: Session) -> tuple[GridReport, dict[int, str]]:
+    """Grid-label precision, plus the verdict each labeled event counts with."""
+    out = GridReport()
+    verdicts: dict[int, str] = {}
+    rows = session.execute(
+        select(GridLabel, Event, Source.slug)
+        .join(Event, Event.id == GridLabel.event_id)
+        .join(Source, Source.id == Event.source_id)
+    ).all()
+    for lab, ev, slug in rows:
+        if lab.is_stale(ev):
+            out.stale += 1
+            continue
+        source = "acled" if slug == "acled" else "news"
+        out.by_source.setdefault(source, Precision()).add(lab.verdict)
+        out.versions[lab.prompt_version or "unknown"] += 1
+        verdicts[ev.id] = lab.verdict
+        wrong = set(lab.wrong or [])
+        judged = [("kind", lab.judged_kind)] if lab.judged_kind else []
+        judged += [(i, i) for i in lab.judged_indicators or []]
+        for item, name in judged:
+            right = lab.verdict != "incorrect" and item not in wrong
+            out.items.setdefault(name, Precision()).add("correct" if right else "incorrect")
+    return out, verdicts
 
 
 def _latest(labels: Iterable[Label]) -> dict[tuple[int, str, int], Label]:
@@ -204,8 +249,16 @@ def _latest(labels: Iterable[Label]) -> dict[tuple[int, str, int], Label]:
 
 
 def phase3(session: Session, prompt_version: str) -> Phase3Report:
-    """Precision on the priority-topic events and on persons, and safeguard violations."""
-    out = Phase3Report(Precision(), Counter(), Precision(), Counter(), [])
+    """Precision on the priority-topic events and on persons, and safeguard violations.
+
+    The priority sample is UxS and electricity-theft record labels on ``prompt_version`` plus
+    every current grid label (ACLED or news, ADR 0014). An event with a grid label counts once,
+    with its grid label.
+    """
+    grid, grid_verdicts = grid_report(session)
+    out = Phase3Report(Precision(), Counter(), Precision(), Counter(), [], grid)
+    for verdict in grid_verdicts.values():
+        out.priority.add(verdict)
     priority_ids = set(
         session.scalars(
             select(Event.id).where(
@@ -222,7 +275,7 @@ def phase3(session: Session, prompt_version: str) -> Phase3Report:
         named = {f for f in lab.field.split(",") if f}
         errors = named - SCOPE_FIELDS
         if table == "events":
-            if target not in priority_ids:
+            if target not in priority_ids or target in grid_verdicts:
                 continue
             v = "correct" if lab.verdict == "partial" and not errors else lab.verdict
             out.priority.add(v)
@@ -247,7 +300,7 @@ def phase3_verdict(r: Phase3Report) -> str:
     if r.priority.n < TARGET_PRIORITY_RECORDS:
         return (
             f"**INSUFFICIENT SAMPLE**: {r.priority.n} of {TARGET_PRIORITY_RECORDS} UxS or "
-            "electricity-theft records labeled; no safeguard violations so far."
+            "energy (electricity-theft or grid) records labeled; no safeguard violations so far."
         )
     strict = r.priority.strict or 0.0
     status = "PASS" if strict >= TARGET_PRECISION else "FAIL"
@@ -449,11 +502,31 @@ def _render_phase3(r: Phase3Report) -> list[str]:
         "| Records | Labeled | Correct | Partly wrong | Wrong | Strict | 95% CI |",
         "|---|---:|---:|---:|---:|---:|---|",
     ]
-    for name, p in (("UxS / electricity-theft events", r.priority), ("persons", r.persons)):
+    rows = [("UxS / energy events (priority sample)", r.priority)]
+    rows += [(f"grid verdicts, {k}", p) for k, p in sorted(r.grid.by_source.items())]
+    rows.append(("persons", r.persons))
+    for name, p in rows:
         lines.append(
             f"| {name} | {p.n} | {p.correct} | {p.partial} | {p.incorrect} | "
             f"{_pct(p.strict)} | {_ci(p)} |"
         )
+    if r.grid.items or r.grid.stale:
+        lines += [
+            "",
+            "Grid labels by item (ADR 0014; a judgment is right unless the label is wrong or "
+            "names the item):",
+            "",
+            "| Kind or indicator | Judged | Right | Precision | 95% CI |",
+            "|---|---:|---:|---:|---|",
+        ]
+        for name, p in sorted(r.grid.items.items()):
+            lines.append(f"| {name} | {p.n} | {p.correct} | {_pct(p.strict)} | {_ci(p)} |")
+        versions = ", ".join(f"{v} {n}" for v, n in sorted(r.grid.versions.items()))
+        lines += [
+            "",
+            f"Prompt versions judged: {versions or 'none'}. Stale grid labels (event "
+            f"reclassified since labeling; left out): {r.grid.stale}.",
+        ]
     errors = r.priority_errors + r.person_errors
     lines += [
         "",

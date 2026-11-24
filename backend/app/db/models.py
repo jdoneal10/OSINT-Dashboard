@@ -1027,6 +1027,49 @@ class Label(TimestampMixin, Base):
     judged_decision: Mapped[str | None] = mapped_column(String(16))
 
 
+# Items a "partly wrong" grid label can name: the kind, or one of the indicators.
+GRID_LABEL_ITEMS = ("kind", *ENERGY_INDICATORS)
+
+
+class GridLabel(TimestampMixin, Base):
+    """Owner's hand label on one event's grid verdict (ADR 0014 step 6).
+
+    Judges only the grid-interaction kind and the energy indicators, for ACLED events (the
+    grid pass) and news events (extract-v11) alike; an ACLED event has no document, so it
+    cannot carry a ``labels`` row. ``correct``: kind and indicators right. ``partial``:
+    ``wrong`` names the items that are wrong. ``incorrect``: no grid interaction or indicator
+    at all. The verdict judged is frozen on the label (``judged_*``, ``prompt_version``): if
+    the event is later reclassified, the label still says what it judged, and the evaluation
+    leaves it out as stale.
+    """
+
+    __tablename__ = "grid_labels"
+    __table_args__ = (
+        _check_in("verdict", LABEL_VERDICTS, "verdict"),
+        _check_in("judged_kind", GRID_INTERACTIONS, "judged_kind"),
+        _check_array_in("judged_indicators", ENERGY_INDICATORS, "judged_indicators"),
+        _check_array_in("wrong", GRID_LABEL_ITEMS, "wrong"),
+        CheckConstraint("(verdict = 'partial') = (cardinality(wrong) > 0)", "partial_names_items"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), unique=True)
+    verdict: Mapped[str] = mapped_column(String(16))
+    wrong: Mapped[list[str]] = mapped_column(ARRAY(String(40)), default=list, server_default="{}")
+    judged_kind: Mapped[str | None] = mapped_column(String(40))
+    judged_indicators: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)), default=list, server_default="{}"
+    )
+    prompt_version: Mapped[str | None] = mapped_column(String(32))
+    note: Mapped[str | None] = mapped_column(Text)
+
+    def is_stale(self, ev: Event) -> bool:
+        """True if the event was reclassified after labeling (the label judged another verdict)."""
+        return self.judged_kind != ev.grid_interaction or sorted(
+            self.judged_indicators or []
+        ) != sorted(ev.energy_indicators or [])
+
+
 PLACE_TYPES = ("state", "municipality", "locality")
 
 

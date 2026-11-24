@@ -417,3 +417,98 @@ describe('Merge review', () => {
     await waitFor(() => expect(posts(fetchMock, '/persons/merges/31/undo')).toHaveLength(1))
   })
 })
+
+describe('Grid labeling (ADR 0014)', () => {
+  const item = {
+    event_id: 41,
+    source: 'acled',
+    source_key: 'SYN1',
+    event_date: '2026-11-02',
+    event_type: 'Riots',
+    sub_event_type: null,
+    admin1_name: 'Guerrero',
+    admin2_name: null,
+    description: 'SYNTHETIC. Armed men burned a substation.',
+    actors: ['Unidentified Armed Group (Mexico)'],
+    kind: 'deliberate_outage_or_sabotage',
+    indicators: ['outage_in_contested_area'],
+    evidence: 'burned a substation',
+    prompt_version: 'grid-v3',
+    document_ids: [],
+    stratum: 'deliberate_outage_or_sabotage',
+    label: null,
+    stale: false,
+  }
+  const review = {
+    size: 1,
+    labeled: 0,
+    strata: { deliberate_outage_or_sabotage: 1 },
+    items: [item],
+  }
+
+  it('shows the verdict and saves a partly wrong label naming the kind', async () => {
+    const { fetchMock } = renderAt('/labeling/grid', { '/grid/review': review, '/grid/labels': {} })
+    expect(await screen.findByText('ACLED SYN1')).toBeInTheDocument()
+    expect(screen.getByText('Kind: Deliberate outage or sabotage')).toBeInTheDocument()
+    expect(screen.getByText('Indicator: Outage in contested area')).toBeInTheDocument()
+    expect(screen.getByText('“burned a substation”')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Partly wrong' }))
+    fireEvent.click(screen.getByLabelText('Kind (Deliberate outage or sabotage)'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save partial' }))
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')
+      expect(String(put?.[0])).toContain('/grid/labels')
+      expect(JSON.parse(String(put?.[1]?.body))).toEqual({
+        event_id: 41,
+        verdict: 'partial',
+        wrong: ['kind'],
+        note: null,
+      })
+    })
+  })
+
+  it('flags a label made before the event was reclassified', async () => {
+    const label = {
+      id: 3,
+      event_id: 41,
+      verdict: 'correct',
+      wrong: [],
+      judged_kind: 'theft',
+      judged_indicators: [],
+      prompt_version: 'grid-v2',
+      note: null,
+      updated_at: '2026-11-23T00:00:00Z',
+    }
+    renderAt('/labeling/grid', {
+      '/grid/review': { ...review, labeled: 1, items: [{ ...item, label, stale: true }] },
+    })
+    expect(
+      await screen.findByText('Reclassified since it was labeled; label again.'),
+    ).toBeInTheDocument()
+  })
+
+  it('drops items the event no longer has when a stale partial label is redone', async () => {
+    const label = {
+      id: 3,
+      event_id: 41,
+      verdict: 'partial',
+      wrong: ['high_load_site'],
+      judged_kind: 'deliberate_outage_or_sabotage',
+      judged_indicators: ['high_load_site'],
+      prompt_version: 'grid-v2',
+      note: null,
+      updated_at: '2026-11-23T00:00:00Z',
+    }
+    const { fetchMock } = renderAt('/labeling/grid', {
+      '/grid/review': { ...review, items: [{ ...item, label, stale: true }] },
+      '/grid/labels': {},
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Partly wrong' }))
+    fireEvent.click(screen.getByLabelText('Kind (Deliberate outage or sabotage)'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save partial' }))
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')
+      expect(JSON.parse(String(put?.[1]?.body)).wrong).toEqual(['kind'])
+    })
+  })
+})

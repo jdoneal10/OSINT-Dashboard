@@ -96,6 +96,10 @@ export interface EventDetail {
   energy_facilitator?: string | null
   /** Scale exactly as the source reports it (kW, MW, equipment count); never estimated. */
   energy_scale?: string | null
+  /** Criminal interaction with the grid (ADR 0014): one kind, or null. */
+  grid_interaction?: string | null
+  /** Reported facts that suggest electricity theft without claiming it (ADR 0014). */
+  energy_indicators?: string[]
   /** Supporting quote from the source text (news-derived events only). */
   evidence: string | null
   actors: EventActor[]
@@ -577,4 +581,56 @@ export interface DocPerson {
   us_person: boolean
   disputed: boolean
   claims: DocPersonClaim[]
+}
+
+/** Owner label on one event's grid verdict (ADR 0014 step 6); ACLED or news. */
+export interface GridLabelRecord {
+  id: number
+  event_id: number
+  verdict: Verdict
+  /** Partly wrong: "kind" and/or the indicators that are wrong. */
+  wrong: string[]
+  /** The verdict judged, frozen when the label was saved. */
+  judged_kind: string | null
+  judged_indicators: string[]
+  prompt_version: string | null
+  note: string | null
+  updated_at: string
+}
+
+export interface GridLabelInput {
+  event_id: number
+  verdict: Verdict
+  wrong: string[]
+  note?: string | null
+}
+
+export interface GridReviewItem {
+  event_id: number
+  source: string
+  source_key: string
+  event_date: string
+  event_type: string
+  sub_event_type: string | null
+  admin1_name: string | null
+  admin2_name: string | null
+  description: string | null
+  actors: string[]
+  kind: string | null
+  indicators: string[]
+  evidence: string | null
+  prompt_version: string | null
+  document_ids: number[]
+  /** The kind, or the first indicator when there is no kind. */
+  stratum: string
+  label: GridLabelRecord | null
+  /** Reclassified since it was labeled: the label judged another verdict. */
+  stale: boolean
+}
+
+export interface GridReview {
+  size: number
+  labeled: number
+  strata: Record<string, number>
+  items: GridReviewItem[]
 }

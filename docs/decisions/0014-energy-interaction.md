@@ -1,6 +1,6 @@
 # ADR 0014: Energy interaction: reported grid interactions, indicators and municipal assessments
 
-- **Status:** Accepted by the owner, 2026-11-22 (see Owner decisions). Built: schema (step 2), the ACLED pass (step 5) and prompt `extract-v11` (step 4, tested; not yet live).
+- **Status:** Accepted by the owner, 2026-11-22 (see Owner decisions). Built: schema (step 2), the ACLED pass (step 5), prompt `extract-v11` (step 4, live since 2026-11-23) and grid labeling (step 6).
 - **Relates to:** ADR 0008 (hard rules), ADR 0009 (UxS and electricity-theft focus), ADR 0012
   (critical-infrastructure keep rule), owner framework `docs/framework/uxs-and-electricity-theft.md` §2.
 
@@ -172,5 +172,19 @@ A new analytic job, in the pattern of the existing Sonnet corroboration stage (`
     the Los Mochis truck fire (document 1941) is still tagged `deliberate_outage_or_sabotage`;
     `huachicol hormiga` (small-scale fuel smuggling) was tagged fuel theft in 1 of 3 runs. The
     corpus holds no electricity-theft article, so the theft kind is untested on news.
-  - Not yet done: switching the worker to v11, `make reextract`, and labeling (step 6), which
-    are the owner's to approve.
+  - 2026-11-23: on the owner's go-ahead the worker switched to v11 and `make reextract`
+    queued 1,023 documents; with 97 new articles that had been batched under v10 just before
+    the switch (requeued by the batch collector's version check), they went to the Batch API
+    as one job of 1,120.
+- 2026-11-23, labeling (step 6): a separate `grid_labels` table (migration 0019) holds one
+  label per event on its grid verdict only, for ACLED and news events alike (an ACLED event
+  has no document, so it cannot carry a `labels` row). Verdicts: correct; partly wrong, naming
+  the kind or the indicators that are wrong; wrong (no grid interaction or indicator at all).
+  The verdict judged (kind, indicators, prompt version) is frozen on the label, and a label
+  whose event was reclassified since is shown as stale and left out of the evaluation.
+  Re-extraction skips documents whose events carry a grid label, as it does for record labels.
+  The review page (`/labeling/grid`) lists every event with a kind or indicator, interleaving
+  the kinds and indicators in stable hash order so the rare ones come up first.
+  The Phase 3 report counts current grid labels in the priority sample (an event with a grid
+  label counts once) and adds precision by source and per kind and indicator. Precision only:
+  events with no kind or indicator are not reviewed, so recall is not measured.

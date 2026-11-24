@@ -10,6 +10,9 @@ import type {
   CrimeChoropleth,
   CrimeMethodology,
   DesignationPage,
+  GridLabelInput,
+  GridLabelRecord,
+  GridReview,
   DocumentDetail,
   DocumentPage,
   EventDetail,
@@ -144,4 +147,8 @@ export const api = {
     getJson<LabelQueue>(`/labels/queue${toQuery(params)}`, init),
   putLabel: (body: LabelInput) => sendJson<LabelRecord>('PUT', '/labels', body),
   deleteLabel: (id: number) => sendJson<undefined>('DELETE', `/labels/${id}`),
+  gridReview: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<GridReview>(`/grid/review${toQuery(params)}`, init),
+  putGridLabel: (body: GridLabelInput) => sendJson<GridLabelRecord>('PUT', '/grid/labels', body),
+  deleteGridLabel: (id: number) => sendJson<undefined>('DELETE', `/grid/labels/${id}`),
 }

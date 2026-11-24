@@ -54,7 +54,37 @@ export const CATEGORY_LABELS: Record<string, string> = {
   electrician: 'Electrician',
   official: 'Official',
   property_manager: 'Property manager',
+  // Grid interactions (ADR 0014)
+  theft: 'Electricity theft',
+  deliberate_outage_or_sabotage: 'Deliberate outage or sabotage',
+  attack_on_utility_workers: 'Attack on utility workers',
+  extortion_or_service_control: 'Extortion or service control',
+  infrastructure_theft: 'Infrastructure theft',
+  utility_withdrawal: 'Utility withdrawal',
+  // Energy indicators (ADR 0014): suggest theft without claiming it
+  mining_equipment_seized: 'Mining equipment seized',
+  high_load_site: 'High-load site',
+  outage_in_contested_area: 'Outage in contested area',
+  utility_insider_reported: 'Utility insider reported',
+  fuel_theft: 'Fuel theft',
 }
+
+/** Grid-interaction kinds and energy indicators, in the owner framework's order. */
+export const GRID_KINDS = [
+  'theft',
+  'deliberate_outage_or_sabotage',
+  'attack_on_utility_workers',
+  'extortion_or_service_control',
+  'infrastructure_theft',
+  'utility_withdrawal',
+]
+export const ENERGY_INDICATORS = [
+  'mining_equipment_seized',
+  'high_load_site',
+  'outage_in_contested_area',
+  'utility_insider_reported',
+  'fuel_theft',
+]
 
 export const categoryLabel = (key: string): string =>
   CATEGORY_LABELS[key] ?? key.replaceAll('_', ' ')

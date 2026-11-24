@@ -44,7 +44,8 @@ function actorsByRole(ev: EventDetail, role: string): string {
   )
 }
 
-/** UxS or electricity-theft detail (extract-v7; ADR 0009), as reported. */
+/** UxS or electricity-theft detail (extract-v7; ADR 0009) and grid kind or indicators
+ * (ADR 0014), as reported. */
 export function PriorityDetail({ ev }: { ev: EventDetail }) {
   const chips: string[] = []
   let tag = ''
@@ -65,12 +66,30 @@ export function PriorityDetail({ ev }: { ev: EventDetail }) {
       ...(ev.energy_scale ? [ev.energy_scale] : []),
     )
   }
-  if (!tag) return null
+  const kind = ev.grid_interaction && ev.grid_interaction !== 'theft' ? ev.grid_interaction : null
+  const indicators = ev.energy_indicators ?? []
+  if (!tag && !kind && indicators.length === 0) return null
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1">
-      <span className="rounded border border-violet-500/50 px-1 text-[10px] text-violet-300">
-        {tag}
-      </span>
+      {kind && (
+        <span className="rounded border border-violet-500/50 px-1 text-[10px] text-violet-300">
+          Grid: {categoryLabel(kind)}
+        </span>
+      )}
+      {indicators.map((i) => (
+        <span
+          key={i}
+          className="rounded border border-dashed border-violet-400/40 px-1 text-[10px] text-violet-200"
+          title="Indicator: suggests electricity theft without claiming it (ADR 0014)"
+        >
+          Indicator: {categoryLabel(i)}
+        </span>
+      ))}
+      {tag && (
+        <span className="rounded border border-violet-500/50 px-1 text-[10px] text-violet-300">
+          {tag}
+        </span>
+      )}
       {chips.map((c, i) => (
         <span key={`${c}-${i}`} className="bg-ink-800 text-ink-300 rounded px-1 text-[10px]">
           {c}
