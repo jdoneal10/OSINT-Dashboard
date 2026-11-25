@@ -29,6 +29,7 @@ def test_every_hard_coded_endpoint_is_listed(strict: None) -> None:
         cbp.BASE,
         news.GDELT_URL,
         designations.SDN_URL,
+        f"https://{designations.SDN_DOWNLOAD_HOST}/Published/x/SDN.XML?X-Amz-Expires=3600",
         designations.FR_API,
         inegi.BASE,
         "http://127.0.0.1:11434",
@@ -53,6 +54,8 @@ def test_active_feed_hosts_are_allowed(strict: None) -> None:
         "https://acleddata.com.evil.example/",  # suffix trick
         "https://notacleddata.com/",
         "https://api.anthropic.com.attacker.example/",
+        "https://other-bucket.s3.us-gov-west-1.amazonaws.com/",  # only the OFAC bucket
+        "https://s3.us-gov-west-1.amazonaws.com/wc2h-sls-prod-public-published/",
         "http://10.0.0.5/",  # private, not loopback
         "file:///etc/passwd",
         "not a url",

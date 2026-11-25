@@ -25,6 +25,9 @@ destinations:
   - domain: sanctionslistservice.ofac.treas.gov
     purpose: OFAC SDN XML export
     basis: data-sources.md "OFAC SDN list"
+  - domain: wc2h-sls-prod-public-published.s3.us-gov-west-1.amazonaws.com
+    purpose: OFAC SDN XML export (the SLS download redirects here, since 2026-11-21)
+    basis: data-sources.md "OFAC SDN list"
   - domain: inegi.org.mx
     purpose: INEGI municipalities and gazetteer (one-time reference build)
     basis: data-sources.md "INEGI free-use terms"

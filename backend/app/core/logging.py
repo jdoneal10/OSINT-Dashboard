@@ -10,6 +10,7 @@ _REDACTIONS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{8,}"),  # OAuth bearer tokens
     re.compile(r"(?i)((?:password|passwd|secret|token|api_key)\s*[=:]\s*)\S+"),
     re.compile(r"(postgres(?:ql)?(?:\+\w+)?://[^:/\s]+:)[^@\s]+(@)"),  # DSN passwords
+    re.compile(r"(?i)(X-Amz-(?:Signature|Credential)=)[^&\s\"]+"),  # presigned S3 links
 )
 
 REDACTED = "[REDACTED]"
