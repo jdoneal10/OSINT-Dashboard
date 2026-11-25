@@ -35,6 +35,7 @@ The system collects, normalizes, classifies, deduplicates, enriches and alerts. 
 | Mission | `surveillance`, `route_security`, `overwatch`, `attack`, `logistics`, `coercion_or_propaganda`, `surveillance_of_security_forces`*, `monitoring_economic_activity` |
 | Payload | `explosive_or_grenade`, `ied`, `camera_or_thermal`, `release_mechanism`, `supply`, `loudspeaker_or_light`, `none_reported` |
 | Activity | `employment`, `recovery_or_seizure`, `procurement_or_import`, `assembly_or_modification`, `training`, `prosecution` |
+| Capability (rungs 6–8, as reported) | `coordinated_multi_uxs` (two or more unmanned systems used together in one operation), `relay_or_repeater` (extends range or control), `autonomy` (autonomous or pre-programmed navigation, automatic target tracking, AI-assisted control) |
 
 \* Rule 4 applies: record what the TCO did and the location at the source's precision. Never record units, positions or the response.
 

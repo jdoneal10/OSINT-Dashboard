@@ -35,6 +35,10 @@ export const CATEGORY_LABELS: Record<string, string> = {
   release_mechanism: 'Release mechanism',
   supply: 'Supply',
   loudspeaker_or_light: 'Loudspeaker or light',
+  // Ladder rungs 6-8 a source reports (ADR 0009 amendment 2)
+  coordinated_multi_uxs: 'Coordinated multi-UxS operation',
+  relay_or_repeater: 'Relay or repeater',
+  autonomy: 'Autonomy',
   none_reported: 'None reported',
   // Electricity theft
   meter_bypass: 'Meter bypass',

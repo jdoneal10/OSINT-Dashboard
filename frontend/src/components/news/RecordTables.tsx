@@ -56,6 +56,7 @@ export function PriorityDetail({ ev }: { ev: EventDetail }) {
       categoryLabel(ev.uxs_platform ?? 'unknown'),
       ...(ev.uxs_missions ?? []).map(categoryLabel),
       ...(ev.uxs_payloads ?? []).map(categoryLabel),
+      ...(ev.uxs_capabilities ?? []).map(categoryLabel),
     )
   } else if (ev.energy_method) {
     tag = 'Electricity theft'

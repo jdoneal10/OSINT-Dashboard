@@ -1,8 +1,8 @@
 """Owner labels on UxS verdicts (ADR 0009 amendment 1): the review list and label writes.
 
-A UxS label judges one event's UxS fields (activity, platform, missions, payloads), whether
-they came from the ACLED UxS pass or from news extraction. Only events with UxS fields are
-reviewed: the labels measure precision, not recall.
+A UxS label judges one event's UxS fields (activity, platform, missions, payloads,
+capabilities), whether they came from the ACLED UxS pass or from news extraction. Only events
+with UxS fields are reviewed: the labels measure precision, not recall.
 
 The review list is a deterministic sample: events are grouped by stratum (the activity),
 each group in stable hash order, and the groups are interleaved, so labeling from the top
@@ -46,6 +46,7 @@ class UxsLabelOut(BaseModel):
     judged_platform: str
     judged_missions: list[str]
     judged_payloads: list[str]
+    judged_capabilities: list[str]
     prompt_version: str | None
     note: str | None
     updated_at: dt.datetime
@@ -66,6 +67,7 @@ class UxsReviewItem(BaseModel):
     platform: str
     missions: list[str]
     payloads: list[str]
+    capabilities: list[str]
     evidence: str | None
     prompt_version: str | None
     document_ids: list[int]
@@ -92,6 +94,7 @@ def label_out(lab: UxsLabel) -> UxsLabelOut:
         judged_platform=lab.judged_platform,
         judged_missions=list(lab.judged_missions or []),
         judged_payloads=list(lab.judged_payloads or []),
+        judged_capabilities=list(lab.judged_capabilities or []),
         prompt_version=lab.prompt_version,
         note=lab.note,
         updated_at=lab.updated_at,
@@ -100,7 +103,12 @@ def label_out(lab: UxsLabel) -> UxsLabelOut:
 
 def judged_items(ev: Event) -> set[str]:
     """What a partly wrong label may name on this event."""
-    return {"activity", "platform"} | set(ev.uxs_missions or []) | set(ev.uxs_payloads or [])
+    return (
+        {"activity", "platform"}
+        | set(ev.uxs_missions or [])
+        | set(ev.uxs_payloads or [])
+        | set(ev.uxs_capabilities or [])
+    )
 
 
 def _version(session: Session, ev: Event, slug: str) -> str | None:
@@ -157,6 +165,7 @@ def review(
                 platform=ev.uxs_platform,
                 missions=list(ev.uxs_missions or []),
                 payloads=list(ev.uxs_payloads or []),
+                capabilities=list(ev.uxs_capabilities or []),
                 evidence=uc_evidence if slug == "acled" else (ev.attributes or {}).get("evidence"),
                 prompt_version=uc_version if slug == "acled" else ev.prompt_version,
                 document_ids=docs.get(ev.id, []),
@@ -194,6 +203,7 @@ def put_label(body: UxsLabelIn, session: DB) -> UxsLabelOut:
         "judged_platform": ev.uxs_platform,
         "judged_missions": list(ev.uxs_missions or []),
         "judged_payloads": list(ev.uxs_payloads or []),
+        "judged_capabilities": list(ev.uxs_capabilities or []),
         "prompt_version": _version(session, ev, slug),
         "note": body.note,
     }

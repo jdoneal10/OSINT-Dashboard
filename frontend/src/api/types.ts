@@ -90,6 +90,8 @@ export interface EventDetail {
   uxs_platform?: string | null
   uxs_missions?: string[]
   uxs_payloads?: string[]
+  /** Ladder rungs 6-8 the source reports (extract-v13, uxs-v5; ADR 0009 amendment 2). */
+  uxs_capabilities?: string[]
   /** Reported electricity theft (extract-v7): method, what it powered, facilitator role. */
   energy_method?: string | null
   energy_powered?: string[]
@@ -612,6 +614,7 @@ export interface UxsLabelRecord extends TopicLabelRecord {
   judged_platform: string
   judged_missions: string[]
   judged_payloads: string[]
+  judged_capabilities: string[]
 }
 
 export interface TopicLabelInput {
@@ -655,6 +658,7 @@ export interface UxsReviewItem extends TopicReviewItem {
   platform: string
   missions: string[]
   payloads: string[]
+  capabilities: string[]
   label: UxsLabelRecord | null
 }
 

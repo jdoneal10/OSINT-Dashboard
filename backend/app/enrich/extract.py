@@ -76,7 +76,9 @@ log = logging.getLogger(__name__)
 #     becomes a seizure item
 # v12: same instructions; the schema allows 30 seizures and 30 persons (was 10 and 15).
 #     Security Cabinet daily roundups list 14-25 separate seizures and were quarantined.
-PROMPT_VERSION = "extract-v12"
+# v13: uxs.capabilities for ladder rungs 6-8: coordinated multi-UxS operations, relays or
+#     repeaters, autonomy, as the text reports them (ADR 0009 amendment 2)
+PROMPT_VERSION = "extract-v13"
 # The owner's labels are on v9, and v10 differs from it only in dates. The labeling top-up
 # and `make eval` stay on v9 until the owner moves them, and `make reextract` leaves v9
 # records alone: their dates are fixed by reviewed correction, not by replacing the records.
@@ -120,6 +122,7 @@ UxsActivity = Literal[
     "employment", "recovery_or_seizure", "procurement_or_import", "assembly_or_modification",
     "training", "prosecution",
 ]  # fmt: skip
+UxsCapability = Literal["coordinated_multi_uxs", "relay_or_repeater", "autonomy"]
 EnergyMethod = Literal[
     "meter_bypass", "illegal_line_connection", "transformer_or_feeder_tampering",
     "insider_facilitation", "unknown",
@@ -151,6 +154,11 @@ class UxsDetail(BaseModel):
         default_factory=list, max_length=4, description="Uses the text reports"
     )
     payloads: list[UxsPayload] = Field(default_factory=list, max_length=4)
+    capabilities: list[UxsCapability] = Field(
+        default_factory=list,
+        max_length=3,
+        description="Ladder rungs 6-8 the text reports; empty when it reports none",
+    )
 
 
 class EnergyTheftDetail(BaseModel):
@@ -429,6 +437,12 @@ surveillance_of_security_forces record only what the criminal group did and the 
 the text's precision; never the units, positions or response (rule 10).
    - payloads: explosive_or_grenade, ied, camera_or_thermal, release_mechanism, supply, \
 loudspeaker_or_light; none_reported when the text names none.
+   - capabilities, only as the text reports them, never inferred from the platform or the \
+group (zero or more): coordinated_multi_uxs (two or more unmanned systems used together in \
+one operation, at once or in a planned sequence; not drones only seized, bought or found \
+together); relay_or_repeater (a relay, repeater or signal extender used to extend an \
+unmanned system's range or control); autonomy (autonomous or pre-programmed navigation, \
+automatic target tracking, or AI-assisted control). Usually empty.
    - Police or military drones are not criminal unmanned systems: never set uxs for them.
 12. grid_interaction. Set at most one kind on an event in which the text ties criminal or \
 armed actors (a named group or cartel, organized crime, armed men, gunmen) to the electrical \
@@ -794,6 +808,7 @@ def store_extraction(
             uxs_platform=e.uxs.platform if e.uxs else None,
             uxs_missions=list(dict.fromkeys(e.uxs.missions)) if e.uxs else [],
             uxs_payloads=list(dict.fromkeys(e.uxs.payloads)) if e.uxs else [],
+            uxs_capabilities=list(dict.fromkeys(e.uxs.capabilities)) if e.uxs else [],
             energy_method=theft.method if theft else None,
             energy_powered=list(dict.fromkeys(theft.powered)) if theft else [],
             energy_facilitator=theft.facilitator if theft else None,

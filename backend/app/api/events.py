@@ -208,6 +208,7 @@ class EventOut(BaseModel):
     uxs_platform: str | None = None
     uxs_missions: list[str] = []
     uxs_payloads: list[str] = []
+    uxs_capabilities: list[str] = []
     energy_method: str | None = None
     energy_powered: list[str] = []
     energy_facilitator: str | None = None
@@ -263,6 +264,7 @@ def event_out(
         uxs_platform=ev.uxs_platform,
         uxs_missions=list(ev.uxs_missions or []),
         uxs_payloads=list(ev.uxs_payloads or []),
+        uxs_capabilities=list(ev.uxs_capabilities or []),
         energy_method=ev.energy_method,
         energy_powered=list(ev.energy_powered or []),
         energy_facilitator=ev.energy_facilitator,

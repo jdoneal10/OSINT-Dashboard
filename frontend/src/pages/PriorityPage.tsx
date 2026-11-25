@@ -124,6 +124,7 @@ export default function PriorityPage() {
                 ['Platform', 'platform'],
                 ['Mission', 'mission'],
                 ['Payload', 'payload'],
+                ['Capability (rungs 6-8)', 'capability'],
               ]
             : [
                 ['Method', 'method'],

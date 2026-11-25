@@ -532,6 +532,7 @@ describe('UxS labeling (ADR 0009 amendment 1)', () => {
     platform: 'unknown',
     missions: ['attack'],
     payloads: ['explosive_or_grenade'],
+    capabilities: ['coordinated_multi_uxs'],
     evidence: 'used drones to launch explosives',
     prompt_version: 'uxs-v3',
     document_ids: [],
@@ -549,6 +550,7 @@ describe('UxS labeling (ADR 0009 amendment 1)', () => {
       'Platform: Unknown',
       'Mission: Attack',
       'Payload: Explosive or grenade',
+      'Capability: Coordinated multi-UxS operation',
     ])
       expect(screen.getByText(chip)).toBeInTheDocument()
     expect(screen.getByText(/0 of 1 events labeled · Use 1/)).toBeInTheDocument()

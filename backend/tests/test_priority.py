@@ -80,7 +80,8 @@ def test_uxs_summary_and_ladder(client: TestClient, topics: dict[str, int]) -> N
     ladder = {r["rung"]: r for r in body["ladder"]}
     assert (ladder[1]["use"], ladder[4]["capability"], ladder[5]["use"]) == (1, 1, 1)
     assert ladder[5]["first_seen"] == "2026-10-03"
-    assert [r["rung"] for r in body["ladder"] if not r["captured"]] == [6, 7, 8]
+    assert all(r["captured"] for r in body["ladder"])  # ADR 0009 amendment 2
+    assert [ladder[r]["use"] + ladder[r]["capability"] for r in (6, 7, 8)] == [0, 0, 0]
     assert "owner framework" in body["ladder_note"]
     assert "not of underlying activity" in body["caveat"]
     windowed = client.get("/priority/uxs", params={"start": "2026-11-01"}).json()
@@ -109,3 +110,19 @@ def test_events_topic_filter_and_fields(client: TestClient, topics: dict[str, in
     )
     attack = client.get(f"/events/{topics['attack']}").json()
     assert (attack["uxs_platform"], attack["uxs_payloads"]) == ("fpv", ["explosive_or_grenade"])
+
+
+@pytest.mark.parametrize(
+    ("platform", "payloads", "capabilities", "rung"),
+    [
+        ("unknown", ["explosive_or_grenade"], ["coordinated_multi_uxs"], 6),
+        ("fpv", ["ied"], ["relay_or_repeater"], 7),
+        ("unknown", [], ["coordinated_multi_uxs", "autonomy"], 8),
+        ("fpv", ["ied"], [], 5),
+    ],
+)
+def test_a_reported_capability_sets_rungs_6_to_8(
+    platform: str, payloads: list[str], capabilities: list[str], rung: int
+) -> None:
+    # ADR 0009 amendment 2: each event counts once, at its highest rung.
+    assert uxs_rung(platform, payloads, capabilities) == rung

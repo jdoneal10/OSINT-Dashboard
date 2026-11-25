@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models import (
     UXS_ACTIVITIES,
+    UXS_CAPABILITIES,
     UXS_MISSIONS,
     UXS_PAYLOADS,
     UXS_PLATFORMS,
@@ -20,7 +21,7 @@ from app.db.models import (
     UxsClassification,
 )
 from app.enrich import acled_uxs
-from app.enrich.extract import UxsActivity, UxsMission, UxsPayload, UxsPlatform
+from app.enrich.extract import UxsActivity, UxsCapability, UxsMission, UxsPayload, UxsPlatform
 from app.enrich.llm.client import Gateway
 from app.enrich.llm.schema import strict_schema
 from tests.test_acled_grid import Fake, _resp
@@ -66,6 +67,7 @@ def test_categories_match_the_framework_lists() -> None:
     assert get_args(UxsPlatform) == UXS_PLATFORMS
     assert get_args(UxsMission) == UXS_MISSIONS
     assert get_args(UxsPayload) == UXS_PAYLOADS
+    assert get_args(UxsCapability) == UXS_CAPABILITIES
     strict_schema(acled_uxs.UxsVerdict)  # the API's strict format accepts it
 
 
@@ -149,3 +151,50 @@ def test_backlog_goes_to_a_batch_and_is_collected(
     session.expire_all()
     assert session.get_one(Event, acled["attack"]).uxs_activity == "employment"
     assert {r.status for r in session.scalars(select(UxsClassification))} == {"done"}
+
+
+MULTI = (
+    "SYNTHETIC. Gunmen of a criminal group flew three explosive drones together over Pueblo "
+    "Sintético and dropped grenades. No casualties."
+)
+
+
+def test_v4_verdicts_stay_current_and_only_capability_notes_requeue_on_request(
+    acled: dict[str, int], session: Session
+) -> None:
+    # ADR 0009 amendment 2: uxs-v5 adds capabilities without a blanket re-run.
+    src = session.scalars(select(Source).where(Source.slug == "acled")).one()
+    multi = Event(source_id=src.id, source_key="SYN4", retrieved_at=NOW,
+                  event_date=dt.date(2026, 11, 4), event_type="Explosions/Remote violence",
+                  description=MULTI, attributes={})  # fmt: skip
+    seized = Event(source_id=src.id, source_key="SYN5", retrieved_at=NOW,
+                   event_date=dt.date(2026, 11, 5), event_type="Strategic developments",
+                   description="SYNTHETIC. Five drones of a criminal group were seized in "
+                   "Pueblo Sintético.", attributes={})  # fmt: skip
+    session.add_all([multi, seized])
+    session.commit()
+    seizure = DETAIL | {"activity": "recovery_or_seizure", "missions": [], "payloads": []}
+    acled_uxs.run_uxs(gateway=Gateway(Fake(
+        _resp(verdict(uxs=seizure, evidence="Five drones of a criminal group were seized")),
+        _resp(verdict(uxs=DETAIL, evidence="flew three explosive drones together")),
+        _resp(verdict()), _resp(verdict()),
+    )))  # fmt: skip
+    session.execute(update(UxsClassification).values(prompt_version="uxs-v4"))
+    session.commit()
+    assert list(session.scalars(acled_uxs.candidates())) == []  # v4 is still current
+
+    listed = acled_uxs.requeue_capabilities(session, apply=False)
+    # "three explosive drones" in an attack; "Five drones" seized cannot show a capability.
+    assert [key for _, key, _ in listed] == ["SYN4"]
+    assert list(session.scalars(acled_uxs.candidates())) == []  # listing changes nothing
+    acled_uxs.requeue_capabilities(session, apply=True)
+    session.commit()
+    assert list(session.scalars(acled_uxs.candidates())) == [multi.id]
+
+    detail = DETAIL | {"capabilities": ["coordinated_multi_uxs"]}
+    fake = Fake(_resp(verdict(uxs=detail, evidence="flew three explosive drones together")))
+    assert acled_uxs.run_uxs(gateway=Gateway(fake))["done"] == 1
+    session.expire_all()
+    assert session.get_one(Event, multi.id).uxs_capabilities == ["coordinated_multi_uxs"]
+    assert session.get_one(UxsClassification, multi.id).prompt_version == "uxs-v5"
+    assert acled_uxs.requeue_capabilities(session, apply=False) == []

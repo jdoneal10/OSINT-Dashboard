@@ -224,6 +224,8 @@ UXS_ACTIVITIES = (
     "employment", "recovery_or_seizure", "procurement_or_import", "assembly_or_modification",
     "training", "prosecution",
 )  # fmt: skip
+# Ladder rungs 6-8 (ADR 0009 amendment 2): capabilities a source reports, never inferred.
+UXS_CAPABILITIES = ("coordinated_multi_uxs", "relay_or_repeater", "autonomy")
 ENERGY_METHODS = (
     "meter_bypass", "illegal_line_connection", "transformer_or_feeder_tampering",
     "insider_facilitation", "unknown",
@@ -265,6 +267,7 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
         _check_null_or_in("uxs_activity", UXS_ACTIVITIES, "uxs_activity"),
         _check_array_in("uxs_missions", UXS_MISSIONS, "uxs_missions"),
         _check_array_in("uxs_payloads", UXS_PAYLOADS, "uxs_payloads"),
+        _check_array_in("uxs_capabilities", UXS_CAPABILITIES, "uxs_capabilities"),
         CheckConstraint("(uxs_activity IS NULL) = (uxs_platform IS NULL)", "uxs_complete"),
         _check_null_or_in("energy_method", ENERGY_METHODS, "energy_method"),
         _check_array_in("energy_powered", ENERGY_POWERED, "energy_powered"),
@@ -315,6 +318,10 @@ class Event(ProvenanceMixin, LLMDerivedMixin, TimestampMixin, Base):
         ARRAY(String(40)), default=list, server_default="{}"
     )
     uxs_payloads: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)), default=list, server_default="{}"
+    )
+    # Ladder rungs 6-8 the source reports (extract-v13, uxs-v5; ADR 0009 amendment 2).
+    uxs_capabilities: Mapped[list[str]] = mapped_column(
         ARRAY(String(40)), default=list, server_default="{}"
     )
     # Electricity theft (extract-v7): reported cases only, never inferred sites (ADR 0009 §4).
@@ -1097,19 +1104,19 @@ class GridLabel(TimestampMixin, Base):
 
 
 # Items a "partly wrong" UxS label can name: the activity, the platform, or one of the
-# missions or payloads the event carries.
-UXS_LABEL_ITEMS = ("activity", "platform", *UXS_MISSIONS, *UXS_PAYLOADS)
+# missions, payloads or capabilities the event carries.
+UXS_LABEL_ITEMS = ("activity", "platform", *UXS_MISSIONS, *UXS_PAYLOADS, *UXS_CAPABILITIES)
 
 
 class UxsLabel(TimestampMixin, Base):
     """Owner's hand label on one event's UxS verdict (ADR 0009 amendment 1).
 
-    Judges only the UxS fields (activity, platform, missions, payloads), for ACLED events (the
-    UxS pass) and news events (extraction) alike. ``correct``: every field right. ``partial``:
-    ``wrong`` names the items that are wrong. ``incorrect``: no criminal unmanned system at
-    all. The verdict judged is frozen on the label (``judged_*``, ``prompt_version``): if the
-    event is later reclassified, the label still says what it judged, and the evaluation
-    leaves it out as stale.
+    Judges only the UxS fields (activity, platform, missions, payloads, capabilities), for
+    ACLED events (the UxS pass) and news events (extraction) alike. ``correct``: every field
+    right. ``partial``: ``wrong`` names the items that are wrong. ``incorrect``: no criminal
+    unmanned system at all. The verdict judged is frozen on the label (``judged_*``,
+    ``prompt_version``): if the event is later reclassified, the label still says what it
+    judged, and the evaluation leaves it out as stale.
     """
 
     __tablename__ = "uxs_labels"
@@ -1119,6 +1126,7 @@ class UxsLabel(TimestampMixin, Base):
         _check_in("judged_platform", UXS_PLATFORMS, "judged_platform"),
         _check_array_in("judged_missions", UXS_MISSIONS, "judged_missions"),
         _check_array_in("judged_payloads", UXS_PAYLOADS, "judged_payloads"),
+        _check_array_in("judged_capabilities", UXS_CAPABILITIES, "judged_capabilities"),
         _check_array_in("wrong", UXS_LABEL_ITEMS, "wrong"),
         CheckConstraint("(verdict = 'partial') = (cardinality(wrong) > 0)", "partial_names_items"),
     )
@@ -1135,6 +1143,10 @@ class UxsLabel(TimestampMixin, Base):
     judged_payloads: Mapped[list[str]] = mapped_column(
         ARRAY(String(40)), default=list, server_default="{}"
     )
+    # Labels saved before ADR 0009 amendment 2 judged no capabilities: empty, like their events.
+    judged_capabilities: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)), default=list, server_default="{}"
+    )
     prompt_version: Mapped[str | None] = mapped_column(String(32))
     note: Mapped[str | None] = mapped_column(Text)
 
@@ -1145,6 +1157,7 @@ class UxsLabel(TimestampMixin, Base):
             or self.judged_platform != ev.uxs_platform
             or sorted(self.judged_missions or []) != sorted(ev.uxs_missions or [])
             or sorted(self.judged_payloads or []) != sorted(ev.uxs_payloads or [])
+            or sorted(self.judged_capabilities or []) != sorted(ev.uxs_capabilities or [])
         )
 
 

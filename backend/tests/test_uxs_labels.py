@@ -180,3 +180,26 @@ def test_reextraction_keeps_uxs_labeled_documents(
     assert client.put("/uxs/labels", json={"event_id": uxs["news"], "verdict": "correct"}
                       ).status_code == 200  # fmt: skip
     assert extract.mark_for_reextraction() == 0
+
+
+def test_labels_judge_capabilities_and_older_labels_stay_current(
+    uxs: dict[str, int], client: TestClient, session: Session
+) -> None:
+    # ADR 0009 amendment 2: a label saved with no capabilities stays current while the event
+    # has none, and goes stale when the event gains one.
+    att = uxs["attack"]
+    lab = client.put("/uxs/labels", json={"event_id": att, "verdict": "correct"}).json()
+    assert lab["judged_capabilities"] == []
+    assert client.get("/uxs/review").json()["labeled"] == 1
+    session.execute(update(Event).where(Event.id == att)
+                    .values(uxs_capabilities=["coordinated_multi_uxs"]))  # fmt: skip
+    session.commit()
+    body = client.get("/uxs/review").json()
+    item = next(i for i in body["items"] if i["event_id"] == att)
+    assert (item["capabilities"], item["stale"], body["labeled"]) == (
+        ["coordinated_multi_uxs"], True, 0)  # fmt: skip
+    lab = client.put("/uxs/labels", json={"event_id": att, "verdict": "partial",
+                                          "wrong": ["coordinated_multi_uxs"]}).json()  # fmt: skip
+    assert (lab["judged_capabilities"], lab["wrong"]) == (
+        ["coordinated_multi_uxs"], ["coordinated_multi_uxs"])  # fmt: skip
+    assert client.get("/uxs/review").json()["labeled"] == 1

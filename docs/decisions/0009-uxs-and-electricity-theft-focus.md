@@ -95,3 +95,44 @@ carried no UxS fields. The Phase 3 sample also mixed UxS and energy: after grid 
   grid-pass events. Platform is mostly `unknown`: ACLED notes rarely name the drone type.
 - Precision only: the labels judge events that carry UxS fields, so missed drone reporting
   (recall) is not measured.
+
+## Amendment 2 (2026-11-25): ladder rungs 6–8
+
+**Context.** The escalation ladder (framework §1) was counted only up to rung 5, because
+extraction recorded platform and payload but nothing that shows rungs 6–8: coordinated
+multi-drone operations, relays and repeaters, and more advanced autonomy. The Priority page
+listed them as "not captured". PIRs 6 and 7 ask about exactly these capabilities.
+
+**Decision.**
+1. **New field `uxs_capabilities`** on events (zero or more), set only as the source
+   reports it, never inferred from the platform or the group. The definitions are owner
+   judgment:
+   - `coordinated_multi_uxs` (rung 6): two or more unmanned systems used together in one
+     operation, at once or in a planned sequence. Drones only seized, bought or found
+     together do not count.
+   - `relay_or_repeater` (rung 7): a relay, repeater or signal extender used to extend an
+     unmanned system's range or control.
+   - `autonomy` (rung 8): autonomous or pre-programmed navigation, automatic target
+     tracking, or AI-assisted control.
+2. **Prompts.** News extraction becomes `extract-v13` and the ACLED UxS pass `uxs-v5`. Both
+   change only by adding this field and its rule.
+3. **No blanket re-run.** A `uxs-v4` verdict stays current, so the owner's accepted UxS
+   labels stay valid. Only ACLED verdicts of reported use (`employment`) whose notes may
+   report a capability are run again: two or more drones, swarms, relays, repeaters or
+   autonomy (`CAPABILITY_PATTERN`). On 2026-11-25 the pattern matched 20 notes, and the
+   owner chose the 11 attacks: seizures of several drones cannot show a capability, so
+   re-running them would only risk drift. The owner runs that requeue with
+   `python -m app.enrich.acled_uxs --requeue-capabilities --apply`. News documents get the
+   field when they are next extracted (`make reextract` is the owner's call).
+4. **Ladder.** Each event counts once, at its highest rung. A reported capability sets
+   rung 6, 7 or 8.
+5. **Labels.** `uxs_labels.judged_capabilities` freezes the capabilities judged, and a
+   partly wrong label may name a capability. A label goes stale when the event's
+   capabilities change. Existing labels judged none, and their events carry none, so they
+   stay current.
+
+**Consequences.**
+- Counts on rungs 6–8 are a floor. Verdicts made before the field existed never looked for
+  it, and on 2026-11-25 no relevant news article reported relays or autonomy.
+- A requeued note whose re-run verdict differs (a capability added, or another field
+  changed) makes its label stale until the owner labels it again.

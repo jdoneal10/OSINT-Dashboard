@@ -259,6 +259,7 @@ def test_uxs_and_energy_theft_are_stored(seeded: Session, doc_id: int) -> None:
                 "platform": "fpv",
                 "missions": ["attack", "attack", "surveillance"],
                 "payloads": ["explosive_or_grenade"],
+                "capabilities": ["coordinated_multi_uxs", "coordinated_multi_uxs"],
             },
         ),
         _event(
@@ -277,6 +278,8 @@ def test_uxs_and_energy_theft_are_stored(seeded: Session, doc_id: int) -> None:
     assert (drone.uxs_activity, drone.uxs_platform) == ("employment", "fpv")
     assert drone.uxs_missions == ["attack", "surveillance"]  # duplicates dropped, order kept
     assert drone.uxs_payloads == ["explosive_or_grenade"]
+    assert drone.uxs_capabilities == ["coordinated_multi_uxs"]  # ADR 0009 amendment 2
+    assert power.uxs_capabilities == []
     assert (drone.energy_method, drone.energy_powered) == (None, [])
     assert (power.energy_method, power.energy_facilitator) == (
         "illegal_line_connection",
@@ -306,6 +309,7 @@ def test_database_rejects_categories_outside_the_framework(seeded: Session, doc_
     for values in (
         {"uxs_activity": "employment"},  # platform missing
         {"uxs_activity": "employment", "uxs_platform": "fpv", "uxs_missions": ["joyride"]},
+        {"uxs_activity": "employment", "uxs_platform": "fpv", "uxs_capabilities": ["teleport"]},
         {"grid_interaction": "theft", "energy_method": "meter_bypass"},  # facilitator missing
         {
             "grid_interaction": "theft",

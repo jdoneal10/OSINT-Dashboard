@@ -238,6 +238,7 @@ def _uxs_items(lab: UxsLabel) -> list[tuple[str, str]]:
         ("platform", f"platform: {lab.judged_platform}"),
         *((m, f"mission: {m}") for m in lab.judged_missions or []),
         *((p, f"payload: {p}") for p in lab.judged_payloads or []),
+        *((c, f"capability: {c}") for c in lab.judged_capabilities or []),
     ]
 
 

@@ -1,18 +1,17 @@
 """Summaries for the priority topics (ADR 0009): unmanned systems and electricity theft.
 
 The escalation ladder comes from the owner framework (docs/framework/
-uxs-and-electricity-theft.md §1), which is owner judgment, not sourced fact. A rung is derived
-from each event's reported platform, payload and mission. Only rungs the extraction fields can
-show are derived:
+uxs-and-electricity-theft.md §1), which is owner judgment, not sourced fact. Each event is
+counted once, at the highest rung its reported platform, payloads and capabilities show:
 
 - 1-2 observation or thermal reconnaissance: any reported use (a camera or thermal payload
   cannot be told apart from the text alone);
 - 3 FPV or low-level flight: an FPV platform;
 - 4 payload drops: a release mechanism, or explosives carried by a non-FPV platform;
-- 5 one-way attacks: an FPV platform carrying explosives or an IED.
-
-Rungs 6-8 (coordinated multi-drone operations, relays and repeaters, advanced autonomy) have no
-extraction field yet, so they are listed as not captured rather than counted as zero.
+- 5 one-way attacks: an FPV platform carrying explosives or an IED;
+- 6 coordinated multi-drone operations, 7 relays and repeaters, 8 more advanced autonomy: the
+  capability the source reports (``uxs_capabilities``; ADR 0009 amendment 2). Older verdicts
+  were made before the field existed, so a zero here is a floor, not an absence.
 """
 
 from __future__ import annotations
@@ -33,15 +32,21 @@ LADDER: tuple[tuple[int, str, bool], ...] = (
     (3, "FPV and low-level flight", True),
     (4, "Payload drops", True),
     (5, "One-way attacks", True),
-    (6, "Coordinated multi-drone operations", False),
-    (7, "Relays and repeaters", False),
-    (8, "More advanced autonomy", False),
+    (6, "Coordinated multi-drone operations", True),
+    (7, "Relays and repeaters", True),
+    (8, "More advanced autonomy", True),
 )
+CAPABILITY_RUNGS = {"coordinated_multi_uxs": 6, "relay_or_repeater": 7, "autonomy": 8}
 EMPLOYMENT = "employment"
 
 
-def uxs_rung(platform: str | None, payloads: Iterable[str]) -> int:
-    """Highest ladder rung an event's reported platform and payloads show (owner framework)."""
+def uxs_rung(
+    platform: str | None, payloads: Iterable[str], capabilities: Iterable[str] = ()
+) -> int:
+    """Highest ladder rung an event's reported platform, payloads and capabilities show."""
+    reported = [CAPABILITY_RUNGS[c] for c in capabilities if c in CAPABILITY_RUNGS]
+    if reported:
+        return max(reported)
     loads = set(payloads)
     armed = bool(loads & EXPLOSIVES)
     if platform == "fpv" and armed:
@@ -133,9 +138,11 @@ def uxs_summary(
             out.breakdown["mission"][m] += 1
         for p in ev.uxs_payloads or []:
             out.breakdown["payload"][p] += 1
+        for c in ev.uxs_capabilities or []:
+            out.breakdown["capability"][c] += 1
         if ev.admin1_name:
             out.states[ev.admin1_name] += 1
-        rung = uxs_rung(ev.uxs_platform, ev.uxs_payloads or [])
+        rung = uxs_rung(ev.uxs_platform, ev.uxs_payloads or [], ev.uxs_capabilities or [])
         by_rung[rung].add(ev.event_date, use=activity == EMPLOYMENT)
     out.total = len(ids)
     out.sources, out.acled_events = _sources(session, ids)

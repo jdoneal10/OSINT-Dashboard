@@ -5,7 +5,8 @@ behind IR 8 that ACLED holds (explosive drone attacks, drones seized or shot dow
 surveillance by criminal groups) was never recorded in the UxS fields. This pass sends the
 notes of ACLED events that mention drones or other unmanned systems to Haiku, one event per
 request, and stores the verdict on the event in the same fields news extraction fills:
-``uxs_activity``, ``uxs_platform``, ``uxs_missions`` and ``uxs_payloads``.
+``uxs_activity``, ``uxs_platform``, ``uxs_missions``, ``uxs_payloads`` and
+``uxs_capabilities``.
 
 Rules (owner framework §1, CLAUDE.md):
 
@@ -26,6 +27,13 @@ are real-time. Run as pipeline stage ``uxs`` or by hand:
 
     python -m app.enrich.acled_uxs                # one pass (collect, then submit or call)
     python -m app.enrich.acled_uxs --sample 20    # real-time on 20 candidates, show verdicts
+    python -m app.enrich.acled_uxs --requeue-capabilities [--apply]
+                                                  # queue uxs-v4 uses that may hold rungs 6-8
+
+uxs-v5 adds only the capabilities (ADR 0009 amendment 2), so a uxs-v4 verdict stays current
+and the owner's labels on it stay valid. Only verdicts of reported use whose notes match
+``CAPABILITY_PATTERN`` are worth running again, and only on the owner's say:
+``--requeue-capabilities`` lists them, and with ``--apply`` queues them for the next pass.
 """
 
 from __future__ import annotations
@@ -52,7 +60,11 @@ from app.enrich.llm.pricing import HAIKU
 log = logging.getLogger(__name__)
 
 STAGE = "uxs"
-PROMPT_VERSION = "uxs-v4"  # v2: separate events; v3: ACLED actors; v4: crews, drone payloads
+# v2: separate events; v3: ACLED actors; v4: crews, drone payloads; v5: capabilities (rungs 6-8)
+PROMPT_VERSION = "uxs-v5"
+# Verdicts under these versions are current: v5 only adds capabilities, which a v4 note gets
+# by an explicit requeue (see the module docstring), not by a blanket re-run.
+CURRENT_VERSIONS = ("uxs-v4", PROMPT_VERSION)
 MAX_TOKENS = 1000
 EFFORT = "low"
 SOURCE = "acled"
@@ -64,6 +76,15 @@ SOURCE = "acled"
 CANDIDATE_PATTERN = (
     r"(\mdrones?\M|\mUAVs?\M|unmanned|quadcopter|\mFPV\M|semi-?submersible"
     r"|narco-?sub)"
+)
+# uxs-v4 notes that may report a rung 6-8 capability: two or more drones (a number, with at
+# most one word between, e.g. "two explosive drones"), swarms, relays, repeaters, autonomy.
+# Only verdicts of reported use are requeued: a capability is something drones were used
+# for, so seizures of several drones cannot show one, and re-running them only risks drift.
+CAPABILITY_PATTERN = (
+    r"(\m(two|three|four|five|six|seven|eight|nine|ten|several|multiple|various|numerous"
+    r"|[0-9]+)\s+([a-z-]+\s+)?drones\M|swarm|\mrelay|repeater|autonom"
+    r"|artificial intelligence|\mAI\M|pre-?programm)"
 )
 
 
@@ -124,6 +145,12 @@ overwatch, attack, logistics (carrying drugs or supplies), coercion_or_propagand
 surveillance_of_security_forces, monitoring_economic_activity.
 - payloads (zero or more): explosive_or_grenade, ied, camera_or_thermal, \
 release_mechanism, supply, loudspeaker_or_light; none_reported when the note names none.
+- capabilities, only as the note reports them, never inferred from the platform or the \
+group (zero or more, usually none): coordinated_multi_uxs (two or more unmanned systems \
+used together in one operation, at once or in a planned sequence; not drones only seized, \
+bought or found together); relay_or_repeater (a relay, repeater or signal extender used to \
+extend an unmanned system's range or control); autonomy (autonomous or pre-programmed \
+navigation, automatic target tracking, or AI-assisted control).
 
 SECURITY FORCES. When criminal drones attack or watch police, soldiers or the National \
 Guard, record the mission (attack or surveillance_of_security_forces) and nothing more: \
@@ -151,17 +178,53 @@ def candidates() -> Select[int]:
             or_(
                 u.event_id.is_(None),
                 (u.status != "batched")
-                & ((u.notes_sha256 != current_notes_hash()) | (u.prompt_version != PROMPT_VERSION)),
+                & (
+                    (u.notes_sha256 != current_notes_hash())
+                    | u.prompt_version.not_in(CURRENT_VERSIONS)
+                ),
             ),
         )
         .order_by(Event.event_date.desc(), Event.id)
     )
 
 
+def capability_candidates() -> Select[int, str, str | None]:
+    """uxs-v4 verdicts of reported use whose notes may report a rung 6-8 capability."""
+    u = UxsClassification
+    return (
+        select(Event.id, Event.source_key, Event.uxs_activity)
+        .join(Source, Source.id == Event.source_id)
+        .join(u, u.event_id == Event.id)
+        .where(
+            Source.slug == SOURCE,
+            u.status == "done",
+            u.prompt_version != PROMPT_VERSION,
+            Event.uxs_activity == "employment",
+            Event.description.op("~*")(CANDIDATE_PATTERN),
+            Event.description.op("~*")(CAPABILITY_PATTERN),
+        )
+        .order_by(Event.event_date.desc(), Event.id)
+    )
+
+
+def requeue_capabilities(session: Session, *, apply: bool) -> list[tuple[int, str, str | None]]:
+    """List the notes ``capability_candidates`` finds; with ``apply``, queue them again.
+
+    Queuing drops the verdict's provenance row, so the next pass classifies the note under
+    the current prompt. The verdict on the event stays until the new one replaces it.
+    """
+    rows = [(r[0], r[1], r[2]) for r in session.execute(capability_candidates())]
+    if apply and rows:
+        ids = [r[0] for r in rows]
+        session.execute(delete(UxsClassification).where(UxsClassification.event_id.in_(ids)))
+    return rows
+
+
 def _clear(ev: Event) -> None:
     ev.uxs_activity = ev.uxs_platform = None
     ev.uxs_missions = []
     ev.uxs_payloads = []
+    ev.uxs_capabilities = []
 
 
 def clear_stale(session: Session) -> int:
@@ -230,6 +293,7 @@ def store(
             ev.uxs_platform = verdict.uxs.platform
             ev.uxs_missions = list(dict.fromkeys(verdict.uxs.missions))
             ev.uxs_payloads = list(dict.fromkeys(verdict.uxs.payloads))
+            ev.uxs_capabilities = list(dict.fromkeys(verdict.uxs.capabilities))
         return "done"
 
 
@@ -348,8 +412,22 @@ def run_uxs(limit: int = 50, gateway: Gateway | None = None) -> dict[str, int]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.enrich.acled_uxs")
     parser.add_argument("--sample", type=int, help="classify N candidates now and show them")
+    parser.add_argument(
+        "--requeue-capabilities",
+        action="store_true",
+        help="list older verdicts whose notes may report rungs 6-8 (ADR 0009 amendment 2)",
+    )
+    parser.add_argument("--apply", action="store_true", help="with --requeue-capabilities: queue")
     args = parser.parse_args(argv)
     configure_logging(get_settings().log_level)
+    if args.requeue_capabilities:
+        with session_factory()() as session, session.begin():
+            rows = requeue_capabilities(session, apply=args.apply)
+        for _, key, activity in rows:
+            print(f"{key} {activity}")
+        verb = "queued for the next uxs pass" if args.apply else "would be queued (add --apply)"
+        print(f"{len(rows)} notes {verb}")
+        return 0
     if not args.sample:
         log.info("uxs pass: %s", run_uxs())
         return 0

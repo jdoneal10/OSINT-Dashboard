@@ -26,7 +26,9 @@ CAVEAT = (
 )
 LADDER_NOTE = (
     "Rungs derive from the owner framework (owner judgment) applied to each event's reported "
-    "platform and payload. Rungs 6-8 have no extraction field yet and are not counted."
+    "platform, payloads and capabilities; each event counts once, at its highest rung. Rungs "
+    "6-8 count only what a source reports, and older verdicts predate that field, so their "
+    "counts are a floor."
 )
 
 
