@@ -216,3 +216,16 @@ def test_backlog_goes_to_a_batch_and_is_collected(
     assert session.get_one(Event, acled["sabotage"]).grid_interaction == (
         "deliberate_outage_or_sabotage")  # fmt: skip
     assert {r.status for r in session.scalars(select(GridClassification))} == {"done"}
+
+
+def test_a_long_quote_is_trimmed_at_a_word_boundary() -> None:
+    quote = SABOTAGE + " " + SABOTAGE + " although"  # about 330 characters, junk at the end
+    v = acled_grid.GridVerdict.model_validate(verdict(kind="utility_withdrawal", evidence=quote))
+    assert v.evidence is not None
+    assert len(v.evidence) <= acled_grid.EVIDENCE_MAX
+    assert v.evidence.endswith("…")
+    assert "although" not in v.evidence
+    assert quote.startswith(v.evidence[:-1])
+    short = "burned an electrical substation"
+    assert acled_grid.trim_quote(short, acled_grid.EVIDENCE_MAX) == short
+    assert acled_grid.trim_quote(None, acled_grid.EVIDENCE_MAX) is None

@@ -19,12 +19,14 @@ Re-running with a new ``PROMPT_VERSION`` replaces the document's derived records
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
+import re
 from collections.abc import Mapping
 from decimal import Decimal
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
@@ -72,7 +74,9 @@ log = logging.getLogger(__name__)
 # v11: criminal interaction with the grid (ADR 0014): rule 12 becomes grid_interaction with
 #     theft as one of six kinds, rule 13 adds energy indicators, and crypto-mining equipment
 #     becomes a seizure item
-PROMPT_VERSION = "extract-v11"
+# v12: same instructions; the schema allows 30 seizures and 30 persons (was 10 and 15).
+#     Security Cabinet daily roundups list 14-25 separate seizures and were quarantined.
+PROMPT_VERSION = "extract-v12"
 # The owner's labels are on v9, and v10 differs from it only in dates. The labeling top-up
 # and `make eval` stay on v9 until the owner moves them, and `make reextract` leaves v9
 # records alone: their dates are fixed by reviewed correction, not by replacing the records.
@@ -298,9 +302,35 @@ class Extraction(BaseModel):
         description="English summary, 2-4 sentences; name only people listed in persons"
     )
     events: list[ExtractedEvent] = Field(default_factory=list, max_length=10)
-    seizures: list[ExtractedSeizure] = Field(default_factory=list, max_length=10)
+    seizures: list[ExtractedSeizure] = Field(default_factory=list, max_length=30)
     organizations: list[ExtractedOrganization] = Field(default_factory=list, max_length=20)
-    persons: list[ExtractedPerson] = Field(default_factory=list, max_length=15)
+    persons: list[ExtractedPerson] = Field(default_factory=list, max_length=30)
+
+    @field_validator("events", "seizures", "organizations", "persons", mode="before")
+    @classmethod
+    def _list_sent_as_string(cls, value: Any) -> Any:
+        return decode_list_string(value)
+
+
+def decode_list_string(value: Any) -> Any:
+    """A list the model sent as a JSON string, decoded; anything else is returned unchanged.
+
+    Without the structured-output grammar the model now and then sends a list field as a
+    quoted JSON string, sometimes ending in a stray ``,"`` before the closing ``}]`` (seen
+    2026-11-22 and 2026-11-25). Only that artifact is repaired; a string that still does not
+    decode to a list is left for validation to reject, so the document is quarantined.
+    """
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    for candidate in (text, re.sub(r',\s*"\s*\}\s*\]$', "}]", text)):
+        try:
+            decoded = json.loads(candidate)
+        except ValueError:
+            continue
+        if isinstance(decoded, list):
+            return decoded
+    return value
 
 
 RULES = """You extract structured intelligence from news articles and official press releases \

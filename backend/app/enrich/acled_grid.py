@@ -34,7 +34,7 @@ import datetime as dt
 import logging
 from typing import Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import Select, delete, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -69,6 +69,24 @@ CANDIDATE_PATTERN = (
 )
 
 
+EVIDENCE_MAX = 200
+
+
+def trim_quote(value: object, limit: int) -> object:
+    """A quote longer than ``limit``, cut at the last word boundary that fits, with "…".
+
+    The model sometimes quotes a little past the limit and trails off into junk (seen
+    2026-11-23: a 207-character quote followed by "although"). The limit stays in the schema
+    sent to the model; this keeps a long quote instead of quarantining the whole verdict.
+    """
+    if not isinstance(value, str) or len(value) <= limit:
+        return value
+    cut = value[: limit - 1]
+    if " " in cut:
+        cut = cut[: cut.rindex(" ")]
+    return cut.rstrip(" ,;:") + "…"
+
+
 class GridVerdict(BaseModel):
     kind: GridKind | None = Field(
         description="The one kind the note reports, or null if none applies"
@@ -84,6 +102,11 @@ class GridVerdict(BaseModel):
         "indicators; null when both are empty",
         max_length=200,
     )
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _trim_evidence(cls, value: object) -> object:
+        return trim_quote(value, EVIDENCE_MAX)
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:

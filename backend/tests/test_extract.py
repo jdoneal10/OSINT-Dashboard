@@ -581,3 +581,50 @@ def test_omitted_nullable_and_list_fields_read_as_empty() -> None:
     # The schema sent still lists every property as required.
     schema = strict_schema(extract.Extraction)
     assert "title" in schema["$defs"]["ExtractedPerson"]["required"]
+
+
+# --------------------------------------------------------------------------- v12 schema repairs
+
+ORGS = [{"name": "Cártel Sintético", "org_type": "cartel"}]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        json.dumps(ORGS),
+        # The non-strict tool artifact seen 2026-11-22 and 2026-11-25: a stray ," before }]
+        '[{"name": "Cártel Sintético", "org_type": "cartel","}]',
+        ' [{"name": "Cártel Sintético", "org_type": "cartel", " } ] ',
+    ],
+)
+def test_a_list_sent_as_a_string_is_decoded(raw: str) -> None:
+    out = extract.Extraction.model_validate(
+        {"relevant": True, "summary_en": "Synthetic.", "organizations": raw}
+    )
+    assert [o.model_dump() for o in out.organizations] == ORGS
+
+
+@pytest.mark.parametrize("raw", ['[{"name": "Cártel', "not json", '{"name": "x"}', '"[]"'])
+def test_a_string_that_is_not_a_list_is_still_rejected(raw: str) -> None:
+    with pytest.raises(ValidationError):
+        extract.Extraction.model_validate(
+            {"relevant": True, "summary_en": "Synthetic.", "organizations": raw}
+        )
+
+
+def test_v12_allows_daily_roundups_but_still_caps_lists() -> None:
+    base = {"relevant": True, "summary_en": "Synthetic."}
+    org = ORGS[0]
+    extract.Extraction.model_validate(base | {"organizations": [org] * 20})
+    with pytest.raises(ValidationError):
+        extract.Extraction.model_validate(base | {"organizations": [org] * 21})
+    fields = extract.Extraction.model_fields
+    assert (
+        fields["seizures"].metadata[0].max_length,
+        fields["persons"].metadata[0].max_length,
+    ) == (
+        30,
+        30,
+    )
+    schema = json.dumps(strict_schema(extract.Extraction))
+    assert "at most items: 30" in schema
