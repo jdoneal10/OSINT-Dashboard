@@ -208,6 +208,21 @@ def select_files(listings: list[Listing], *, all_series: bool) -> list[Listing]:
 # --------------------------------------------------------------------------- parsing
 
 
+_FISCAL_YEAR = re.compile(r"(\d{4})(?:\s*\(FYTD\))?")
+
+
+def fiscal_year(text: str) -> int:
+    """The fiscal year in a CBP year cell: ``2026``, or ``2027 (FYTD)`` for the year in progress.
+
+    CBP marks the current fiscal year "(FYTD)" in the year column itself; those figures are
+    partial and revised until year close, which the snapshot dates already record.
+    """
+    m = _FISCAL_YEAR.fullmatch(text.strip())
+    if m is None:
+        raise CbpFormatError(f"unexpected fiscal year {text!r}")
+    return int(m.group(1))
+
+
 def fiscal_month(fy: int, month_abbv: str) -> dt.date:
     """CBP fiscal year N runs Oct (N-1) .. Sep N."""
     m = MONTH_NUM[month_abbv.strip().upper()[:3]]
@@ -248,7 +263,7 @@ def parse_encounters(content: bytes) -> Iterator[MetricRow]:
     for r in _reader(content, ENCOUNTERS_HEADER):
         if r["Land Border Region"] != "Southwest Land Border":
             continue
-        fy = int(r["Fiscal Year"])
+        fy = fiscal_year(r["Fiscal Year"])
         yield MetricRow(
             metric="encounters",
             aor_label=r["Area of Responsibility"],
@@ -270,7 +285,7 @@ def parse_drugs(content: bytes) -> Iterator[MetricRow]:
     for r in _reader(content, DRUGS_HEADER):
         if r["Region"] != "Southwest Border":
             continue
-        fy = int(r["FY"])
+        fy = fiscal_year(r["FY"])
         dims = (
             ("component", r["Component"]),
             ("drug_type", r["Drug Type"]),
