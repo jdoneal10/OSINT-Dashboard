@@ -47,3 +47,16 @@ Both were profiled locally. A case-sensitive scan for control markings (FOUO, CU
 - ACLED trends run continuously from the historical events into the last year, at state level. Point-level detail for that year still waits for ACLED's event release.
 - The project's map gains a state-actor context layer. It stays secondary to TCO tracking; widening to strategic competition as a mission would need its own ADR.
 - Rule 4 costs a few military and security rows.
+
+## Amendment 1 (2026-11-25): short update files
+
+The owner now also downloads short aggregate files (for example `ACLED_data_2026-11-14.xlsx`,
+the weeks of 2026-11-07 and 11-14), with the same columns as the regional workbook. The
+series used to read only the newest snapshot, so a two-week file would have emptied every
+earlier aggregate week. Each week now comes whole from the newest snapshot that covers it:
+- a short file extends the series;
+- a newer full workbook supersedes older files week by week;
+- older snapshots stay in the table as history.
+
+Within a week, a newer file replaces every state's count, so a state missing from it reads
+as zero that week, as in ACLED's own file.

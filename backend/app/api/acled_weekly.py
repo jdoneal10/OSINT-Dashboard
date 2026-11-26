@@ -28,7 +28,7 @@ EventType = Annotated[list[str] | None, Query(description="ACLED event type")]
 class WeeklyMeta(BaseModel):
     events_through: dt.date | None
     horizon_week_end: dt.date | None
-    aggregate_snapshot: dt.date | None
+    aggregate_snapshot: dt.date | None  # the newest file; each week reads its newest one
     aggregate_first_week: dt.date | None
     aggregate_last_week: dt.date | None
     events_accessed: dt.datetime | None

@@ -7,8 +7,10 @@ event type. Each week takes its counts from exactly one source:
   *event horizon*. ACLED releases event data with a lag and the newest released week is
   usually partial (2026-11-16: the week of 2025-11-08 had 183 events released of 322), so
   the horizon is the last Friday at least a week before the newest event date.
-- ``aggregate``: the newest snapshot of the weekly aggregate file, for weeks after the
-  horizon.
+- ``aggregate``: the weekly aggregate files, for weeks after the horizon. Each week comes
+  whole from the newest snapshot that covers it, so a short update file (the owner's
+  two-week downloads) extends the series instead of replacing it, and a newer full file
+  supersedes older ones week by week.
 
 When no aggregate snapshot is loaded, events are used for every week, including the partial
 last one. When ACLED releases more events, the horizon moves and events take those weeks
@@ -74,13 +76,13 @@ def series_meta(session: Session) -> SeriesMeta:
     ).one()
     snap = _latest_snapshot(session)
     first = last = agg_accessed = None
-    if snap is not None:
+    if snap is not None:  # weeks across all snapshots: each week reads its newest one
         first, last, agg_accessed = session.execute(
             select(
                 func.min(AcledWeekly.week),
                 func.max(AcledWeekly.week),
                 func.max(AcledWeekly.retrieved_at),
-            ).where(AcledWeekly.snapshot_date == snap)
+            )
         ).one()
     horizon = None
     if through is not None:
@@ -169,6 +171,11 @@ def weekly_series(
         rows.append(WeekRow(w, a, t, int(n), int(f), "events"))
 
     if meta.aggregate_snapshot is not None:
+        newest = (
+            select(AcledWeekly.week, func.max(AcledWeekly.snapshot_date).label("snap"))
+            .group_by(AcledWeekly.week)
+            .subquery()
+        )
         agg = (
             select(
                 AcledWeekly.week,
@@ -177,7 +184,10 @@ def weekly_series(
                 func.sum(AcledWeekly.events),
                 func.sum(AcledWeekly.fatalities),
             )
-            .where(AcledWeekly.snapshot_date == meta.aggregate_snapshot)
+            .join(
+                newest,
+                (newest.c.week == AcledWeekly.week) & (newest.c.snap == AcledWeekly.snapshot_date),
+            )
             .group_by(AcledWeekly.week, AcledWeekly.admin1_code, AcledWeekly.event_type)
         )
         if horizon_start is not None:

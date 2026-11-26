@@ -302,7 +302,7 @@ export default function BorderPage() {
             {weekly?.events_accessed && `, accessed ${localDate(weekly.events_accessed)}`}. Filtered
             to {stateNames.join(', ') || 'the adjacent states'}, all event types, counted by ACLED
             week. Weeks after the event-data horizon use ACLED&apos;s published weekly aggregates
-            {weekly?.aggregate_snapshot && ` (file of ${weekly.aggregate_snapshot})`}.
+            {weekly?.aggregate_snapshot && ` (newest file ${weekly.aggregate_snapshot})`}.
           </p>
           {sector?.method && <p>Adjacency method: {sector.method}</p>}
         </footer>
