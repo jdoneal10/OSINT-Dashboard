@@ -124,6 +124,27 @@ sources:
           Use in this dashboard rests on the owner's written permission from Dataminr
           (2026-11-17), held by the owner and recorded in ADR 0012.
 
+  - slug: pixtoday
+    name: Pixtoday.net (PiX) — Mexico active-cartel event exports
+    source_type: dataset
+    # D: PiX-written summaries of X posts, compiled by an aggregator; single reports stay
+    # low until press or official reporting corroborates them (ADR 0010).
+    reliability: D
+    homepage_url: https://pixtoday.net
+    redistribution_allowed: false
+    license_notes: >-
+      Exported by the owner while signed in and imported locally; robots.txt disallows every
+      agent, so nothing is fetched. The owner reports explicit permission to use the data,
+      including processing with Claude (2026-11-13; ADR 0010). Every record keeps the
+      underlying X post URL. Government / Military Operations rows are dropped (rule 4).
+    sources:
+      - title: Pixtoday.net
+        publisher: PiX
+        url: https://pixtoday.net
+        accessed: 2026-11-13
+        note: >-
+          Use rests on the owner's reported permission, recorded in ADR 0010.
+
   - slug: natural-earth
     name: Natural Earth
     source_type: reference

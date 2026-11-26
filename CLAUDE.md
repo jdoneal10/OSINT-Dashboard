@@ -70,6 +70,7 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 - `make ingest SOURCE=news [FEED=slug]` — RSS/listing/GDELT feeds registered in `data/reference/feeds.yaml`
 - `make ingest SOURCE=designations` — OFAC SDN (regional programs) and Federal Register FTO/SDGT notices
 - `make ingest SOURCE=sesnsp FILE=path` — SESNSP municipal crime file (manual download; automated access is blocked)
+- `make ingest SOURCE=pixtoday FILE=path` — PiX events export (owner download; robots.txt blocks fetching); one document per X post, rule-4 rows dropped (ADR 0010 amendment 4)
 - `make ingest SOURCE=acled-weekly FILE=path` — ACLED weekly aggregate workbook (owner download); joined with ACLED events into one weekly series (ADR 0011)
 - `make ingest SOURCE=dataminr [FILE=path]` — Dataminr First Alert digests from `data/raw/dataminr/inbox/` (owner's Gmail connector drops them there; the worker also runs this daily at 10:00 HST; ADR 0012)
 - `make reference-inegi` — one-time INEGI municipalities + local gazetteer (resumable, ~45 min)

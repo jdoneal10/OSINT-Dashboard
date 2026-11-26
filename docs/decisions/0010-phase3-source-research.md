@@ -122,3 +122,14 @@ Owner-approved ("Move it", 2026-11-22).
   - the owner's 9 labels on them: relevance verdicts on 1257, 1261 and 1262, and verdicts on the 6 records.
 
   extract-v9 record precision went from 188/210 correct to 185/204; labels now number 864. Raw gob.mx snapshots stay in `data/raw/fgr/` (gitignored). Backup: `data/raw/_backups/osint-before-fgr-2023-removal-20261123T035048Z.dump`.
+
+## Amendment 4 (2026-11-26): PiX event importer
+The owner placed `PiX_MEX_ActiveCartels_Events_20261125.csv` in `data/raw/pixtoday/` on 2026-11-26. It has 588 rows (posts from 2 to 25 November 2026) and the same ten columns as the 2026-11-13 export. A case-sensitive scan found no control markings. The importer is `make ingest SOURCE=pixtoday FILE=path` (`app/ingest/pixtoday.py`).
+
+- **One document per X post.** A post mapped to several places appears on several rows; it is stored once, keyed `x:<status ID>`, so a later export that overlaps an earlier one adds only the new posts. A stored post is never rewritten. The file of 2026-11-25 gives 539 posts.
+- **Text.** The document holds PiX's summary as written, then a line labeled "PiX record" with PiX's event date, its cartel attribution and its categories, so attribution stays PiX's and is shown as reported. PiX's mapped coordinates stay in the raw file; extraction geocodes from the text as for any other report.
+- **Dates.** `published_at` is the post time decoded from the status ID (an X snowflake). Where PiX gives no event date, the post day is used.
+- **Dropped at import:** "Government / Military Operations" rows (26 in this file; rule 4) and rows without an X post URL (2), since every record must cite the underlying source. From "Security Operations" rows, extraction keeps only the TCO action (extraction rule 10).
+- **Grade D**, as for Dataminr (ADR 0012): an aggregator's summaries of social-media posts. A single PiX report stays low until an independent source corroborates it.
+- **Independence.** Clusters now count sources whose documents cite the same original post (the same X status, or the same canonical URL) as one independent source (`app.enrich.dedupe.independent_sources`). A post relayed by both PiX and Dataminr therefore does not corroborate itself. Three posts in this file are already in the database through Dataminr.
+- **Still to do.** The organization dataset (`dataset_693_export_<date>.csv`) waits for the owner's export. The precursor workbook waits for Phase 4.

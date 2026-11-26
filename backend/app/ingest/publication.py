@@ -15,8 +15,8 @@ from zoneinfo import ZoneInfo
 from app.db.models import Document
 from app.ingest import feeds
 
-# Sources without a feed entry. Dataminr alerts span the AOI, which is mostly UTC-6.
-_OTHER_ZONES = {"dataminr": "America/Mexico_City"}
+# Sources without a feed entry. Dataminr alerts and PiX posts span the AOI, mostly UTC-6.
+_OTHER_ZONES = {"dataminr": "America/Mexico_City", "pixtoday": "America/Mexico_City"}
 _WEEKDAYS = (
     "Monday (lunes)", "Tuesday (martes)", "Wednesday (miércoles)", "Thursday (jueves)",
     "Friday (viernes)", "Saturday (sábado)", "Sunday (domingo)",
