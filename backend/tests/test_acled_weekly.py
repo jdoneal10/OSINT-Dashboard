@@ -48,8 +48,8 @@ def _workbook(path: Path, rows: list[list[Any]], header: list[str] = HEADER) -> 
     return path
 
 
-def _file(tmp_path: Path, rows: list[list[Any]]) -> Path:
-    name = "Latin-America-the-Caribbean_aggregated_data_up_to_week_of-2025-11-29.xlsx"
+def _file(tmp_path: Path, rows: list[list[Any]], name: str | None = None) -> Path:
+    name = name or "Latin-America-the-Caribbean_aggregated_data_up_to_week_of-2025-11-29.xlsx"
     return _workbook(tmp_path / name, rows)
 
 
@@ -188,3 +188,22 @@ def test_api_series_and_state_totals(joined: Session, client: TestClient) -> Non
     ).json()
     assert states["origins"] == ["aggregate"]
     assert {i["admin1_code"]: i["events"] for i in states["items"]} == {"MX-SIN": 13, "MX-SON": 2}
+
+
+def test_each_week_reads_the_newest_file_that_covers_it(joined: Session, tmp_path: Path) -> None:
+    # A two-week update file extends the series; older weeks keep their older file.
+    acled_weekly.run_file(_file(tmp_path, [
+        _row(dt.date(2025, 11, 22), "Sinaloa", 5, 0),  # revised; Sonora not in this file
+        _row(dt.date(2025, 11, 29), "Sinaloa", 7, 1),
+    ], name="update.xlsx"), snapshot=dt.date(2026, 11, 25))  # fmt: skip
+    meta = series_meta(joined)
+    assert (meta.aggregate_snapshot, meta.aggregate_first_week, meta.aggregate_last_week) == (
+        dt.date(2026, 11, 25), SAT, dt.date(2025, 11, 29))  # fmt: skip
+    got = {(r.week, r.admin1_code): r.events for r in weekly_series(joined)
+           if r.origin == "aggregate"}  # fmt: skip
+    assert got == {
+        (dt.date(2025, 11, 8), "MX-SIN"): 6,  # only in the first file
+        (dt.date(2025, 11, 15), "MX-SIN"): 4,
+        (dt.date(2025, 11, 22), "MX-SIN"): 5,  # the week comes whole from the newer file
+        (dt.date(2025, 11, 29), "MX-SIN"): 7,
+    }

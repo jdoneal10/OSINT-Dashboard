@@ -35,6 +35,7 @@ The system collects, normalizes, classifies, deduplicates, enriches and alerts. 
 | Mission | `surveillance`, `route_security`, `overwatch`, `attack`, `logistics`, `coercion_or_propaganda`, `surveillance_of_security_forces`*, `monitoring_economic_activity` |
 | Payload | `explosive_or_grenade`, `ied`, `camera_or_thermal`, `release_mechanism`, `supply`, `loudspeaker_or_light`, `none_reported` |
 | Activity | `employment`, `recovery_or_seizure`, `procurement_or_import`, `assembly_or_modification`, `training`, `prosecution` |
+| Capability (rungs 6–8, as reported) | `coordinated_multi_uxs` (two or more unmanned systems used together in one operation), `relay_or_repeater` (extends range or control), `autonomy` (autonomous or pre-programmed navigation, automatic target tracking, AI-assisted control) |
 
 \* Rule 4 applies: record what the TCO did and the location at the source's precision. Never record units, positions or the response.
 
@@ -61,6 +62,34 @@ The system collects, normalizes, classifies, deduplicates, enriches and alerts. 
 
 ### Scope limit
 The notes also describe how investigators find suspect sites: utility-account anomalies, feeder data, thermal screening, network traffic, and ranking facilities by mismatch. The dashboard does **not** do this. It needs non-public utility data (rule 1), and it would flag specific private properties by inference. The dashboard tracks **reported** cases: raids, investigations, prosecutions and CFE or official statements.
+
+### Grid interactions, indicators and municipal assessments (ADR 0014, proposed 2026-11-22)
+Owner judgment: few articles say outright that electricity is being stolen, so theft is usually an inference from a series of reports. Collection is widened in three layers, each stored and shown under its own label. The scope limit above still applies to all three.
+
+1. **Reported grid interactions.** Criminal interaction with the electrical grid, with theft as one kind. Every kind needs a source linking it to criminal activity.
+
+   | Kind | What counts |
+   |---|---|
+   | `theft` | the reported cases above, including illegal hookups described in other words |
+   | `deliberate_outage_or_sabotage` | a group cuts power, burns a substation or downs towers |
+   | `attack_on_utility_workers` | utility crews attacked, kidnapped or threatened (recorded by role, as victims) |
+   | `extortion_or_service_control` | a group charges for, rations or controls power; extortion of the utility or its contractors |
+   | `infrastructure_theft` | transformer, cable or copper theft the source ties to a criminal group |
+   | `utility_withdrawal` | the utility or its contractors suspend work or service citing insecurity |
+
+2. **Indicators.** Reported facts that suggest theft without claiming it. They never make a record a theft case.
+
+   | Indicator | What counts |
+   |---|---|
+   | `mining_equipment_seized` | crypto-mining equipment found in a raid or seizure |
+   | `high_load_site` | a grow, lab or compound reported with heavy electrical equipment (lights, air conditioning, generators, refrigeration) |
+   | `outage_in_contested_area` | repeated or unexplained outages the source places where a criminal group operates |
+   | `utility_insider_reported` | a utility employee reported as linked to a criminal group, with no theft claim |
+   | `fuel_theft` | fuel theft by a criminal group (pipeline taps, huachicol), never fuel smuggling. Owner judgment: the networks that tap pipelines also tap the grid. Fuel theft is still not electricity theft. |
+
+3. **Municipal assessments.** When a municipality has at least two layer 1 or 2 records from at least two independent sources within 12 months, an analytic step may write an assessment in estimative language that cites every record. The unit is the municipality. An assessment never names, locates or ranks a property, address or account, and it is shown as an assessment, not a finding.
+
+Owner decisions (2026-11-22, ADR 0014): all six kinds sit under IR 9; all five indicators are kept; the layer 3 trigger is two records from two independent sources within 12 months.
 
 ### Categories used in extraction
 | Dimension | Values |

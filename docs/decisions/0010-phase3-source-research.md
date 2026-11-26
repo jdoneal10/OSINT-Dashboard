@@ -98,3 +98,38 @@ The owner reports a written agreement from Telegram that authorizes incorporatin
   - **Collection method.** No method is approved. ScrapeAtlas was offered and declined by the owner (paid service). The owner is evaluating an alternative for social media content, which needs its own decision before any code is written.
 - **Claude processing:** the owner confirmed on 2026-11-13 that the agreement covers processing with Claude, so Telegram content goes through the normal LLM stages once collected.
 - **Handling once collected:** social-media grade (low Admiralty, single source unless corroborated); narco-propaganda stays low; rule 3 person safeguards and rule 4 (no friendly-force data) apply; raw pulls go to `data/raw/telegram/` and are never committed.
+
+## Amendment 2 (2026-11-20): DroneLife written permission
+Outlet batch 1 left DroneLife pending. Its robots.txt allows our client and AI agents, but its [Terms of Service](https://dronelife.com/termsofservice/) bar "unauthorized spidering, 'scraping,' or harvesting Content … or … other unauthorized automated means to compile information" and limit use to personal, non-commercial use.
+
+The owner reports explicit written permission from DroneLife for this dashboard, given its non-commercial use. The owner holds the permission.
+
+- **Effect:** automated collection (RSS plus full article text) is authorized for this project. DroneLife is active with `text: full` and reliability C.
+- **AI processing:** the terms have no AI clause, so DroneLife content goes through the normal LLM stages.
+- **Unchanged:** personal, non-commercial use only; no redistribution. The feed entry in `feeds.yaml` records this.
+
+## Amendment 3 (2026-11-22): FGR feed moved to fgr.org.mx
+Owner-approved ("Move it", 2026-11-22).
+
+- **Why.** FGR stopped publishing press releases on gob.mx in January 2023. Even sorted newest first, that archive ends at DPE/0088/2023 (13 January 2023), so the feed kept finding the same nine releases. Current releases are on FGR's own site, `www.fgr.org.mx/es/FGR/Prensa`.
+- **Terms.** No robots.txt (404). No terms of use, copyright notice or reuse statement on the home, press or privacy pages (checked 2026-11-22). The feed is handled like the gob.mx feeds: personal, non-commercial use, with no public display, redistribution or transfer. Reliability B, full text. `docs/data-sources.md` has its own row, and the feed host is allowed as a registered feed.
+- **Parsing.** Each release is `/es/FGR/Prensa/_rid/61/_mod/story` named by its `suri` query value. A new feed field, `link_query`, keeps only that value, so one release is one entry. Listings are decoded with the charset the server declares (ISO-8859-1 here, although the page's meta tag says UTF-8). A card's `span.fecha` day is stored as a bare date, and titles read "Comunicado FGR 835/26. Headline".
+- **TLS.** The server sends only its leaf certificate. The public intermediate (DigiCert Global G2 TLS RSA SHA256 2020 CA1, from the leaf's own CA Issuers URL) is bundled in `data/reference/tls/intermediates.pem` and added to certifi's roots for chain building (`app/ingest/tls.py`). Chains must still end at a certifi root; verification stays on.
+- **First pull.** Twenty releases from 20–22 November 2026 were stored with full text. The nine 2023 releases stored from gob.mx were not changed at first.
+- **2023 releases removed (owner-approved "Delete with labels", 2026-11-22).** Documents 1254–1262 were deleted, with everything derived from them:
+  - events 268120 and 268126 and seizures 124 and 128–130 (all dated 13 January 2023);
+  - cluster 202, which held only those two events, and its assessment 16;
+  - the owner's 9 labels on them: relevance verdicts on 1257, 1261 and 1262, and verdicts on the 6 records.
+
+  extract-v9 record precision went from 188/210 correct to 185/204; labels now number 864. Raw gob.mx snapshots stay in `data/raw/fgr/` (gitignored). Backup: `data/raw/_backups/osint-before-fgr-2023-removal-20261123T035048Z.dump`.
+
+## Amendment 4 (2026-11-26): PiX event importer
+The owner placed `PiX_MEX_ActiveCartels_Events_20261125.csv` in `data/raw/pixtoday/` on 2026-11-26. It has 588 rows (posts from 2 to 25 November 2026) and the same ten columns as the 2026-11-13 export. A case-sensitive scan found no control markings. The importer is `make ingest SOURCE=pixtoday FILE=path` (`app/ingest/pixtoday.py`).
+
+- **One document per X post.** A post mapped to several places appears on several rows; it is stored once, keyed `x:<status ID>`, so a later export that overlaps an earlier one adds only the new posts. A stored post is never rewritten. The file of 2026-11-25 gives 539 posts.
+- **Text.** The document holds PiX's summary as written, then a line labeled "PiX record" with PiX's event date, its cartel attribution and its categories, so attribution stays PiX's and is shown as reported. PiX's mapped coordinates stay in the raw file; extraction geocodes from the text as for any other report.
+- **Dates.** `published_at` is the post time decoded from the status ID (an X snowflake). Where PiX gives no event date, the post day is used.
+- **Dropped at import:** "Government / Military Operations" rows (26 in this file; rule 4) and rows without an X post URL (2), since every record must cite the underlying source. From "Security Operations" rows, extraction keeps only the TCO action (extraction rule 10).
+- **Grade D**, as for Dataminr (ADR 0012): an aggregator's summaries of social-media posts. A single PiX report stays low until an independent source corroborates it.
+- **Independence.** Clusters now count sources whose documents cite the same original post (the same X status, or the same canonical URL) as one independent source (`app.enrich.dedupe.independent_sources`). A post relayed by both PiX and Dataminr therefore does not corroborate itself. Three posts in this file are already in the database through Dataminr.
+- **Still to do.** The organization dataset (`dataset_693_export_<date>.csv`) waits for the owner's export. The precursor workbook waits for Phase 4.

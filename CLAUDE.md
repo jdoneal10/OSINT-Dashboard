@@ -70,16 +70,20 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 - `make ingest SOURCE=news [FEED=slug]` — RSS/listing/GDELT feeds registered in `data/reference/feeds.yaml`
 - `make ingest SOURCE=designations` — OFAC SDN (regional programs) and Federal Register FTO/SDGT notices
 - `make ingest SOURCE=sesnsp FILE=path` — SESNSP municipal crime file (manual download; automated access is blocked)
+- `make ingest SOURCE=pixtoday FILE=path` — PiX events export (owner download; robots.txt blocks fetching); one document per X post, rule-4 rows dropped (ADR 0010 amendment 4)
 - `make ingest SOURCE=acled-weekly FILE=path` — ACLED weekly aggregate workbook (owner download); joined with ACLED events into one weekly series (ADR 0011)
-- `make ingest SOURCE=dataminr [FILE=path]` — Dataminr First Alert digests from `data/raw/dataminr/inbox/` (owner's Gmail connector drops them there; the worker also runs this every 30 min; ADR 0012)
+- `make ingest SOURCE=dataminr [FILE=path]` — Dataminr First Alert digests from `data/raw/dataminr/inbox/` (owner's Gmail connector drops them there; the worker also runs this daily at 10:00 HST; ADR 0012)
 - `make reference-inegi` — one-time INEGI municipalities + local gazetteer (resumable, ~45 min)
 - `cd backend && uv run python -m app.core.secrets set ACLED_USERNAME` — store a secret in Keychain (owner runs this; never pass secrets on the command line)
 - `cd backend && uv run python -m app.enrich.actors --rebuild` — re-run actor normalization over all events
 - `cd backend && uv run python -m app.enrich.llm.check` — verify the stored Anthropic key (free Models API call; never prints the key)
 - `make pipeline [STAGE=...]` — enrichment pass: dedupe, local filter, Haiku extract, cluster/Admiralty, Sonnet analyze
-- `make reextract` — queue documents extracted under an older prompt version; the next pipeline run submits them as one Batch API job (50% price)
+- `cd backend && uv run python -m app.enrich.person_repair [--apply]` — re-apply the person safeguards and match keys to stored records (reports only without `--apply`; ADR 0013 amendment 1)
+- `make pipeline STAGE=grid` or `cd backend && uv run python -m app.enrich.acled_grid [--sample N]` — ACLED grid pass: classify ACLED notes about the grid or fuel theft into grid-interaction kinds and indicators (ADR 0014); a backlog goes to the Batch API; `--sample` classifies N now and prints the verdicts
+- `make pipeline STAGE=uxs` or `cd backend && uv run python -m app.enrich.acled_uxs [--sample N]` — ACLED UxS pass: classify ACLED notes about drones and other unmanned systems into the UxS fields (ADR 0009 amendment 1); a backlog goes to the Batch API; `--sample` classifies N now and prints the verdicts; `--requeue-capabilities [--apply]` lists, or queues, the older verdicts whose notes may report ladder rungs 6–8 (ADR 0009 amendment 2)
+- `make reextract` — queue documents extracted under an older prompt version (except `extract-v9`, the labeled one, and hand-corrected documents; ADR 0004 amendment 2); the next pipeline run submits them as one Batch API job (50% price)
 - `cd backend && uv run python -m app.reports.charts.demo_charts` — render notional samples of each INTSUM chart type to `data/chart_samples/` (gitignored)
-- `make eval [MODELS=qwen3:4b,gemma3:4b] [PROMPT=extract-v3]` — precision/filter-recall report from the owner's labels into `docs/evaluations/` (model comparison uses local Ollama only)
+- `make eval [MODELS=qwen3:4b,gemma3:4b] [PROMPT=extract-v3]` — precision/filter-recall report from the owner's labels into `docs/evaluations/` (model comparison uses local Ollama only); the default prompt is the labeled `extract-v9`
 
 ## Engineering conventions
 - **Ingesters are idempotent.** Upsert on a stable source key; re-running a pull never duplicates rows. Store every raw pull in `data/raw/<source>/<date>/` before parsing.
@@ -105,5 +109,5 @@ docs/            architecture.md, data-sources.md, decisions/ (ADRs)
 ## Do not
 - Do not add sources, scrapers, or AOI expansions beyond the current phase without asking.
 - Do not introduce paid data services without an ADR (current decision: free sources only; the owner may revisit later).
-- Do not add telemetry or analytics. Outbound calls go only to destinations listed in `docs/data-sources.md`: source pulls, the Claude API, and any service an ADR approves. A config allowlist enforcing the list is added with the first new destination (ADR 0008).
+- Do not add telemetry or analytics. Outbound calls go only to destinations listed in `docs/data-sources.md`: source pulls, the Claude API, and any service an ADR approves. The allowlist is enforced in code: `data/reference/outbound.yaml` plus active feed hosts in `feeds.yaml` and loopback (`app/core/outbound.py`, checked on every request and redirect hop); a new destination needs its `data-sources.md` row first (ADR 0008).
 - Do not commit data from `data/raw/` or any ACLED-derived export.

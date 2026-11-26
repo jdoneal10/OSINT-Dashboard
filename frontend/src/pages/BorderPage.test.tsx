@@ -98,7 +98,7 @@ describe('BorderPage', () => {
     expect(footer).toHaveTextContent(/ACLED \(Armed Conflict Location & Event Data\)/)
     expect(footer).toHaveTextContent(/accessed 2026-11-11/)
     expect(footer).toHaveTextContent(/Sonora/)
-    expect(footer).toHaveTextContent(/weekly aggregates \(file of 2026-11-16\)/)
+    expect(footer).toHaveTextContent(/weekly aggregates \(newest file 2026-11-16\)/)
   })
 
   it('keeps both classification banners and the nav on every route', async () => {

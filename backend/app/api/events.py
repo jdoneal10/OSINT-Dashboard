@@ -11,7 +11,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from geoalchemy2 import Geometry
 from pydantic import BaseModel
-from sqlalchemy import Select, cast, func, select, tuple_
+from sqlalchemy import Select, cast, false, func, or_, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.db.models import BORDER_THREATS, Actor, Event, Source, actor_events, event_documents
@@ -33,6 +33,20 @@ class EventFilters(BaseModel):
     source: list[str] | None = None
     include_out_of_aoi: bool = False
     border_threat: list[str] | None = None
+    topic: list[str] | None = None
+
+
+TOPICS = ("uxs", "energy_theft")
+
+
+def topic_clause(topics: list[str]) -> Any:
+    """Priority topics (ADR 0009): events with UxS or electricity-theft detail."""
+    clauses = []
+    if "uxs" in topics:
+        clauses.append(Event.uxs_activity.is_not(None))
+    if "energy_theft" in topics:
+        clauses.append(Event.energy_method.is_not(None))
+    return or_(*clauses) if clauses else false()
 
 
 def threat_clause(column: Any, threats: list[str]) -> Any:
@@ -55,6 +69,9 @@ def event_filters(
         list[str] | None,
         Query(description=f"border-threat categories, or 'any' (ADR 0007): {BORDER_THREATS}"),
     ] = None,
+    topic: Annotated[
+        list[str] | None, Query(description=f"priority topics (ADR 0009): {TOPICS}")
+    ] = None,
 ) -> EventFilters:
     box = None
     if bbox:
@@ -75,6 +92,7 @@ def event_filters(
         source=source,
         include_out_of_aoi=include_out_of_aoi,
         border_threat=border_threat,
+        topic=topic,
     )
 
 
@@ -103,6 +121,8 @@ def apply_filters[T: Any](stmt: Select[T], f: EventFilters, session: Session) ->
         stmt = stmt.where(Event.source_id.in_(select(Source.id).where(Source.slug.in_(f.source))))
     if f.border_threat:
         stmt = stmt.where(threat_clause(Event.border_threat, f.border_threat))
+    if f.topic:
+        stmt = stmt.where(topic_clause(f.topic))
     if f.start:
         stmt = stmt.where(Event.event_date >= f.start)
     if f.end:
@@ -184,6 +204,17 @@ class EventOut(BaseModel):
     cluster_id: int | None
     in_aoi: bool
     border_threat: str | None
+    uxs_activity: str | None = None
+    uxs_platform: str | None = None
+    uxs_missions: list[str] = []
+    uxs_payloads: list[str] = []
+    uxs_capabilities: list[str] = []
+    energy_method: str | None = None
+    energy_powered: list[str] = []
+    energy_facilitator: str | None = None
+    energy_scale: str | None = None
+    grid_interaction: str | None = None  # ADR 0014
+    energy_indicators: list[str] = []
     evidence: str | None  # supporting quote from the source text (news-derived only)
     actors: list[dict[str, Any]]
     document_ids: list[int]  # documents this event was derived from (empty for ACLED)
@@ -229,6 +260,17 @@ def event_out(
         cluster_id=ev.cluster_id,
         in_aoi=ev.in_aoi,
         border_threat=ev.border_threat,
+        uxs_activity=ev.uxs_activity,
+        uxs_platform=ev.uxs_platform,
+        uxs_missions=list(ev.uxs_missions or []),
+        uxs_payloads=list(ev.uxs_payloads or []),
+        uxs_capabilities=list(ev.uxs_capabilities or []),
+        energy_method=ev.energy_method,
+        energy_powered=list(ev.energy_powered or []),
+        energy_facilitator=ev.energy_facilitator,
+        energy_scale=ev.energy_scale,
+        grid_interaction=ev.grid_interaction,
+        energy_indicators=list(ev.energy_indicators or []),
         evidence=(ev.attributes or {}).get("evidence"),
         actors=actors.get(ev.id, []),
         document_ids=docs.get(ev.id, []),

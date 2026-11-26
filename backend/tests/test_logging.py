@@ -12,6 +12,8 @@ from app.core.logging import REDACTED, redact
         ("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.x.y", "eyJhbGciOiJIUzI1NiJ9.x.y"),
         ("password=hunter2hunter2", "hunter2hunter2"),
         ("postgresql+psycopg://osint:topsecret@db:5432/osint", "topsecret"),
+        ("f.xml?X-Amz-Signature=abc123def456&X-Amz-Date=1", "abc123def456"),
+        ("f.xml?X-Amz-Credential=ASIAEXAMPLE%2F2026&a=1", "ASIAEXAMPLE"),
     ],
 )
 def test_redact_removes_secrets(raw: str, leak: str) -> None:

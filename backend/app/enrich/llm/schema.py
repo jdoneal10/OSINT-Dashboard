@@ -29,11 +29,17 @@ _HINT = {
 
 def _strict(node: Any) -> Any:
     if isinstance(node, dict):
+        if "properties" in node and isinstance(node["properties"], dict):
+            # Field names are not schema keywords: a field called "title" must survive.
+            node = {**node, "properties": {k: _strict(v) for k, v in node["properties"].items()}}
+            done = node["properties"]
+        else:
+            done = None
         hints = [f"{_HINT[k]} {v}" for k, v in node.items() if k in _HINT]
         if node.get("minItems", 0) > 1:
             hints.append(f"at least items: {node['minItems']}")
         out = {
-            k: _strict(v)
+            k: (done if k == "properties" and done is not None else _strict(v))
             for k, v in node.items()
             if k not in _DROP and k not in _HINT and not (k == "minItems" and v > 1)
         }

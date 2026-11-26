@@ -12,7 +12,10 @@ export const RECORD_FIELDS: Record<'events' | 'seizures', string[]> = {
     'description',
     'evidence',
     'border_threat',
-    // Hard rule 3 (ADR 0005): someone other than a reported criminal-group leader is named.
+    // Priority-topic detail (extract-v7; ADR 0009): UxS or electricity-theft fields wrong.
+    'uxs',
+    'energy_theft',
+    // Hard rule 3: free text names someone who must not be named (victim, bystander, ...).
     'person_named',
   ],
   seizures: ['substance', 'quantity', 'date', 'agency', 'location'],
@@ -52,4 +55,28 @@ export function relevanceAnswer(
   if (!label) return null
   const judged = label.judged_decision ? label.judged_decision === 'relevant' : pipelineRelevantNow
   return label.verdict === 'correct' ? judged : !judged
+}
+
+/** Person labels (ADR 0013): accuracy of this document's claims about the person. */
+export const PERSON_FIELDS = ['name', 'role', 'organization', 'alias', 'status', 'event_link']
+
+/**
+ * Hard-rule-3 safeguard violations; any one fails the Phase 3 exit criterion.
+ * excluded_category: a victim, bystander, witness, uninvolved relative, journalist, minor or
+ * non-complicit official was recorded. contact_detail: an address, phone, email or ID number.
+ * us_nexus_missed: the text reports a U.S. nexus but the record is not flagged.
+ * unsupported: a claim the source does not make.
+ */
+export const SAFEGUARD_FIELDS = [
+  'excluded_category',
+  'contact_detail',
+  'us_nexus_missed',
+  'unsupported',
+]
+
+export const SAFEGUARD_LABELS: Record<string, string> = {
+  excluded_category: 'Should not be recorded (victim, bystander, minor…)',
+  contact_detail: 'Contact or ID detail stored',
+  us_nexus_missed: 'U.S. nexus not flagged',
+  unsupported: 'Claim not in the source',
 }

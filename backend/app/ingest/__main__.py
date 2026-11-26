@@ -8,6 +8,7 @@ make ingest SOURCE=acled DELETED=1          # ACLED deleted-events reconciliatio
 make ingest SOURCE=acled-weekly FILE=...    # ACLED weekly aggregate workbook (ADR 0011)
 make ingest SOURCE=dataminr                 # First Alert digests in data/raw/dataminr/inbox/
 make ingest SOURCE=dataminr FILE=...        # one digest .txt from elsewhere (left in place)
+make ingest SOURCE=pixtoday FILE=...        # a PiX events export (owner download; ADR 0010)
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.ingest import acled, acled_weekly, cbp, dataminr, designations, news, sesnsp
+from app.ingest import acled, acled_weekly, cbp, dataminr, designations, news, pixtoday, sesnsp
 
 
 def _cbp(args: argparse.Namespace) -> int:
@@ -60,12 +61,20 @@ def _dataminr(args: argparse.Namespace) -> int:
     return dataminr.run_inbox([Path(args.file)] if args.file else None)
 
 
+def _pixtoday(args: argparse.Namespace) -> int:
+    if not args.file:
+        print("pixtoday imports an owner export: pass FILE=... (robots.txt blocks fetching)")
+        return 2
+    return pixtoday.run_file(Path(args.file))
+
+
 INGESTERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "cbp": _cbp,
     "acled": _acled,
     "acled-weekly": _acled_weekly,
     "dataminr": _dataminr,
     "news": _news,
+    "pixtoday": _pixtoday,
     "designations": lambda _args: designations.run_designations(),
     "sesnsp": _sesnsp,
 }
@@ -76,7 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("source", nargs="?", help="source slug: " + ", ".join(INGESTERS))
     parser.add_argument("--since", type=dt.date.fromisoformat, help="YYYY-MM-DD (backfill start)")
     parser.add_argument(
-        "--file", help="import a manually downloaded file (cbp, sesnsp, acled-weekly, dataminr)"
+        "--file",
+        help="import a manually downloaded file (cbp, sesnsp, acled-weekly, dataminr, pixtoday)",
     )
     parser.add_argument(
         "--snapshot-date",

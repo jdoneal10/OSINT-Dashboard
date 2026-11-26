@@ -12,11 +12,13 @@ row (job ``news-<slug>``), so one failing outlet never blocks the rest.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import re
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+from zoneinfo import ZoneInfo
 
 import feedparser
 from lxml import html as lxml_html
@@ -34,6 +36,7 @@ from app.ingest.articles import (
 )
 from app.ingest.feeds import Feed
 from app.ingest.http import PoliteClient
+from app.ingest.publication import page_time
 from app.ingest.raw import write_raw
 from app.ingest.runs import (
     DeferredRun,
@@ -47,12 +50,15 @@ from app.ingest.runs import (
 log = logging.getLogger(__name__)
 
 GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
+MEXICO_CITY = ZoneInfo("America/Mexico_City")
 GDELT_MIN_INTERVAL = 20.0  # GDELT asks for one request per 5 s; it still answered 429 at ~15 s
 # GDELT's 429s outlast short retries (observed 2026-11-12/13): wait 30 s, 1, 2, then 4 min.
 GDELT_BACKOFF_INITIAL = 30.0
 GDELT_LOOKBACK = dt.timedelta(days=3)  # first run / gap cap
 # The worker queries GDELT every 6 hours; a refused run is deferred (not an error) while the
-# next run's window would still reach back to the last success.
+# next run's window would still reach back to the last success, or when the feed has never
+# succeeded (its window is always the full lookback). GDELT refuses even a first request after
+# hours of quiet (checked 2026-11-24), so the retries, not slower requests, are what get through.
 GDELT_SCHEDULE_INTERVAL = dt.timedelta(hours=6)
 # Alert once a feed has missed this many runs in a row (owner decision 2026-11-15).
 STALL_ALERT_MISSES = 2
@@ -106,21 +112,136 @@ def parse_rss(content: bytes) -> list[Entry]:
     return out
 
 
-def parse_listing(content: bytes, base_url: str, link_pattern: str) -> list[Entry]:
+# gob.mx archive listings answer with JavaScript (text/javascript): the article markup sits
+# in escaped string literals passed to ``$("#prensa").append("...")``. Such literals are read
+# wherever they appear, in a script response or an inline <script>.
+_JS_APPEND = re.compile(r'\.append\(\s*"((?:[^"\\]|\\.)*)"\s*\)', re.S)
+
+
+def _script_fragments(text: str) -> list[Any]:
+    """HTML fragments that scripts build with ``.append("...")`` string literals."""
+    out = []
+    for literal in _JS_APPEND.findall(text):
+        try:
+            markup = json.loads(f'"{literal}"')
+        except ValueError:
+            continue
+        if "<a" in markup:
+            out.append(lxml_html.fragment_fromstring(markup, create_parent="div"))
+    return out
+
+
+def parse_listing(
+    content: bytes,
+    base_url: str,
+    link_pattern: str,
+    *,
+    link_query: tuple[str, ...] | list[str] = (),
+    encoding: str | None = None,
+) -> list[Entry]:
+    """Article links on a listing page.
+
+    ``link_query`` names the query values that identify an article (FGR's ``suri``); links
+    without them are skipped and every other value is dropped, so one article is one entry.
+    ``encoding`` is the charset the server declared; it wins over the page's own meta tag.
+    """
     pattern = re.compile(link_pattern)
     host = urlsplit(base_url).netloc.lower()
-    tree = lxml_html.fromstring(content)
+    text = content.decode(encoding or "utf-8", errors="replace")
+    fragments = _script_fragments(text) if ".append(" in text else []
+    roots = [*fragments] if fragments and not text.lstrip().startswith("<") else []
+    if not roots:
+        roots = [lxml_html.fromstring(text if encoding else content), *fragments]
     seen: dict[str, Entry] = {}
-    for a in tree.iter("a"):
-        href = a.get("href")
-        if not href:
-            continue
-        url = urljoin(base_url, href)
-        parts = urlsplit(url)
-        # Only the agency's own articles: same host, matching path.
-        if parts.netloc.lower() == host and pattern.search(parts.path) and url not in seen:
-            seen[url] = Entry(url=url, title=" ".join(a.text_content().split()) or None)
+    for root in roots:
+        for a in root.iter("a"):
+            href = a.get("href")
+            if not href:
+                continue
+            url = urljoin(base_url, href)
+            parts = urlsplit(url)
+            # Only the agency's own articles: same host, matching path.
+            if parts.netloc.lower() != host or not pattern.search(parts.path):
+                continue
+            if link_query:
+                kept = [(k, v) for k, v in parse_qsl(parts.query) if k in link_query]
+                if not kept:
+                    continue
+                url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(kept), ""))
+            title = (
+                _card_title(a) or a.get("aria-label") or " ".join(a.text_content().split()) or None
+            )
+            known = seen.get(url)
+            if known is None:
+                seen[url] = Entry(url=url, title=title, published=_listed_time(a))
+            elif known.title is None and title:
+                # A card's image link comes first and carries no text; keep its titled twin.
+                published = _listed_time(a) or known.published
+                seen[url] = Entry(url=url, title=title, published=published)
     return list(seen.values())
+
+
+def _declared_charset(content_type: str) -> str | None:
+    m = re.search(r"charset=([\w-]+)", content_type, re.I)
+    return m.group(1) if m else None
+
+
+def _card_title(a: Any) -> str | None:
+    """FGR cards: ``span.numBoletin`` and ``span.titBoletin`` -> "Comunicado FGR 1/26. Headline"."""
+
+    def span(cls: str) -> str:
+        el = a.find(f".//span[@class='{cls}']")
+        return " ".join(el.text_content().split()) if el is not None else ""
+
+    headline = span("titBoletin")
+    if not headline:
+        return None
+    number = span("numBoletin")
+    return f"{number}. {headline}" if number else headline
+
+
+_MONTHS = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7,
+    "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+}  # fmt: skip
+_SPANISH_DAY = re.compile(r"(\d{1,2})\s+de\s+([a-záéíóú]+)\s+(?:de\s+|del\s+)?(\d{4})", re.I)
+
+
+def _card_day(a: Any) -> dt.datetime | None:
+    """``<span class="fecha">22 de noviembre de 2026</span>`` in the link's card (FGR).
+
+    The card gives the day only, so it is stored as midnight UTC, which
+    ``app.ingest.publication`` reads as a bare date rather than converting it."""
+    for el in (a, *a.iterancestors()):
+        stamp = el.find(".//span[@class='fecha']")
+        if stamp is None:
+            continue
+        m = _SPANISH_DAY.search(stamp.text_content())
+        month = _MONTHS.get(m.group(2).lower()) if m else None
+        if not m or not month:
+            return None
+        try:
+            return dt.datetime(int(m.group(3)), month, int(m.group(1)), tzinfo=dt.UTC)
+        except ValueError:
+            return None
+    return None
+
+
+def _listed_time(a: Any) -> dt.datetime | None:
+    """``<time datetime="YYYY-MM-DD HH:MM:SS">`` in the link's ``<article>`` card (gob.mx
+    listings; Mexico City time, UTC-6 with no daylight saving since 2022)."""
+    card = next((el for el in a.iterancestors() if el.tag == "article"), None)
+    stamp = card.find(".//time") if card is not None else None
+    raw = stamp.get("datetime") if stamp is not None else None
+    if not raw:
+        return _card_day(a)
+    try:
+        naive = dt.datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if naive.tzinfo is not None:
+        return naive.astimezone(dt.UTC)
+    return naive.replace(tzinfo=MEXICO_CITY).astimezone(dt.UTC)
 
 
 def parse_gdelt(payload: dict[str, Any], domain: str) -> list[Entry]:
@@ -162,7 +283,13 @@ def discover(
         resp = client.get(str(feed.url))
         resp.raise_for_status()
         run.raw_paths.append(str(write_raw(feed.slug, run.id, "listing.html", resp.content).path))
-        return parse_listing(resp.content, str(feed.url), feed.link_pattern or "")
+        return parse_listing(
+            resp.content,
+            str(feed.url),
+            feed.link_pattern or "",
+            link_query=feed.link_query,
+            encoding=_declared_charset(resp.headers.get("content-type", "")),
+        )
     # gdelt: from the last successful run's end (capped), to now
     now = dt.datetime.now(dt.UTC).replace(microsecond=0)
     last = last_successful_params(f"news-{feed.slug}") or {}
@@ -171,6 +298,11 @@ def discover(
         start = max(start, dt.datetime.fromisoformat(last["until"]) - dt.timedelta(hours=1))
     run.params["until"] = now.isoformat()
     resp = gdelt_client.get(GDELT_URL, params=gdelt_params(feed.domain, start, now), crawl=False)
+    if resp.status_code == 429 and not last.get("until"):
+        # Never succeeded: every run queries the full lookback, so a refusal loses nothing.
+        raise DeferredRun(
+            "GDELT 429 after retries; no earlier success, next run queries the lookback"
+        )
     if resp.status_code == 429 and _next_run_covers(last, now):
         raise DeferredRun(
             f"GDELT 429 after retries; next run resumes from {last['until']} (within lookback)"
@@ -249,6 +381,9 @@ def ingest_feed(
                         text = article.text
                         title = title or article.title
                         published = published or article.published
+                        if feed.discovery == "gdelt" and published:
+                            page = article.html.decode("utf-8", errors="replace")
+                            published = page_time(page, published)
             with session_factory()() as session, session.begin():
                 result = upsert_document(
                     session,
@@ -296,7 +431,10 @@ def run_news(slugs: list[str] | None = None, client: PoliteClient | None = None)
             except Exception:
                 failures += 1
                 log.exception("feed %s failed (recorded in ingest_runs)", feed.slug)
-            _alert_if_stalled(feed)
+            try:
+                _alert_if_stalled(feed)
+            except Exception:
+                log.exception("stall check for feed %s failed", feed.slug)
     finally:
         if owns:
             client.close()

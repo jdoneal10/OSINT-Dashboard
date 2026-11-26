@@ -7,6 +7,10 @@ their documents' English summaries, plus the matched ACLED event when one is att
 
 Output uses ICD 203 estimative language. Every judgment must cite document or ACLED event ids
 that were actually provided; an assessment citing anything else is quarantined, not stored.
+
+A quarantined cluster is tried again on later passes, up to ``MAX_QUARANTINES`` open
+quarantine entries; after that it waits for the owner, who resolves an entry to let it run
+again. A valid assessment resolves the cluster's open analyze entries.
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ import logging
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -30,10 +34,12 @@ from app.db.models import (
 from app.db.session import session_factory
 from app.enrich.llm.client import BudgetPausedError, Gateway, Provenance
 from app.enrich.llm.pricing import SONNET
+from app.ingest.publication import published_day
 
 log = logging.getLogger(__name__)
 
 PROMPT_VERSION = "analyze-v2"  # v2: ACLED events as corroborating records (ADR 0006)
+MAX_QUARANTINES = 3  # open analyze quarantine entries before a cluster waits for the owner
 ICD203 = Literal[
     "almost no chance",
     "very unlikely",
@@ -110,17 +116,17 @@ def build_input(
             )
             continue
         docs = session.execute(
-            select(Document, Source.name, Source.reliability)
+            select(Document, Source.name, Source.slug, Source.reliability)
             .join(event_documents, event_documents.c.document_id == Document.id)
             .join(Source, Source.id == Document.source_id)
             .where(event_documents.c.event_id == ev.id)
         ).all()
-        for doc, src_name, grade in docs:
+        for doc, src_name, slug, grade in docs:
             if doc.id not in doc_ids:
                 doc_ids.append(doc.id)
             lines.append(
                 f"[document {doc.id}] {src_name} (reliability {grade}), published "
-                f"{doc.published_at.date() if doc.published_at else 'unknown'}\n"
+                f"{published_day(doc, slug) if doc.published_at else 'unknown'}\n"
                 f"  reported: type={ev.event_type}; date={ev.event_date}; "
                 f"fatalities={ev.fatalities}; place={ev.location_name}, {ev.admin2_name}, "
                 f"{ev.admin1_name}\n  summary: {doc.translated_text or doc.title or ''}"
@@ -132,10 +138,24 @@ def needs_analysis(session: Session, limit: int) -> list[int]:
     assessed = select(ClusterAssessment.cluster_id).where(
         ClusterAssessment.prompt_version == PROMPT_VERSION
     )
+    held = (
+        select(LLMQuarantine.cluster_id)
+        .where(
+            LLMQuarantine.stage == "analyze",
+            LLMQuarantine.cluster_id.is_not(None),
+            LLMQuarantine.resolved.is_(False),
+        )
+        .group_by(LLMQuarantine.cluster_id)
+        .having(func.count() >= MAX_QUARANTINES)
+    )
     return list(
         session.scalars(
             select(EventCluster.id)
-            .where(EventCluster.conflicts != {}, EventCluster.id.not_in(assessed))
+            .where(
+                EventCluster.conflicts != {},
+                EventCluster.id.not_in(assessed),
+                EventCluster.id.not_in(held),
+            )
             .order_by(EventCluster.last_date.desc())
             .limit(limit)
         )
@@ -210,6 +230,15 @@ def run_analyze(limit: int = 20, gateway: Gateway | None = None) -> dict[str, in
                     llm_input_tokens=result.input_tokens,
                     llm_output_tokens=result.output_tokens,
                 )
+            )
+            session.execute(
+                update(LLMQuarantine)
+                .where(
+                    LLMQuarantine.stage == "analyze",
+                    LLMQuarantine.cluster_id == cid,
+                    LLMQuarantine.resolved.is_(False),
+                )
+                .values(resolved=True)
             )
             counts["assessed"] += 1
     log.info("analysis: %s", counts)

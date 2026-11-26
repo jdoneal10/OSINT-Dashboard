@@ -7,7 +7,8 @@ filter and extraction, so syndicated copies are never counted as corroboration.
 Events: news-derived events (never ACLED; ADR 0003) join an existing cluster when they fall
 within +/-1 day, 25 km and a compatible event type; otherwise they start a new cluster.
 Cluster statistics (documents, independent sources, conflicting details) feed Admiralty
-scoring and the Sonnet escalation.
+scoring and the Sonnet escalation. Sources whose documents cite the same original post (an
+X status relayed by both PiX and Dataminr) count as one independent source.
 """
 
 from __future__ import annotations
@@ -42,6 +43,38 @@ CLUSTER_DAYS = 1
 ACLED_LOOKBACK_DAYS = 400
 VIOLENT = {"Battles", "Violence against civilians", "Explosions/Remote violence"}
 _WORD = re.compile(r"\w+", re.UNICODE)
+_X_STATUS = re.compile(r"(?:x|twitter)\.com/[^/\s?#]+/status/(\d+)", re.I)
+
+
+def origin_key(url: str | None) -> str | None:
+    """The original post a document reports: an X status ID, else its canonical URL."""
+    if not url:
+        return None
+    m = _X_STATUS.search(url)
+    return f"x:{m.group(1)}" if m else url
+
+
+def independent_sources(docs: list[tuple[int, str | None]], others: set[int]) -> int:
+    """Distinct sources behind (source_id, url) documents plus ``others``, where sources
+    whose documents share an original post count once."""
+    parent: dict[int, int] = {s: s for s, _ in docs} | {s: s for s in others}
+
+    def find(s: int) -> int:
+        while parent[s] != s:
+            parent[s] = parent[parent[s]]
+            s = parent[s]
+        return s
+
+    first_by_origin: dict[str, int] = {}
+    for sid, url in docs:
+        key = origin_key(url)
+        if key is None:
+            continue
+        if key in first_by_origin:
+            parent[find(sid)] = find(first_by_origin[key])
+        else:
+            first_by_origin[key] = sid
+    return len({find(s) for s in parent})
 
 
 # --------------------------------------------------------------------------- documents
@@ -128,11 +161,15 @@ def refresh_cluster(session: Session, cluster: EventCluster) -> None:
     cluster.first_date = min(e.event_date for e in members)
     cluster.last_date = max(e.event_date for e in members)
     docs = session.execute(
-        select(event_documents.c.document_id, Document.source_id)
+        select(
+            event_documents.c.document_id,
+            Document.source_id,
+            func.coalesce(Document.canonical_url, Document.source_url),
+        )
         .join(Document, Document.id == event_documents.c.document_id)
         .where(event_documents.c.event_id.in_([e.id for e in members]))
     ).all()
-    cluster.n_documents = len({d for d, _ in docs})
+    cluster.n_documents = len({d for d, _, _ in docs})
     # Independent sources: distinct outlets behind the reports, plus record-level sources
     # such as ACLED (an event with no document is its own source; ADR 0006).
     with_docs = {e for e in session.scalars(
@@ -140,8 +177,11 @@ def refresh_cluster(session: Session, cluster: EventCluster) -> None:
             event_documents.c.event_id.in_([e.id for e in members])
         )
     )}  # fmt: skip
-    sources = {s for _, s in docs} | {e.source_id for e in members if e.id not in with_docs}
-    cluster.n_independent_sources = len(sources)
+    record_level = {e.source_id for e in members if e.id not in with_docs}
+    sources = {s for _, s, _ in docs} | record_level
+    cluster.n_independent_sources = independent_sources(
+        [(s, url) for _, s, url in docs], record_level
+    )
     grades = session.scalars(select(Source.reliability).where(Source.id.in_(sources))).all()
     cluster.reliability = min(grades) if grades else None
     session.flush()

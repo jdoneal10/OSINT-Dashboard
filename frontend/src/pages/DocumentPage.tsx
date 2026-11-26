@@ -2,7 +2,7 @@ import { Link, useParams } from 'react-router'
 import { useDocument } from '../api/hooks'
 import DocumentHeader from '../components/news/DocumentHeader'
 import Panel from '../components/news/Panel'
-import { EventsTable, SeizuresTable } from '../components/news/RecordTables'
+import { EventsTable, PersonsTable, SeizuresTable } from '../components/news/RecordTables'
 import { dateTime } from '../lib/format'
 
 export default function DocumentPage() {
@@ -60,6 +60,17 @@ export default function DocumentPage() {
             <Panel title="Extracted seizures" aside={`${doc.seizures.length}`}>
               <SeizuresTable seizures={doc.seizures} />
             </Panel>
+            {(doc.persons?.length ?? 0) > 0 && (
+              <Panel
+                title="Persons (as reported)"
+                aside={(() => {
+                  const hidden = doc.persons?.filter((p) => p.us_person).length ?? 0
+                  return hidden ? `${hidden} U.S. person record(s) hidden` : undefined
+                })()}
+              >
+                <PersonsTable persons={(doc.persons ?? []).filter((p) => !p.us_person)} />
+              </Panel>
+            )}
             <Panel title="Provenance">
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
                 <dt className="text-ink-500">Retrieved</dt>

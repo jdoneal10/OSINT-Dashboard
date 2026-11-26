@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from pathlib import Path
 
 import httpx
@@ -12,9 +13,10 @@ from app.core.config import get_settings
 from app.db.models import Alert, Document, IngestRun, Source
 from app.ingest import feeds as feed_registry
 from app.ingest import news
-from app.ingest.articles import canonical_url
+from app.ingest.articles import canonical_url, upsert_document
 from app.ingest.feeds import load_feeds
 from app.ingest.http import PoliteClient
+from app.ingest.runs import source_id
 
 FIX = Path(__file__).parent / "fixtures" / "news"
 ROBOTS = "User-agent: *\nDisallow: /private/\n"
@@ -218,14 +220,17 @@ def _gdelt_runs(session: Session) -> list[tuple[str, str | None]]:
     return [(r.status, r.error) for r in rows]
 
 
-def test_gdelt_429_without_prior_success_is_an_error(seeded: Session) -> None:
+def test_gdelt_429_without_prior_success_is_deferred(seeded: Session) -> None:
+    """A feed that never succeeded queries the full lookback every run, so a refusal loses
+    nothing (Noroeste's 429s were recorded as errors until 2026-11-24)."""
     site = Site()
     _gdelt_refusing(site)
     _run(site, "test-gdelt")
     ((status, error),) = _gdelt_runs(seeded)
-    assert status == "error"
+    assert status == "deferred"
     assert error is not None
     assert "429" in error
+    assert "no earlier success" in error
 
 
 def test_gdelt_429_within_lookback_is_deferred_and_alerts_once_per_streak(
@@ -316,3 +321,62 @@ def test_teaser_only_feed_content_falls_back_to_article_page(
     (doc,) = _docs(seeded, "test-fulltext")
     assert "synthetic indictment against members" in (doc.original_text or "")
     assert any("/2026/11/enfrentamiento" in c for c in site.calls)
+
+
+def test_listing_reads_links_from_a_javascript_listing() -> None:
+    """gob.mx archives answer with JavaScript; cards come from ``.append("...")`` strings."""
+    content = (FIX / "gobmx-listing.js").read_bytes()
+    entries = news.parse_listing(
+        content, "https://www.gob.mx/agencia/es/archivo/prensa", r"^/agencia/prensa/[a-z0-9-]+$"
+    )
+    assert [e.url for e in entries] == [
+        "https://www.gob.mx/agencia/prensa/agencia-sintetica-asegura-dron-con-explosivos?idiom=es",
+        "https://www.gob.mx/agencia/prensa/informe-sintetico-de-acciones-relevantes?idiom=es",
+    ]  # the other agency's card and the pagination link are left out
+    assert entries[0].title == "AGENCIA SINTÉTICA ASEGURA DRON CON EXPLOSIVOS EN MICHOACÁN"
+    # 15:46 in Mexico City (UTC-6, no daylight saving) is 21:46 UTC.
+    assert entries[0].published == dt.datetime(2026, 11, 20, 21, 46, tzinfo=dt.UTC)
+
+
+def test_listing_keeps_only_named_query_values_and_reads_card_dates() -> None:
+    """FGR names each release by its ``suri`` query value; the listing is ISO-8859-1."""
+    content = (FIX / "fgr-listing.html").read_bytes()
+    entries = news.parse_listing(
+        content,
+        "https://www.fgr.org.mx/es/FGR/Prensa",
+        r"^/es/FGR/Prensa/_rid/61/_mod/story$",
+        link_query=("suri",),
+        encoding="ISO-8859-1",
+    )
+    story = "https://www.fgr.org.mx/es/FGR/Prensa/_rid/61/_mod/story?suri="
+    assert [e.url for e in entries] == [
+        story + "http%3A%2F%2Fwww.FGR.swb%23fgr_Boletin%3A90002",
+        story + "http%3A%2F%2Fwww.FGR.swb%23fgr_Boletin%3A90001",
+    ]  # one entry per release; the home, privacy and pagination links are left out
+    assert entries[0].title == (
+        "Comunicado FGR 902/26. "
+        "FGR sintética obtiene vinculación a proceso contra una persona en Culiacán"
+    )
+    # A card gives the day only: stored as midnight UTC, which publication.py reads as a bare date.
+    assert entries[0].published == dt.datetime(2026, 11, 20, tzinfo=dt.UTC)
+    assert entries[1].published == dt.datetime(2026, 11, 19, tzinfo=dt.UTC)
+
+
+def test_fgr_feed_points_at_the_fgr_site() -> None:
+    registry = load_feeds(get_settings().reference_dir / "feeds.yaml")
+    feed = next(f for f in registry if f.slug == "fgr" and f.status == "active")
+    assert feed.domain == "www.fgr.org.mx"
+    assert feed.link_query == ["suri"]
+    assert re.search(feed.link_pattern or "", "/es/FGR/Prensa/_rid/61/_mod/story")
+
+
+def test_upsert_stores_text_without_related_lines(session: Session) -> None:
+    feed = next(f for f in feed_registry.active() if f.text == "full")
+    feed_registry.sync_sources(session)
+    session.flush()
+    stored = upsert_document(
+        session, source_id=source_id(session, feed.slug), feed=feed,
+        url="https://example.org/related", title="T", summary=None, published=None, raw_path=None,
+        text="Cuerpo sintético.\nTe puede interesar: Otro titular sintético",
+    )  # fmt: skip
+    assert session.get_one(Document, stored.id).original_text == "Cuerpo sintético."

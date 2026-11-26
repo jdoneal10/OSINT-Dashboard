@@ -20,10 +20,14 @@ from app.api import (
     designations,
     documents,
     events,
+    grid_labels,
     health,
     labels,
     llm,
+    persons,
+    priority,
     reference,
+    uxs_labels,
 )
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -49,7 +53,12 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET", "POST", "PUT", "DELETE"],  # writes: /labels; POST: /charts/render
+        allow_methods=[
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+        ],  # writes: /labels, /grid/labels, /uxs/labels; POST: /charts/render
         allow_headers=["*"],
     )
     app.include_router(health.router)
@@ -58,7 +67,19 @@ def create_app() -> FastAPI:
     app.include_router(acled_weekly.router)
     app.include_router(border.router)
     app.include_router(actors.router)
-    for module in (documents, clusters, designations, crime, llm, labels, charts):
+    for module in (
+        documents,
+        clusters,
+        designations,
+        crime,
+        llm,
+        labels,
+        grid_labels,
+        uxs_labels,
+        charts,
+        persons,
+        priority,
+    ):
         app.include_router(module.router)
     return app
 

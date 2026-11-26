@@ -5,6 +5,9 @@
   that a source explicitly provides for programmatic access (e.g. ACLED's) pass
   ``crawl=False``; their own terms and rate limits govern instead.
 - At most one request per ``min_interval`` seconds per host.
+- Outbound allowlist (ADR 0008 §2): every request and every redirect hop must go to an
+  allowed host (``app.core.outbound``); anything else raises ``OutboundBlockedError``.
+- TLS: certifi's roots plus bundled public intermediates (``app.ingest.tls``).
 - Retries with exponential backoff on 429/5xx and transport errors, honoring Retry-After.
   ``backoff_initial`` sets the first wait (``backoff_initial * backoff_base**attempt``);
   strict APIs such as GDELT need minutes, not seconds.
@@ -21,6 +24,9 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
+from app.core import outbound
+from app.ingest import tls
+
 USER_AGENT = "cartel-osint/0.1 (+local research dashboard)"
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 
@@ -29,6 +35,10 @@ log = logging.getLogger(__name__)
 
 class RobotsDisallowedError(RuntimeError):
     """The target path is disallowed by the host's robots.txt."""
+
+
+def _check_outbound(request: httpx.Request) -> None:
+    outbound.check(str(request.url))
 
 
 class PoliteClient:
@@ -49,6 +59,8 @@ class PoliteClient:
             timeout=timeout,
             follow_redirects=True,
             transport=transport,
+            verify=tls.context(),
+            event_hooks={"request": [_check_outbound]},
         )
         self._min_interval = min_interval
         self._max_retries = max_retries

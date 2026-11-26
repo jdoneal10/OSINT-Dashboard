@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import zoneinfo
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -34,10 +35,15 @@ class Feed(BaseModel):
     discovery: Literal["rss", "listing", "gdelt"]
     url: HttpUrl | None = None
     link_pattern: str | None = None
+    # Query values that name an article on a listing (FGR's ``suri``); others are dropped.
+    link_query: list[str] = []
     text: Literal["full", "summary"]
     reliability: Literal["A", "B", "C", "D", "E", "F"]
-    status: Literal["active", "pending"]
+    # pending: not yet working; paused: stopped on purpose (the comment says why)
+    status: Literal["active", "pending", "paused"]
     terms_note: str
+    # The newsroom's time zone; its calendar day dates the report (app/ingest/publication.py).
+    timezone: str = "UTC"
     sources: Cited
 
     @field_validator("sources")
@@ -45,6 +51,13 @@ class Feed(BaseModel):
     def _cited(cls, v: Cited) -> Cited:
         if not v:
             raise ValueError("at least one citation is required")
+        return v
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_zone(cls, v: str) -> str:
+        if v not in zoneinfo.available_timezones():
+            raise ValueError(f"unknown time zone {v!r}")
         return v
 
     @model_validator(mode="after")

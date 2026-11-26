@@ -23,7 +23,7 @@ A personal, unclassified OSINT workspace that collects, geolocates, and analyzes
 6. **U.S. legal and policy actions.** What FTO designations, OFAC sanctions, and DOJ indictments target these groups, and when?
 7. **Indications and warning.** What new indicators should trigger an alert?
 8. **Unmanned systems (top priority).** Which cartels use drones, UGVs and USVs, for what missions, acquired and adapted how, and is their use escalating (from camera drones to FPV and weaponized systems, coordinated operations)? Seven PIRs are listed in `docs/framework/uxs-and-electricity-theft.md` §1 (ADR 0009).
-9. **Electricity theft (top priority).** Which criminal organizations and facilitators steal electricity, by what methods, to power what (crypto mining, cultivation, labs, storage), where and at what scale? Seven PIRs are listed in framework §2 (ADR 0009).
+9. **Electricity theft (top priority).** Which criminal organizations and facilitators steal electricity, by what methods, to power what (crypto mining, cultivation, labs, storage), where and at what scale? Seven PIRs are listed in framework §2 (ADR 0009). Covers criminal interaction with the grid (sabotage, attacks on utility workers, extortion or control of service, infrastructure theft, utility withdrawal) and reported indicators, with municipal assessments labeled as analysis (ADR 0014).
 
 Priority tiers (ADR 0009): IRs 8 and 9 first; human smuggling and border threats (ADR 0007) second; all other IRs third.
 
@@ -150,13 +150,14 @@ PostgreSQL + PostGIS  ◄──►  FastAPI  ◄──►  React + MapLibre/deck
 **Exit criteria:** pipeline runs unattended daily; extraction precision ≥ 85% on a 100-article hand-labeled test set; spend inside budget.
 
 ### Phase 3 — Unmanned systems, electricity theft and people (~3–4 weeks; ADR 0009)
-- Sources (ADR 0010): Guardia Nacional, Defensa and SSPC listings; outlets added in vetted batches; PiX event and organization importers; Marginalia and GDELT taxonomy queries; Telegram once a collection method is approved; outbound allowlist enforced in config
-- Prompts `filter-v3` and `extract-v6` with the tiered priority; UxS fields (platform, mission, payload, activity) and an `energy_theft` event type (method, powered activity, facilitator, reported scale) from the owner framework
-- Person records under ADR 0008: `persons`, person–organization and person–event links, every attribute cited and graded, `us_person` flag hidden by default, dispute/delete
-- Views: UxS and electricity-theft panels (map, trend, escalation ladder), person view, labeling fields for the new categories and the person safeguards
+- Sources (ADR 0010): Guardia Nacional, Defensa and SSPC listings (done 2026-11-20, with SEMAR and FGR reactivated); outlets added in vetted batches (batch 1 done 2026-11-20: Michoacán, Sinaloa, drone press; batch 2 done 2026-11-20: national security press, Sonora, blogs, energy, defense, U.S. border); PiX event importer (done 2026-11-26, ADR 0010 amendment 4) and organization importer (waits for the owner's export); Marginalia and GDELT taxonomy queries; Telegram once a collection method is approved; outbound allowlist enforced in config (done: `data/reference/outbound.yaml`)
+- Prompts `filter-v3` and `extract-v7` with the tiered priority (`extract-v6` went to the Phase 2 seizure fixes) (done 2026-11-20: migration 0013 adds typed UxS and electricity-theft columns on `events`; the `energy_theft` "event type" is an `energy_theft` detail on an event, so ACLED-style event types stay unchanged); UxS fields (platform, mission, payload, activity) and an `energy_theft` event type (method, powered activity, facilitator, reported scale) from the owner framework
+- Person records under ADR 0008: `persons`, person–organization and person–event links, every attribute cited and graded, `us_person` flag hidden by default, dispute/delete (done 2026-11-20 in `extract-v8` and the `/persons` API; ADR 0013. SDN individuals follow once their citizenship and address country are kept)
+- Person safeguards enforced at storage and reviewed, reversible merges of duplicate identities (2026-11-22; ADR 0013 amendment 1: `/persons/review`, migration 0016)
+- Views: UxS and electricity-theft panels (map, trend, escalation ladder), person view, labeling fields for the new categories and the person safeguards (done 2026-11-20: `/priority` page and API, People list and detail with dispute/delete, `uxs`/`energy_theft` event label fields, per-document person labels with safeguard flags, Phase 3 section in `make eval`; ladder rungs 6–8 captured from reported capabilities on 2026-11-25 in `extract-v13` and `uxs-v5`, ADR 0009 amendment 2)
 - Re-extraction through the Batch API
 
-**Exit criteria:** IRs 8 and 9 answerable from the dashboard with cited records; ≥ 85% precision on the new fields over a labeled UxS/energy sample; zero labeled person-safeguard violations (contact details, victims or journalists recorded as persons, uncited attributes).
+**Exit criteria:** IRs 8 and 9 answerable from the dashboard with cited records; ≥ 85% strict precision on the new fields over a labeled UxS sample and, separately, a labeled energy sample (50 records each; ADR 0009 amendment 1); zero labeled person-safeguard violations (contact details, victims or journalists recorded as persons, uncited attributes).
 
 ### Phase 4 — Precursors and routes (~3 weeks)
 - `chemical_watchlist.yaml` with HS-code mapping (DEA SSL, INCB, InSight Crime)

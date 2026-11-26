@@ -10,24 +10,34 @@ import type {
   CrimeChoropleth,
   CrimeMethodology,
   DesignationPage,
+  TopicLabelInput,
+  TopicLabelRecord,
+  TopicReview,
   DocumentDetail,
   DocumentPage,
   EventDetail,
+  EventPage,
   EventPoints,
-  EventsMeta,
   EventTypeCount,
+  EventsMeta,
   Health,
+  LLMUsage,
   LabelInput,
   LabelQueue,
   LabelRecord,
-  LLMUsage,
   MetricSeries,
-  MunicipalityProps,
-  SourceCount,
   MonthCount,
+  MunicipalityProps,
   NodeProps,
+  MergeSuggestionList,
+  PersonDetail,
+  PersonPage,
+  PersonSummary,
   ReferenceCollection,
   SeizureSeries,
+  SourceCount,
+  TopicSummary,
+  UxsSummary,
 } from './types'
 
 /** All API calls go through the Vite dev proxy at /api → 127.0.0.1:8000. */
@@ -65,13 +75,15 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T
 }
 
-function sendJson<T>(method: 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
+function sendJson<T>(method: 'PUT' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
   return getJson<T>(path, {
     method,
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
 }
+
+export type LabelTopic = 'grid' | 'uxs'
 
 export const api = {
   health: (init?: RequestInit) => getJson<Health>('/health', init),
@@ -84,6 +96,27 @@ export const api = {
   eventPoints: (params: Record<string, unknown>, init?: RequestInit) =>
     getJson<EventPoints>(`/events/geojson${toQuery(params)}`, init),
   event: (id: number, init?: RequestInit) => getJson<EventDetail>(`/events/${id}`, init),
+  events: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<EventPage>(`/events${toQuery(params)}`, init),
+  priorityUxs: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<UxsSummary>(`/priority/uxs${toQuery(params)}`, init),
+  priorityEnergy: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<TopicSummary>(`/priority/energy-theft${toQuery(params)}`, init),
+  persons: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<PersonPage>(`/persons${toQuery(params)}`, init),
+  person: (id: number, params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<PersonDetail>(`/persons/${id}${toQuery(params)}`, init),
+  disputePerson: (id: number, body: { disputed: boolean; note?: string | null }) =>
+    sendJson<PersonSummary>('PUT', `/persons/${id}/dispute`, body),
+  mergeSuggestions: (params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<MergeSuggestionList>(`/persons/merge-suggestions${toQuery(params)}`, init),
+  mergePersons: (body: { person_ids: number[]; primary_id: number }) =>
+    sendJson<PersonSummary>('POST', '/persons/merges', body),
+  undoMerge: (id: number) => sendJson<undefined>('POST', `/persons/merges/${id}/undo`),
+  markDistinct: (body: { person_id: number; other_ids: number[] }) =>
+    sendJson<undefined>('POST', '/persons/distinctions', body),
+  clearDistinct: (id: number) => sendJson<undefined>('DELETE', `/persons/distinctions/${id}`),
+  deletePerson: (id: number) => sendJson<undefined>('DELETE', `/persons/${id}`),
   eventTimeseries: (params: Record<string, unknown>, init?: RequestInit) =>
     getJson<MonthCount[]>(`/events/timeseries${toQuery(params)}`, init),
   acledWeekly: (params: Record<string, unknown>, init?: RequestInit) =>
@@ -116,4 +149,11 @@ export const api = {
     getJson<LabelQueue>(`/labels/queue${toQuery(params)}`, init),
   putLabel: (body: LabelInput) => sendJson<LabelRecord>('PUT', '/labels', body),
   deleteLabel: (id: number) => sendJson<undefined>('DELETE', `/labels/${id}`),
+  /** Topic label reviews: grid (ADR 0014) and UxS (ADR 0009 amendment 1). */
+  topicReview: (topic: LabelTopic, params: Record<string, unknown>, init?: RequestInit) =>
+    getJson<TopicReview>(`/${topic}/review${toQuery(params)}`, init),
+  putTopicLabel: (topic: LabelTopic, body: TopicLabelInput) =>
+    sendJson<TopicLabelRecord>('PUT', `/${topic}/labels`, body),
+  deleteTopicLabel: (topic: LabelTopic, id: number) =>
+    sendJson<undefined>('DELETE', `/${topic}/labels/${id}`),
 }

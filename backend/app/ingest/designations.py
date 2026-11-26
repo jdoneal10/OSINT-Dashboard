@@ -35,6 +35,8 @@ from app.reference.normalize import normalize_alias
 log = logging.getLogger(__name__)
 
 SDN_URL = "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.XML"
+# SDN_URL answers with a 302 to a time-limited link on this Treasury S3 bucket (since 2026-11-21).
+SDN_DOWNLOAD_HOST = "wc2h-sls-prod-public-published.s3.us-gov-west-1.amazonaws.com"
 SDN_DETAIL = "https://sanctionssearch.ofac.treas.gov/Details.aspx?id={uid}"
 FR_API = "https://www.federalregister.gov/api/v1/documents.json"
 FR_SINCE = dt.date(2025, 1, 1)  # Mexican cartels were first designated FTOs in 2025

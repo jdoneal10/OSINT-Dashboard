@@ -85,6 +85,23 @@ export interface EventDetail {
   in_aoi: boolean
   /** Priority border-threat category (ADR 0007), or null. */
   border_threat: string | null
+  /** Unmanned systems (extract-v7; ADR 0009): set when the event involves criminal UxS. */
+  uxs_activity?: string | null
+  uxs_platform?: string | null
+  uxs_missions?: string[]
+  uxs_payloads?: string[]
+  /** Ladder rungs 6-8 the source reports (extract-v13, uxs-v5; ADR 0009 amendment 2). */
+  uxs_capabilities?: string[]
+  /** Reported electricity theft (extract-v7): method, what it powered, facilitator role. */
+  energy_method?: string | null
+  energy_powered?: string[]
+  energy_facilitator?: string | null
+  /** Scale exactly as the source reports it (kW, MW, equipment count); never estimated. */
+  energy_scale?: string | null
+  /** Criminal interaction with the grid (ADR 0014): one kind, or null. */
+  grid_interaction?: string | null
+  /** Reported facts that suggest electricity theft without claiming it (ADR 0014). */
+  energy_indicators?: string[]
   /** Supporting quote from the source text (news-derived events only). */
   evidence: string | null
   actors: EventActor[]
@@ -293,7 +310,7 @@ export interface QuarantineEntry {
 }
 
 export type Verdict = 'correct' | 'incorrect' | 'partial'
-export type LabelTarget = 'events' | 'seizures' | 'documents'
+export type LabelTarget = 'events' | 'seizures' | 'documents' | 'persons'
 
 export interface LabelRecord {
   id: number
@@ -329,6 +346,8 @@ export interface DocumentDetail extends DocumentSummary {
   llm_output_tokens: number | null
   events: EventDetail[]
   seizures: SeizureRecord[]
+  /** Persons extracted from this document, with this document's claims only (ADR 0013). */
+  persons?: DocPerson[]
   quarantine: QuarantineEntry[]
   labels: LabelRecord[]
   duplicates: number[]
@@ -434,3 +453,221 @@ export interface LabelQueue {
   done: number
   items: LabelQueueItem[]
 }
+
+/** /priority/* panels (ADR 0009): counts of reported events. */
+export interface TopicMonth {
+  month: string // 'YYYY-MM'
+  counts: Record<string, number>
+}
+
+export interface TopicSummary {
+  total: number
+  sources: number
+  /** ACLED-derived events in the view (the ACLED passes); the view then carries attribution. */
+  acled_events: number
+  months: TopicMonth[]
+  breakdown: Record<string, Record<string, number>>
+  states: Record<string, number>
+  caveat: string
+}
+
+export interface LadderRow {
+  rung: number
+  label: string
+  /** False when no extraction field can show this rung yet. */
+  captured: boolean
+  use: number
+  capability: number
+  first_seen: string | null
+  last_seen: string | null
+}
+
+export interface UxsSummary extends TopicSummary {
+  ladder: LadderRow[]
+  ladder_note: string
+}
+
+export interface EventPage {
+  items: EventDetail[]
+  next_cursor: string | null
+}
+
+/** Person records (hard rule 3; ADR 0008, ADR 0013): every claim cited and graded. */
+export interface PersonSummary {
+  id: number
+  display_name: string
+  roles: string[]
+  organizations: string[]
+  /** Distinct outlets; outlets may reprint one another. */
+  n_sources: number
+  n_documents: number
+  n_records: number
+  last_reported_on: string | null
+  us_person: boolean
+  disputed: boolean
+}
+
+export interface PersonPage {
+  items: PersonSummary[]
+  total: number
+}
+
+export interface PersonCitation {
+  source: string
+  source_url: string | null
+  document_id: number | null
+  designation_id: number | null
+  reported_on: string
+  /** Admiralty reliability + credibility, e.g. "B3". */
+  grade: string
+  evidence: string | null
+  basis: string // always "as reported"
+}
+
+export interface PersonClaim {
+  kind: 'role' | 'alias' | 'nationality' | 'status' | 'title' | 'organization' | 'event'
+  value: string
+  record_id: number
+  /** The name this claim's source published. */
+  reported_name: string
+  actor_id: number | null
+  event_id: number | null
+  event_date: string | null
+  citation: PersonCitation
+}
+
+export interface PersonRecord {
+  id: number
+  display_name: string
+  sources: string[]
+  us_person: boolean
+  /** Undo this to separate the record; null on the record whose name is shown. */
+  merge_id: number | null
+  into_id: number | null
+}
+
+export interface PersonDetail extends PersonSummary {
+  dispute_note: string | null
+  claims: PersonClaim[]
+  records: PersonRecord[]
+  distinct_from: { id: number; person_id: number; display_name: string }[]
+}
+
+export interface MergeSuggestion {
+  primary_id: number
+  us_person: boolean
+  candidates: {
+    person: PersonSummary
+    sources: string[]
+    aliases: string[]
+    evidence: string | null
+    selected: boolean
+    reasons: string[]
+    warning: string | null
+  }[]
+}
+
+export interface MergeSuggestionList {
+  items: MergeSuggestion[]
+  hidden_us_persons: number
+}
+
+export interface DocPersonClaim {
+  evidence?: string | null
+  kind: string
+  value: string
+  event_id: number | null
+}
+
+export interface DocPerson {
+  id: number
+  display_name: string
+  us_person: boolean
+  disputed: boolean
+  claims: DocPersonClaim[]
+}
+
+/**
+ * Owner label on one event's topic verdict: grid (ADR 0014 step 6) or UxS (ADR 0009
+ * amendment 1); ACLED or news. The fields the labeling page uses.
+ */
+export interface TopicLabelRecord {
+  id: number
+  event_id: number
+  verdict: Verdict
+  /** Partly wrong: the items that are wrong. */
+  wrong: string[]
+  prompt_version: string | null
+  note: string | null
+  updated_at: string
+}
+
+/** Grid label; the verdict judged is frozen when the label is saved. */
+export interface GridLabelRecord extends TopicLabelRecord {
+  judged_kind: string | null
+  judged_indicators: string[]
+}
+
+/** UxS label; the verdict judged is frozen when the label is saved. */
+export interface UxsLabelRecord extends TopicLabelRecord {
+  judged_activity: string
+  judged_platform: string
+  judged_missions: string[]
+  judged_payloads: string[]
+  judged_capabilities: string[]
+}
+
+export interface TopicLabelInput {
+  event_id: number
+  verdict: Verdict
+  wrong: string[]
+  note?: string | null
+}
+export type GridLabelInput = TopicLabelInput
+
+/** One event in a topic review (grid or UxS). */
+export interface TopicReviewItem {
+  event_id: number
+  source: string
+  source_key: string
+  event_date: string
+  event_type: string
+  sub_event_type: string | null
+  admin1_name: string | null
+  admin2_name: string | null
+  description: string | null
+  actors: string[]
+  evidence: string | null
+  prompt_version: string | null
+  document_ids: number[]
+  /** The group the review interleaves by (grid: kind or first indicator; UxS: activity). */
+  stratum: string
+  label: TopicLabelRecord | null
+  /** Reclassified since it was labeled: the label judged another verdict. */
+  stale: boolean
+}
+
+export interface GridReviewItem extends TopicReviewItem {
+  kind: string | null
+  indicators: string[]
+  label: GridLabelRecord | null
+}
+
+export interface UxsReviewItem extends TopicReviewItem {
+  activity: string
+  platform: string
+  missions: string[]
+  payloads: string[]
+  capabilities: string[]
+  label: UxsLabelRecord | null
+}
+
+export interface TopicReview<T extends TopicReviewItem = TopicReviewItem> {
+  size: number
+  /** Current labels only; a stale label is to do again. */
+  labeled: number
+  strata: Record<string, number>
+  items: T[]
+}
+export type GridReview = TopicReview<GridReviewItem>
+export type UxsReview = TopicReview<UxsReviewItem>

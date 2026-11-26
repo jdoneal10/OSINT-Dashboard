@@ -14,6 +14,8 @@ data/basemap/
 .env.*
 !.env.example
 *.pem
+# Public CA intermediates only (no keys); see the file's header and ADR 0010 amendment 3.
+!data/reference/tls/intermediates.pem
 *.key
 
 # --- Python ---

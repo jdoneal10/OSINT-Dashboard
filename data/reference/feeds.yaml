@@ -4,6 +4,7 @@
 #   rss      - the outlet's RSS feed (url)
 #   listing  - an HTML listing page parsed for article links (url)
 #   gdelt    - GDELT DOC 2.0 queries filtered to this domain (no RSS available)
+# timezone: the newsroom's zone; its calendar day dates each report (ADR 0004 amendment 2)
 # text:
 #   full     - fetch and store the article body (trafilatura) for translation/extraction
 #   summary  - keep only title + feed teaser + link (full text paywalled or unavailable)
@@ -25,6 +26,7 @@ feeds:
     domain: www.justice.gov
     country: USA
     language: en
+    timezone: UTC  # the feed gives a date (12:00 UTC), not a time
     discovery: rss
     url: https://www.justice.gov/news/rss?type=press_release&m=1
     text: full
@@ -39,6 +41,7 @@ feeds:
     domain: www.cbp.gov
     country: USA
     language: en
+    timezone: UTC  # the listing gives a date, not a time
     discovery: listing
     url: https://www.cbp.gov/newsroom/media-releases/all
     link_pattern: ^/newsroom/(local|national)-media-release/[a-z0-9-]+$
@@ -53,33 +56,120 @@ feeds:
   # Not ingested directly; their releases may still surface via other outlets.
 
   # ------------------------------------------------------------------ Mexican government
+  # gob.mx listings (ADR 0010): activated 2026-11-20 once the JavaScript listing was parsed.
   - slug: semar
     name: Secretaría de Marina (SEMAR) — prensa
     domain: www.gob.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: listing
     url: https://www.gob.mx/semar/es/archivo/prensa
+    link_pattern: ^/semar/prensa/[a-z0-9-]+$
     text: full
     reliability: B
-    status: pending  # gob.mx archive pages are JavaScript shells (no links in HTML); RSS 500. Re-checked 2026-11-11
-    terms_note: Mexican government publication. robots.txt allows. Official claims are self-reported; corroborate.
+    status: active
+    terms_note: >-
+      Mexican government publication. gob.mx terms (re-read 2026-11-20): personal,
+      non-commercial viewing and downloading; no public display, redistribution or transfer
+      (same handling as all gob.mx feeds, ADR 0010). robots.txt has no group for our client.
+      The listing answers with JavaScript; links are read from its markup strings.
+      Official claims are self-reported; corroborate.
     sources:
-      - {title: "SEMAR prensa", publisher: Gobierno de México — SEMAR, url: "https://www.gob.mx/semar/es/archivo/prensa", accessed: 2026-11-11}
+      - {title: "SEMAR prensa", publisher: Gobierno de México — SEMAR, url: "https://www.gob.mx/semar/es/archivo/prensa", accessed: 2026-11-20}
+      - {title: "Términos y condiciones de uso", publisher: Gobierno de México, url: "https://www.gob.mx/terminos", accessed: 2026-11-20}
 
   - slug: fgr
     name: Fiscalía General de la República (FGR) — prensa
+    domain: www.fgr.org.mx
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: listing
+    url: https://www.fgr.org.mx/es/FGR/Prensa
+    # Each release is /es/FGR/Prensa/_rid/61/_mod/story named by its suri query value.
+    link_pattern: ^/es/FGR/Prensa/_rid/61/_mod/story$
+    link_query: [suri]
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      FGR's own site (checked 2026-11-22). FGR stopped publishing press releases on gob.mx in
+      January 2023 (that archive ends at DPE/0088/2023, 13 January 2023), so the feed moved here.
+      No robots.txt (404) and no terms of use, copyright notice or reuse statement on the home,
+      press or privacy pages; handled like the gob.mx feeds (personal, non-commercial use; no
+      public display, redistribution or transfer). Pages are ISO-8859-1 although their meta tag
+      says UTF-8; the server's header is used. Cards give the day only. Official claims are
+      self-reported; corroborate.
+    sources:
+      - {title: "FGR — Prensa", publisher: Fiscalía General de la República, url: "https://www.fgr.org.mx/es/FGR/Prensa", accessed: 2026-11-22}
+      - {title: "Avisos de Privacidad", publisher: Fiscalía General de la República, url: "https://www.fgr.org.mx/swb/transparencia/AvisosPrivacidad", accessed: 2026-11-22}
+
+  - slug: guardia-nacional
+    name: Guardia Nacional — prensa
     domain: www.gob.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: listing
-    url: https://www.gob.mx/fgr/es/archivo/prensa
+    url: https://www.gob.mx/guardianacional/es/archivo/prensa
+    link_pattern: ^/guardianacional/prensa/[a-z0-9-]+$
     text: full
     reliability: B
-    status: pending  # archive page is a JavaScript shell like SEMAR's (200, no links in HTML). Re-checked 2026-11-11
-    terms_note: Mexican government publication. robots.txt allows.
+    status: active
+    terms_note: >-
+      Mexican government publication. gob.mx terms (re-read 2026-11-20): personal,
+      non-commercial viewing and downloading; no public display, redistribution or transfer
+      (same handling as all gob.mx feeds, ADR 0010). robots.txt has no group for our client.
+      The listing answers with JavaScript; links are read from its markup strings.
+      Official claims are self-reported; corroborate.
     sources:
-      - {title: "FGR prensa", publisher: Gobierno de México — FGR, url: "https://www.gob.mx/fgr/es/archivo/prensa", accessed: 2026-11-11}
+      - {title: "Guardia Nacional prensa", publisher: Gobierno de México — Guardia Nacional, url: "https://www.gob.mx/guardianacional/es/archivo/prensa", accessed: 2026-11-20}
+      - {title: "Términos y condiciones de uso", publisher: Gobierno de México, url: "https://www.gob.mx/terminos", accessed: 2026-11-20}
+
+  - slug: defensa
+    name: Secretaría de la Defensa Nacional (Defensa) — prensa
+    domain: www.gob.mx
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: listing
+    url: https://www.gob.mx/defensa/es/archivo/prensa
+    link_pattern: ^/defensa/prensa/[a-z0-9-]+$
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Mexican government publication. gob.mx terms (re-read 2026-11-20): personal,
+      non-commercial viewing and downloading; no public display, redistribution or transfer
+      (same handling as all gob.mx feeds, ADR 0010). robots.txt has no group for our client.
+      The listing answers with JavaScript; links are read from its markup strings.
+      Official claims are self-reported; corroborate.
+    sources:
+      - {title: "Defensa prensa", publisher: Gobierno de México — Defensa, url: "https://www.gob.mx/defensa/es/archivo/prensa", accessed: 2026-11-20}
+      - {title: "Términos y condiciones de uso", publisher: Gobierno de México, url: "https://www.gob.mx/terminos", accessed: 2026-11-20}
+
+  - slug: sspc
+    name: Secretaría de Seguridad y Protección Ciudadana (SSPC) — prensa
+    domain: www.gob.mx
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: listing
+    url: https://www.gob.mx/sspc/es/archivo/prensa
+    link_pattern: ^/sspc/prensa/[a-z0-9-]+$
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Mexican government publication. gob.mx terms (re-read 2026-11-20): personal,
+      non-commercial viewing and downloading; no public display, redistribution or transfer
+      (same handling as all gob.mx feeds, ADR 0010). robots.txt has no group for our client.
+      The listing answers with JavaScript; links are read from its markup strings. Includes the Gabinete de Seguridad daily summaries.
+      Official claims are self-reported; corroborate.
+    sources:
+      - {title: "SSPC prensa", publisher: Gobierno de México — SSPC, url: "https://www.gob.mx/sspc/es/archivo/prensa", accessed: 2026-11-20}
+      - {title: "Términos y condiciones de uso", publisher: Gobierno de México, url: "https://www.gob.mx/terminos", accessed: 2026-11-20}
 
   # ------------------------------------------------------------------ research / media
   - slug: insightcrime
@@ -87,6 +177,7 @@ feeds:
     domain: insightcrime.org
     country: USA
     language: en
+    timezone: America/Bogota
     discovery: rss
     url: https://insightcrime.org/feed/
     text: full  # feed carries full content
@@ -103,6 +194,7 @@ feeds:
     domain: zetatijuana.com
     country: MEX
     language: es
+    timezone: America/Tijuana
     discovery: rss
     url: https://zetatijuana.com/feed/
     text: full
@@ -131,6 +223,7 @@ feeds:
     domain: www.proceso.com.mx
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: gdelt  # no RSS advertised
     text: full
     reliability: B
@@ -147,10 +240,11 @@ feeds:
     domain: www.milenio.com
     country: MEX
     language: es
+    timezone: America/Mexico_City
     discovery: gdelt  # no RSS advertised
     text: full
     reliability: B
-    status: active
+    status: paused  # GDELT returned no articles from this domain, even with no search terms (checked 2026-11-24)
     terms_note: >-
       Aviso legal prohibits copying even non-commercially without written permission and
       limits use to the site's own means. Processed under the owner's accepted-risk policy
@@ -163,6 +257,7 @@ feeds:
     domain: www.elnorte.com
     country: MEX
     language: es
+    timezone: America/Monterrey
     discovery: rss
     url: https://www.elnorte.com/rss/portada.xml
     text: summary  # article bodies are paywalled
@@ -185,6 +280,413 @@ feeds:
     terms_note: robots.txt and terms not yet readable; stays inactive until checked.
     sources:
       - {title: "Animal Político", publisher: Animal Político, url: "https://animalpolitico.com", accessed: 2026-11-11}
+
+  # ------------------------------------------------------------------ Phase 3 batch 1 (ADR 0010)
+  # Michoacán and Sinaloa regional press, and drone trade press. robots.txt checked 2026-11-20
+  # for our client, ClaudeBot and anthropic-ai; terms read the same day.
+  - slug: quadratin
+    name: Quadratín Michoacán
+    domain: www.quadratin.com.mx
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: rss
+    url: https://www.quadratin.com.mx/feed/
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Michoacán regional press (UxS reporting hotspot). robots.txt allows our client and AI agents. The aviso-legal page has no terms text (2026-11-20); no prohibition found.
+    sources:
+      - {title: "Quadratín RSS", publisher: Quadratín, url: "https://www.quadratin.com.mx/feed/", accessed: 2026-11-20}
+      - {title: "Aviso legal", publisher: Quadratín, url: "https://www.quadratin.com.mx/aviso-legal/", accessed: 2026-11-20}
+
+  - slug: changoonga
+    name: Changoonga (Michoacán)
+    domain: changoonga.com
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: rss
+    url: https://changoonga.com/feed/
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Michoacán local news; reliability C (local, often single-source). robots.txt allows our client and AI agents. No terms page found (2026-11-20).
+    sources:
+      - {title: "Changoonga RSS", publisher: Changoonga, url: "https://changoonga.com/feed/", accessed: 2026-11-20}
+
+  - slug: noroeste
+    name: Noroeste (Sinaloa)
+    domain: www.noroeste.com.mx
+    country: MEX
+    language: es
+    timezone: America/Mazatlan
+    discovery: gdelt  # no RSS found 2026-11-20
+    text: full
+    reliability: B
+    status: paused  # GDELT returned no articles from this domain, even with no search terms (checked 2026-11-24)
+    terms_note: >-
+      Sinaloa regional press. robots.txt allows our client and AI agents. Terms: content is for personal, non-commercial use (same handling as Ríodoce). No RSS found, so GDELT discovery.
+    sources:
+      - {title: "Términos", publisher: Editorial Noroeste, url: "https://www.noroeste.com.mx/terminos", accessed: 2026-11-20}
+
+  - slug: lineadirecta
+    name: Línea Directa (Sinaloa)
+    domain: lineadirectaportal.com
+    country: MEX
+    language: es
+    timezone: America/Mazatlan  # Sinaloa, UTC-7
+    discovery: rss
+    url: https://lineadirectaportal.com/feed
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Sinaloa regional news; reliability C. robots.txt allows our client and AI agents. Terms link points to the homepage; no terms text found (2026-11-20).
+    sources:
+      - {title: "Línea Directa RSS", publisher: Línea Directa, url: "https://lineadirectaportal.com/feed", accessed: 2026-11-20}
+
+  - slug: suasnews
+    name: sUAS News
+    domain: www.suasnews.com
+    country: GBR
+    language: en
+    timezone: Europe/London
+    discovery: rss
+    url: https://www.suasnews.com/feed/
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Drone trade press; reliability C (industry news and aggregation). robots.txt allows our client and AI agents. Terms prohibit reproduction and distribution (accepted risk for private non-commercial research, ADR 0004 policy); no scraping or AI clause found.
+    sources:
+      - {title: "sUAS News RSS", publisher: sUAS News, url: "https://www.suasnews.com/feed/", accessed: 2026-11-20}
+      - {title: "Terms", publisher: sUAS News, url: "https://www.suasnews.com/terms/", accessed: 2026-11-20}
+
+  - slug: unmannedairspace
+    name: Unmanned Airspace
+    domain: www.unmannedairspace.info
+    country: GBR
+    language: en
+    timezone: Europe/London
+    discovery: rss
+    url: https://www.unmannedairspace.info/feed/
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Drone and counter-UAS trade press; reliability C. robots.txt allows our client and AI agents. No terms page found (2026-11-20). Rule 4: counter-UAS capability reporting about security forces is never recorded (extraction rule 10).
+    sources:
+      - {title: "Unmanned Airspace RSS", publisher: Unmanned Airspace, url: "https://www.unmannedairspace.info/feed/", accessed: 2026-11-20}
+
+  - slug: dronelife
+    name: DroneLife
+    domain: dronelife.com
+    country: USA
+    language: en
+    timezone: America/New_York
+    discovery: rss
+    url: https://dronelife.com/feed/
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Drone trade press; reliability C. robots.txt allows our client and AI agents. The terms
+      bar unauthorized spidering, scraping or automated compiling and limit use to personal,
+      non-commercial use; the owner holds DroneLife's explicit written permission (2026-11-20)
+      for this non-commercial dashboard, which authorizes automated collection here. The terms
+      have no AI clause. ADR 0010 Amendment 2.
+    sources:
+      - {title: "DroneLife RSS", publisher: DroneLife, url: "https://dronelife.com/feed/", accessed: 2026-11-20}
+      - {title: "Terms of Service", publisher: DroneLife, url: "https://dronelife.com/termsofservice/", accessed: 2026-11-20, note: "Owner's written permission from DroneLife (2026-11-20), held by the owner; ADR 0010 Amendment 2."}
+
+# Phase 3 batch 1 exclusions (2026-11-20):
+# - www.mimorelia.com, dronedj.com: robots.txt now disallows ClaudeBot (passed on 2026-11-13).
+# - www.twz.com (The War Zone): publisher terms (recurrent.io) forbid using content to operate
+#   AI systems, "including translation services", without express permission.
+
+  # ------------------------------------------------------------------ Phase 3 batch 2 (ADR 0010)
+  # National security press, Sonora, blogs, energy, defense and U.S. border press.
+  # robots.txt (our client, ClaudeBot, anthropic-ai) and terms checked 2026-11-20.
+  - slug: elfinanciero
+    name: El Financiero — Nacional
+    domain: www.elfinanciero.com.mx
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: rss
+    url: https://www.elfinanciero.com.mx/arc/outboundfeeds/rss/category/nacional/?outputType=xml
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      National press; national-section feed only (the all-site feed is mostly business). robots.txt allows our client and AI agents (2026-11-20). No terms page found (2026-11-20).
+    sources:
+      - {title: "El Financiero Nacional RSS", publisher: El Financiero, url: "https://www.elfinanciero.com.mx/arc/outboundfeeds/rss/category/nacional/?outputType=xml", accessed: 2026-11-20}
+
+  - slug: infobae-mx
+    name: Infobae — México
+    domain: www.infobae.com
+    country: ARG
+    language: es
+    timezone: America/Mexico_City  # the Mexico desk, not Buenos Aires
+    discovery: rss
+    url: https://www.infobae.com/arc/outboundfeeds/rss/category/mexico/?outputType=xml
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      High-volume Mexico section (about 100 items per feed read; the local filter carries the load). robots.txt allows our client and AI agents (2026-11-20). Terms read: no clause on scraping, automated access or AI.
+    sources:
+      - {title: "Infobae México RSS", publisher: Infobae, url: "https://www.infobae.com/arc/outboundfeeds/rss/category/mexico/?outputType=xml", accessed: 2026-11-20}
+      - {title: "Términos y condiciones", publisher: Infobae, url: "https://www.infobae.com/terminos-y-condiciones/", accessed: 2026-11-20}
+
+  - slug: oem
+    name: OEM — El Sol de México and regional titles
+    domain: oem.com.mx
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: gdelt
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Organización Editorial Mexicana titles share oem.com.mx. No RSS found, so GDELT discovery. robots.txt allows our client and AI agents (2026-11-20). No terms page found (2026-11-20).
+    sources:
+      - {title: "El Sol de México", publisher: OEM, url: "https://oem.com.mx/elsoldemexico", accessed: 2026-11-20}
+
+  - slug: aristegui
+    name: Aristegui Noticias
+    domain: aristeguinoticias.com
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: gdelt
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Investigative national press. No RSS found; GDELT discovery. robots.txt allows our client and AI agents (2026-11-20). No terms page found (2026-11-20).
+    sources:
+      - {title: "Aristegui Noticias", publisher: Aristegui Noticias, url: "https://aristeguinoticias.com", accessed: 2026-11-20}
+
+  - slug: latinus
+    name: Latinus
+    domain: latinus.us
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: gdelt
+    text: full
+    reliability: B
+    status: paused  # GDELT returned no articles from this domain, even with no search terms (checked 2026-11-24)
+    terms_note: >-
+      Investigative national press. No RSS found; GDELT discovery. robots.txt allows our client and AI agents (2026-11-20). No terms page found (2026-11-20).
+    sources:
+      - {title: "Latinus", publisher: Latinus, url: "https://latinus.us", accessed: 2026-11-20}
+
+  - slug: lasillarota
+    name: La Silla Rota
+    domain: lasillarota.com
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: gdelt
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      National press. No RSS found; GDELT discovery. robots.txt allows our client and AI agents (2026-11-20). No terms page found (2026-11-20).
+    sources:
+      - {title: "La Silla Rota", publisher: La Silla Rota, url: "https://lasillarota.com", accessed: 2026-11-20}
+
+  - slug: ejecentral
+    name: Eje Central
+    domain: www.ejecentral.com.mx
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: gdelt
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      National security and politics coverage. No RSS found; GDELT discovery. robots.txt allows our client and AI agents (2026-11-20). No terms page found (2026-11-20).
+    sources:
+      - {title: "Eje Central", publisher: Eje Central, url: "https://www.ejecentral.com.mx", accessed: 2026-11-20}
+
+  - slug: contramuro
+    name: Contramuro (Tamaulipas)
+    domain: www.contramuro.com
+    country: MEX
+    language: es
+    timezone: America/Mexico_City
+    discovery: rss
+    url: https://www.contramuro.com/feed/
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Tamaulipas local news; reliability C. robots.txt allows our client and AI agents (2026-11-20). No terms page found (2026-11-20).
+    sources:
+      - {title: "Contramuro RSS", publisher: Contramuro, url: "https://www.contramuro.com/feed/", accessed: 2026-11-20}
+
+  - slug: elimparcial
+    name: El Imparcial (Sonora)
+    domain: www.elimparcial.com
+    country: MEX
+    language: es
+    timezone: America/Hermosillo
+    discovery: gdelt
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Sonora regional press. No RSS found; GDELT discovery. robots.txt allows our client and AI agents (2026-11-20). Terms page has no clause on scraping, automated access or AI.
+    sources:
+      - {title: "Términos y condiciones", publisher: El Imparcial, url: "https://www.elimparcial.com/terminos-y-condiciones/", accessed: 2026-11-20}
+
+  - slug: borderlandbeat
+    name: Borderland Beat
+    domain: www.borderlandbeat.com
+    country: USA
+    language: en
+    timezone: America/Phoenix
+    discovery: rss
+    url: https://www.borderlandbeat.com/feeds/posts/default?alt=rss
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Blog translating and compiling Mexican cartel reporting, often from social media; reliability C, corroborate. Hosted on Blogger: Google's terms tie automated access to robots.txt, which allows us. robots.txt allows our client and AI agents (2026-11-20). Graphic content; victims are never person records (rule 3).
+    sources:
+      - {title: "Borderland Beat RSS", publisher: Borderland Beat, url: "https://www.borderlandbeat.com/feeds/posts/default?alt=rss", accessed: 2026-11-20}
+      - {title: "Google Terms of Service", publisher: Google, url: "https://policies.google.com/terms", accessed: 2026-11-20}
+
+  - slug: smallwars
+    name: Small Wars Journal
+    domain: smallwarsjournal.com
+    country: USA
+    language: en
+    timezone: America/New_York
+    discovery: rss
+    url: https://smallwarsjournal.com/feed/
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Analysis (including criminal-insurgency and cartel drone research). robots.txt allows our client and AI agents (2026-11-20). Terms of use have no clause on scraping, automated access or AI.
+    sources:
+      - {title: "Small Wars Journal RSS", publisher: Small Wars Journal, url: "https://smallwarsjournal.com/feed/", accessed: 2026-11-20}
+      - {title: "Terms of Use", publisher: Small Wars Journal, url: "https://smallwarsjournal.com/terms-of-use/", accessed: 2026-11-20}
+
+  - slug: energiaestrategica
+    name: Energía Estratégica
+    domain: www.energiaestrategica.com
+    country: ARG
+    language: es
+    timezone: America/Argentina/Buenos_Aires
+    discovery: gdelt
+    text: full
+    reliability: C
+    status: paused  # GDELT returned no articles from this domain, even with no search terms (checked 2026-11-24)
+    terms_note: >-
+      Latin American energy trade press (electricity-theft context, IR 9). No RSS found; GDELT discovery. robots.txt allows our client and AI agents (2026-11-20). No terms page found (2026-11-20).
+    sources:
+      - {title: "Energía Estratégica", publisher: Energía Estratégica, url: "https://www.energiaestrategica.com", accessed: 2026-11-20}
+
+  - slug: infodefensa
+    name: Infodefensa
+    domain: www.infodefensa.com
+    country: ESP
+    language: es
+    timezone: Europe/Madrid
+    discovery: gdelt
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Defense trade press (Latin America). No RSS found; GDELT discovery. robots.txt allows our client and AI agents (2026-11-20). Aviso legal has no clause on scraping, automated access or AI. Rule 4: security-force capability reporting is never recorded.
+    sources:
+      - {title: "Aviso legal", publisher: Infodefensa, url: "https://www.infodefensa.com/estatica/aviso-legal", accessed: 2026-11-20}
+
+  - slug: defensacom
+    name: Defensa.com
+    domain: www.defensa.com
+    country: ESP
+    language: es
+    timezone: UTC  # the feed sends Madrid wall time with no offset, stored as UTC
+    discovery: rss
+    url: https://www.defensa.com/rss/
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Defense trade press. robots.txt allows our client and AI agents (2026-11-20). Aviso legal has no clause on scraping, automated access or AI. Rule 4 applies.
+    sources:
+      - {title: "Defensa.com RSS", publisher: Defensa.com, url: "https://www.defensa.com/rss/", accessed: 2026-11-20}
+      - {title: "Aviso legal", publisher: Defensa.com, url: "https://www.defensa.com/aviso-legal", accessed: 2026-11-20}
+
+  - slug: armyrecognition
+    name: Army Recognition
+    domain: www.armyrecognition.com
+    country: BEL
+    language: en
+    timezone: Europe/Brussels
+    discovery: gdelt
+    text: full
+    reliability: C
+    status: active
+    terms_note: >-
+      Defense equipment press (drone and counter-drone technology). No RSS found; GDELT discovery. robots.txt allows our client and AI agents (2026-11-20). Legal information has no clause on scraping, automated access or AI. Rule 4 applies.
+    sources:
+      - {title: "Legal information", publisher: Army Recognition, url: "https://www.armyrecognition.com/legal-information", accessed: 2026-11-20}
+
+  - slug: texastribune
+    name: The Texas Tribune
+    domain: www.texastribune.org
+    country: USA
+    language: en
+    timezone: America/Chicago
+    discovery: rss
+    url: https://feeds.texastribune.org/feeds/main/
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Texas and U.S. border press. robots.txt allows our client and AI agents (2026-11-20). Terms read: the automated-use clause covers community features, not content; no AI clause.
+    sources:
+      - {title: "Texas Tribune RSS", publisher: The Texas Tribune, url: "https://feeds.texastribune.org/feeds/main/", accessed: 2026-11-20}
+      - {title: "Terms of Service", publisher: The Texas Tribune, url: "https://www.texastribune.org/terms-of-service/", accessed: 2026-11-20}
+
+  - slug: defensenews
+    name: Defense News
+    domain: www.defensenews.com
+    country: USA
+    language: en
+    timezone: America/New_York
+    discovery: rss
+    url: https://www.defensenews.com/feed/
+    text: full
+    reliability: B
+    status: active
+    terms_note: >-
+      Defense press. robots.txt allows our client and AI agents (2026-11-20). The terms-of-use
+      page renders only with JavaScript, so it was not machine-read; the owner authorized this
+      use of Defense News on 2026-11-20. Rule 4: security-force capability reporting is never
+      recorded.
+    sources:
+      - {title: "Terms of use", publisher: Defense News, url: "https://www.defensenews.com/terms-of-use/", accessed: 2026-11-20}
+
+# Phase 3 batch 2 exclusions (2026-11-20):
+# - www.jornada.com.mx, www.expreso.com.mx (also ai-train=no), energiahoy.com,
+#   www.pv-magazine-mexico.com (also ai-train=no), www.kgns.tv, www.ktsm.com: robots.txt
+#   disallows ClaudeBot.
+# - www.zona-militar.com: terms prohibit software that automates interaction or downloads.
+# - breakingdefense.com: terms prohibit any robot, spider or other automatic means of access.
 
 # Excluded (2026-11-11 robots.txt check):
 # - www.borderreport.com, www.elsiglodetorreon.com.mx (also Content-Signal ai-train=no),

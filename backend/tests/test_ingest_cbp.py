@@ -78,6 +78,30 @@ def test_parse_drugs_two_metrics_per_row() -> None:
     assert tucson == {"seizure_events": Decimal(9), "seizure_lbs": Decimal("1034.25")}
 
 
+@pytest.mark.parametrize(
+    ("cell", "expected"), [("2026", 2026), ("2027 (FYTD)", 2027), (" 2027 (FYTD) ", 2027)]
+)
+def test_fiscal_year_accepts_the_fytd_label(cell: str, expected: int) -> None:
+    assert cbp.fiscal_year(cell) == expected
+
+
+@pytest.mark.parametrize("cell", ["", "FY2027", "2027 (YTD)", "27"])
+def test_unexpected_fiscal_year_fails_loudly(cell: str) -> None:
+    with pytest.raises(cbp.CbpFormatError):
+        cbp.fiscal_year(cell)
+
+
+def test_parse_encounters_reads_the_year_in_progress() -> None:
+    # From fiscal year 2027 CBP labels the current year "2027 (FYTD)" (seen 2026-11-17).
+    header = (FIX / "encounters-aor.csv").read_text().splitlines()[0]
+    row = (
+        "2027 (FYTD),FYTD,OCT,U.S. Border Patrol,Southwest Land Border,San Diego Sector,"
+        "San Diego,Single Adults,MEXICO,Title 8,Apprehensions,7"
+    )
+    (r,) = cbp.parse_encounters(f"{header}\n{row}\n".encode())
+    assert (r.fiscal_year, r.month, r.value) == (2027, dt.date(2026, 10, 1), Decimal(7))
+
+
 def test_header_change_fails_loudly() -> None:
     bad = b"FY,Month,Component\n2025,NOV,USBP\n"
     with pytest.raises(cbp.CbpFormatError):

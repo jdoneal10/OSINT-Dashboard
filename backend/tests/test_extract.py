@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Actor, Document, Event, Seizure, Source, actor_events
 from app.enrich import extract
 from app.enrich.llm.client import Gateway
+from app.enrich.llm.schema import strict_schema
 from app.ingest.feeds import load_feeds, sync_sources
 from app.reference.inegi_load import load as load_inegi
 
@@ -24,10 +25,22 @@ NEWS = Path(__file__).parent / "fixtures" / "news" / "feeds.yaml"
 
 
 def _resp(payload: dict[str, Any] | str) -> Any:
+    """A reply as the API sends it for Extraction: the forced output tool's input.
+
+    A payload that is not a JSON object (malformed output) comes back as a text block.
+    """
     text = payload if isinstance(payload, str) else json.dumps(payload)
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        block = SimpleNamespace(type="tool_use", name="record_output", input=data)
+    else:
+        block = SimpleNamespace(type="text", text=text)
     return SimpleNamespace(
-        content=[SimpleNamespace(type="text", text=text)],
-        stop_reason="end_turn",
+        content=[block],
+        stop_reason="tool_use" if data is not None else "end_turn",
         stop_details=None,
         model="claude-haiku-5-5",
         usage=SimpleNamespace(
@@ -68,6 +81,8 @@ GOOD = {
             "description": "Gunmen clashed; three died.",
             "evidence": "dejó tres muertos",
             "border_threat": None,
+            "uxs": None,
+            "energy_theft": None,
         }
     ],
     "seizures": [
@@ -87,6 +102,7 @@ GOOD = {
         {"name": "Los Sintéticos", "org_type": "gang"},
         {"name": "hombres armados", "org_type": "other"},
     ],
+    "persons": [],
 }
 
 
@@ -183,7 +199,7 @@ def test_reextraction_replaces_records(seeded: Session, doc_id: int) -> None:
 def test_system_block_is_deterministic_and_cacheable(seeded: Session) -> None:
     a, b = extract.build_system(seeded), extract.build_system(seeded)
     assert a == b
-    assert "The only individuals you may name are leaders of criminal organizations" in a
+    assert "List in persons only individuals the text links to criminal activity" in a
     assert "Cartel de Sinaloa" in a
     assert len(a) > 2500  # comfortably above the 512-token cache minimum
 
@@ -206,6 +222,206 @@ def test_border_threat_is_stored(seeded: Session, doc_id: int) -> None:
 def test_prompt_states_threat_only_rule() -> None:
     assert "NEVER record the number" in extract.RULES
     assert "border_threat" in extract.RULES
+
+
+# --------------------------------------------------------------------------- UxS and energy (v7)
+
+
+def test_v7_categories_match_the_database() -> None:
+    from typing import get_args  # noqa: PLC0415
+
+    from app.db import models  # noqa: PLC0415
+
+    pairs = (
+        (extract.UxsPlatform, models.UXS_PLATFORMS),
+        (extract.UxsMission, models.UXS_MISSIONS),
+        (extract.UxsPayload, models.UXS_PAYLOADS),
+        (extract.UxsActivity, models.UXS_ACTIVITIES),
+        (extract.EnergyMethod, models.ENERGY_METHODS),
+        (extract.EnergyPowered, models.ENERGY_POWERED),
+        (extract.EnergyFacilitator, models.ENERGY_FACILITATORS),
+    )
+    for literal, values in pairs:
+        assert get_args(literal) == values
+
+
+def _event(**kw: Any) -> dict[str, Any]:
+    return {**GOOD["events"][0], **kw}
+
+
+def test_uxs_and_energy_theft_are_stored(seeded: Session, doc_id: int) -> None:
+    payload = json.loads(json.dumps(GOOD))
+    payload["events"] = [
+        _event(
+            event_type="Explosions/Remote violence",
+            uxs={
+                "activity": "employment",
+                "platform": "fpv",
+                "missions": ["attack", "attack", "surveillance"],
+                "payloads": ["explosive_or_grenade"],
+                "capabilities": ["coordinated_multi_uxs", "coordinated_multi_uxs"],
+            },
+        ),
+        _event(
+            event_type="Strategic developments",
+            fatalities=None,
+            energy_theft={
+                "method": "illegal_line_connection",
+                "powered": ["crypto_mining"],
+                "facilitator": "none_reported",
+                "scale": "300 mining rigs",
+            },
+        ),
+    ]
+    _run(_resp(payload))
+    drone, power = seeded.scalars(select(Event).order_by(Event.source_key)).all()
+    assert (drone.uxs_activity, drone.uxs_platform) == ("employment", "fpv")
+    assert drone.uxs_missions == ["attack", "surveillance"]  # duplicates dropped, order kept
+    assert drone.uxs_payloads == ["explosive_or_grenade"]
+    assert drone.uxs_capabilities == ["coordinated_multi_uxs"]  # ADR 0009 amendment 2
+    assert power.uxs_capabilities == []
+    assert (drone.energy_method, drone.energy_powered) == (None, [])
+    assert (power.energy_method, power.energy_facilitator) == (
+        "illegal_line_connection",
+        "none_reported",
+    )
+    assert (power.energy_powered, power.energy_scale) == (["crypto_mining"], "300 mining rigs")
+    assert (power.uxs_activity, power.uxs_missions) == (None, [])
+    # ADR 0014: a theft case is the "theft" grid interaction; other events have none.
+    assert (power.grid_interaction, drone.grid_interaction) == ("theft", None)
+    assert power.energy_indicators == drone.energy_indicators == []
+    assert {e.prompt_version for e in (drone, power)} == {extract.PROMPT_VERSION}
+
+
+def test_unknown_uxs_category_is_rejected(seeded: Session, doc_id: int) -> None:
+    payload = json.loads(json.dumps(GOOD))
+    payload["events"][0]["uxs"] = {"activity": "employment", "platform": "jetpack",
+                                   "missions": [], "payloads": []}  # fmt: skip
+    _run(_resp(payload), _resp(payload))  # invalid twice: quarantined, nothing stored
+    assert seeded.scalars(select(Event)).all() == []
+
+
+def test_database_rejects_categories_outside_the_framework(seeded: Session, doc_id: int) -> None:
+    from sqlalchemy import update  # noqa: PLC0415
+    from sqlalchemy.exc import IntegrityError  # noqa: PLC0415
+
+    _run(_resp(GOOD))
+    for values in (
+        {"uxs_activity": "employment"},  # platform missing
+        {"uxs_activity": "employment", "uxs_platform": "fpv", "uxs_missions": ["joyride"]},
+        {"uxs_activity": "employment", "uxs_platform": "fpv", "uxs_capabilities": ["teleport"]},
+        {"grid_interaction": "theft", "energy_method": "meter_bypass"},  # facilitator missing
+        {
+            "grid_interaction": "theft",
+            "energy_method": "meter_bypass",
+            "energy_facilitator": "none_reported",
+            "energy_powered": ["casino"],
+        },
+        # ADR 0014: theft detail and the "theft" kind go together; kinds and indicators
+        # come only from the framework lists.
+        {"energy_method": "meter_bypass", "energy_facilitator": "none_reported"},
+        {"grid_interaction": "theft"},
+        {"grid_interaction": "power_outage"},
+        {"energy_indicators": ["suspicious_building"]},
+    ):
+        with pytest.raises(IntegrityError):
+            seeded.execute(update(Event).values(**values))
+        seeded.rollback()
+
+
+def test_database_accepts_grid_interactions_and_indicators(seeded: Session, doc_id: int) -> None:
+    from sqlalchemy import update  # noqa: PLC0415
+
+    _run(_resp(GOOD))
+    seeded.execute(
+        update(Event).values(
+            grid_interaction="deliberate_outage_or_sabotage",
+            energy_indicators=[
+                "outage_in_contested_area",
+                "utility_insider_reported",
+                "fuel_theft",
+            ],
+        )
+    )
+    seeded.flush()
+    ev = seeded.scalars(select(Event)).first()
+    assert ev is not None
+    assert (ev.grid_interaction, ev.energy_method) == ("deliberate_outage_or_sabotage", None)
+
+
+def test_prompt_states_priorities_and_v7_rules() -> None:
+    rules = extract.RULES
+    assert rules.index("unmanned systems") < rules.index("human smuggling")
+    for phrase in ("11. uxs.", "12. grid_interaction.", "13. energy_indicators.",
+                   "Police or military drones", "never infer a site", "Never name the person",
+                   "drones; cash", "crypto-mining equipment;"):  # fmt: skip
+        assert phrase in rules, phrase
+    assert (
+        rules.index("unmanned systems")
+        < rules.index("electrical grid")
+        < rules.index("human smuggling")
+    )
+
+
+# --------------------------------------------------------------------------- grid (v11)
+
+
+def test_v11_grid_categories_match_the_database() -> None:
+    from typing import get_args  # noqa: PLC0415
+
+    from app.db import models  # noqa: PLC0415
+
+    assert get_args(extract.GridKind) == models.GRID_INTERACTIONS
+    assert get_args(extract.EnergyIndicator) == models.ENERGY_INDICATORS
+
+
+def test_grid_kinds_and_indicators_are_stored(seeded: Session, doc_id: int) -> None:
+    payload = json.loads(json.dumps(GOOD))
+    payload["events"] = [
+        _event(
+            event_type="Violence against civilians",
+            grid_interaction="attack_on_utility_workers",
+            energy_indicators=["outage_in_contested_area", "fuel_theft", "fuel_theft"],
+        ),
+        _event(event_type="Strategic developments", energy_indicators=["mining_equipment_seized"]),
+    ]
+    payload["seizures"][0] |= {"substance": "Cryptocurrency mining equipment", "quantity": 40,
+                               "unit": "units"}  # fmt: skip
+    _run(_resp(payload))
+    attack, raid = seeded.scalars(select(Event).order_by(Event.source_key)).all()
+    assert (attack.grid_interaction, attack.energy_method) == ("attack_on_utility_workers", None)
+    assert attack.energy_indicators == ["outage_in_contested_area", "fuel_theft"]
+    assert (raid.grid_interaction, raid.energy_indicators) == (None, ["mining_equipment_seized"])
+    seizure = seeded.scalars(select(Seizure)).one()
+    assert (seizure.substance, seizure.low_priority) == ("crypto-mining equipment", False)
+
+
+THEFT = {"method": "meter_bypass", "powered": [], "facilitator": "electrician", "scale": None}
+
+
+@pytest.mark.parametrize(
+    ("kind", "detail", "stored_kind", "stored_method"),
+    [
+        (None, None, None, None),
+        (None, THEFT, "theft", "meter_bypass"),  # a v10-style theft case
+        ("theft", THEFT, "theft", "meter_bypass"),
+        ("theft", None, "theft", "unknown"),  # the case is kept; the method is unknown
+        ("infrastructure_theft", THEFT, "infrastructure_theft", None),  # copper is not power
+    ],
+)
+def test_grid_kind_and_theft_detail_are_made_consistent(
+    seeded: Session,
+    doc_id: int,
+    kind: str | None,
+    detail: dict[str, Any] | None,
+    stored_kind: str | None,
+    stored_method: str | None,
+) -> None:
+    payload = json.loads(json.dumps(GOOD))
+    payload["events"] = [_event(grid_interaction=kind, energy_theft=detail)]
+    _run(_resp(payload))
+    ev = seeded.scalars(select(Event)).one()
+    assert (ev.grid_interaction, ev.energy_method) == (stored_kind, stored_method)
 
 
 # --------------------------------------------------------------------------- seizures (v6)
@@ -353,3 +569,66 @@ def test_reprioritize_backfills_stored_seizures(seeded: Session, doc_id: int) ->
     seeded.expire_all()
     assert seeded.scalars(select(Seizure.low_priority)).one() is True
     assert extract.reprioritize() == 0  # idempotent
+
+
+def test_omitted_nullable_and_list_fields_read_as_empty() -> None:
+    """With no grammar (tool transport) Haiku sometimes omits null fields such as ``title``."""
+    person = {"name": "Persona Sintética", "role": "leader", "us_nexus": False,
+              "reported_minor": False, "evidence": "líder sintético"}  # fmt: skip
+    doc = {"relevant": True, "summary_en": "s", "events": [], "seizures": [],
+           "organizations": [], "persons": [person]}  # fmt: skip
+    parsed = extract.Extraction.model_validate(doc)
+    p = parsed.persons[0]
+    assert (p.title, p.organization, p.nationality, p.aliases, p.statuses, p.events) == (
+        None, None, None, [], [], [],
+    )  # fmt: skip
+    # The schema sent still lists every property as required.
+    schema = strict_schema(extract.Extraction)
+    assert "title" in schema["$defs"]["ExtractedPerson"]["required"]
+
+
+# --------------------------------------------------------------------------- v12 schema repairs
+
+ORGS = [{"name": "Cártel Sintético", "org_type": "cartel"}]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        json.dumps(ORGS),
+        # The non-strict tool artifact seen 2026-11-22 and 2026-11-25: a stray ," before }]
+        '[{"name": "Cártel Sintético", "org_type": "cartel","}]',
+        ' [{"name": "Cártel Sintético", "org_type": "cartel", " } ] ',
+    ],
+)
+def test_a_list_sent_as_a_string_is_decoded(raw: str) -> None:
+    out = extract.Extraction.model_validate(
+        {"relevant": True, "summary_en": "Synthetic.", "organizations": raw}
+    )
+    assert [o.model_dump() for o in out.organizations] == ORGS
+
+
+@pytest.mark.parametrize("raw", ['[{"name": "Cártel', "not json", '{"name": "x"}', '"[]"'])
+def test_a_string_that_is_not_a_list_is_still_rejected(raw: str) -> None:
+    with pytest.raises(ValidationError):
+        extract.Extraction.model_validate(
+            {"relevant": True, "summary_en": "Synthetic.", "organizations": raw}
+        )
+
+
+def test_v12_allows_daily_roundups_but_still_caps_lists() -> None:
+    base = {"relevant": True, "summary_en": "Synthetic."}
+    org = ORGS[0]
+    extract.Extraction.model_validate(base | {"organizations": [org] * 20})
+    with pytest.raises(ValidationError):
+        extract.Extraction.model_validate(base | {"organizations": [org] * 21})
+    fields = extract.Extraction.model_fields
+    assert (
+        fields["seizures"].metadata[0].max_length,
+        fields["persons"].metadata[0].max_length,
+    ) == (
+        30,
+        30,
+    )
+    schema = json.dumps(strict_schema(extract.Extraction))
+    assert "at most items: 30" in schema

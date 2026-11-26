@@ -27,7 +27,9 @@ from sqlalchemy.orm import Session
 from app.db.models import Document
 from app.ingest.feeds import Feed
 from app.ingest.http import PoliteClient, RobotsDisallowedError
+from app.ingest.publication import release_date
 from app.ingest.raw import sha256_bytes, write_raw
+from app.ingest.related import WIDGET_XPATH, strip_related
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +84,13 @@ def _parse_date(value: Any) -> dt.datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.UTC)
 
 
+def page_text(page: str) -> str | None:
+    """An article page's main text, without related-story widgets."""
+    return trafilatura.extract(
+        page, include_comments=False, favor_precision=True, prune_xpath=WIDGET_XPATH
+    )
+
+
 def fetch_article(client: PoliteClient, url: str) -> FetchedArticle | None:
     """GET an article page (robots.txt enforced) and extract its main text."""
     try:
@@ -95,13 +104,13 @@ def fetch_article(client: PoliteClient, url: str) -> FetchedArticle | None:
     if resp.status_code != 200 or "html" not in resp.headers.get("content-type", "html"):
         log.warning("fetch %s -> HTTP %d", url, resp.status_code)
         return None
-    text = trafilatura.extract(resp.text, include_comments=False, favor_precision=True)
+    text = page_text(resp.text)
     meta = trafilatura.extract_metadata(resp.text)
     return FetchedArticle(
         html=resp.content,
         text=text[:MAX_TEXT_CHARS] if text else None,
         title=meta.title if meta else None,
-        published=_parse_date(meta.date) if meta else None,
+        published=release_date(resp.text) or (_parse_date(meta.date) if meta else None),
         language=None,
     )
 
@@ -141,7 +150,7 @@ def upsert_document(
     raw_path: str | None,
 ) -> UpsertResult:
     """Insert or update by (source_id, source_key); reset the pipeline only on text change."""
-    body = text if feed.text == "full" else None
+    body = (strip_related(text) or None) if text and feed.text == "full" else None
     content = "\n".join(x for x in (title, summary, body) if x)
     digest = hashlib.sha256(content.encode()).hexdigest() if content else None
     values = {

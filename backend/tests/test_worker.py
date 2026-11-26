@@ -23,6 +23,13 @@ def test_scheduler_registers_source_jobs() -> None:
     assert "day_of_week='sun'" in str(jobs["acled-deleted"].trigger)
     assert "minute='10,40'" in str(jobs["pipeline"].trigger)
     assert "hour='*/6'" in str(jobs["news-gdelt"].trigger)
+    # Once a day, an hour after the owner's 09:00 HST connector run (ADR 0012).
+    dataminr_trigger = jobs["dataminr"].trigger
+    assert str(dataminr_trigger.timezone) == "Pacific/Honolulu"
+    nxt = dataminr_trigger.get_next_fire_time(None, dt.datetime(2026, 11, 22, 12, tzinfo=dt.UTC))
+    assert nxt == dt.datetime(2026, 11, 22, 20, tzinfo=dt.UTC)
+    later = dataminr_trigger.get_next_fire_time(nxt, nxt + dt.timedelta(minutes=1))
+    assert later - nxt == dt.timedelta(days=1)
 
 
 def test_scheduled_ingest_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -49,7 +56,7 @@ def test_news_jobs_split_feeds_by_discovery(monkeypatch: pytest.MonkeyPatch) -> 
     gdelt = [slug for call in gdelt_calls for slug in call]
     assert all(len(call) == 1 for call in gdelt_calls)  # one GDELT feed per call
     assert set(gdelt) == {f.slug for f in worker.feeds.active("gdelt")}
-    assert sleeps == [worker.GDELT_FEED_SPACING_S] * (len(gdelt) - 1)
+    assert sleeps == [worker.gdelt_spacing(len(gdelt))] * (len(gdelt) - 1)
     assert rss
     assert not set(rss) & set(gdelt)
 
@@ -67,3 +74,17 @@ def test_sesnsp_reminder_once_per_month_when_stale(seeded: Session) -> None:
     assert worker.sesnsp_reminder(dt.date(2026, 11, 27)) is False  # already alerted
     alert = seeded.scalars(select(Alert).where(Alert.rule == "sesnsp_update_due")).one()
     assert "make ingest SOURCE=sesnsp" in alert.summary
+
+
+def test_a_gdelt_cycle_ends_before_the_next_trigger() -> None:
+    """Every feed refused (worst case) still leaves the cycle inside its 6 hours, so the
+    scheduler never skips the next one (it did on 2026-11-24 with 12 feeds 30 min apart)."""
+    for n in range(2, 21):
+        spacing = worker.gdelt_spacing(n)
+        worst = (n - 1) * spacing + n * worker.GDELT_FEED_WORST_S
+        assert worker.GDELT_FEED_SPACING_MIN_S <= spacing <= worker.GDELT_FEED_SPACING_MAX_S
+        if spacing > worker.GDELT_FEED_SPACING_MIN_S:
+            assert worst <= worker.GDELT_CYCLE_S - worker.GDELT_CYCLE_MARGIN_S
+    assert worker.gdelt_spacing(8) == worker.GDELT_FEED_SPACING_MAX_S
+    assert worker.gdelt_spacing(12) < 25 * 60
+    assert worker.gdelt_spacing(1) == 0

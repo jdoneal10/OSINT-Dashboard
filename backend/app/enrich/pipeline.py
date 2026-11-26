@@ -1,7 +1,8 @@
 """Enrichment pipeline orchestration (one pass; the worker schedules it).
 
     dedupe -> local filter (Ollama) -> collect batches -> extract (Haiku; a backlog goes to the
-    Batch API) -> cluster -> Admiralty -> analyze (Sonnet)
+    Batch API) -> ACLED grid pass (Haiku; ADR 0014) -> ACLED UxS pass (Haiku; ADR 0009
+    amendment 1) -> cluster -> Admiralty -> analyze (Sonnet)
 
 Each stage records an ``ingest_runs`` row (job ``pipeline-<stage>``). A stage that cannot run
 (Ollama down, budget paused) is logged and the later stages still run on whatever is ready.
@@ -20,7 +21,7 @@ from typing import Any
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import session_factory
-from app.enrich import admiralty, analyze, dedupe, extract, local_filter
+from app.enrich import acled_grid, acled_uxs, admiralty, analyze, dedupe, extract, local_filter
 from app.enrich.llm.client import BudgetPausedError
 from app.ingest.runs import ingest_run
 
@@ -44,6 +45,8 @@ STAGES: dict[str, Callable[[], dict[str, Any]]] = {
     "filter": local_filter.run_filter,
     "collect": extract.run_collect,
     "extract": extract.run_extract,
+    "grid": acled_grid.run_grid,
+    "uxs": acled_uxs.run_uxs,
     "cluster": _cluster,
     "analyze": analyze.run_analyze,
 }

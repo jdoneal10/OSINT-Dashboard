@@ -33,6 +33,14 @@ Definitions
   the extraction prompt's own relevant/not-relevant decision on every relevance-labeled
   document, compared with the owner's answer. Nothing is stored; calls are logged to
   ``llm_usage`` like any other. Unweighted: it measures the prompt, not the pipeline.
+- **Phase 3 gates** (ADR 0009 amendment 1): UxS and energy are judged as two samples, each
+  needing ``TARGET_PRIORITY_RECORDS`` labels at ``TARGET_PRECISION`` strict precision.
+  The UxS sample is ``uxs_labels`` plus record labels on UxS events; the energy sample is
+  ``grid_labels`` (ADR 0014) plus record labels on electricity-theft events. Topic labels
+  judge only the topic's fields, and so does a record label in these samples: a partly wrong
+  record label counts against a topic only if it names that topic's field (``uxs`` or
+  ``energy_theft``). An event counts once per sample, with its topic label if it has one;
+  stale topic labels (the event was reclassified after labeling) are left out and counted.
 - Missed records (extraction recall) cannot be measured from record labels; they are out of
   scope for this report.
 """
@@ -48,6 +56,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 import httpx
 from pydantic import ValidationError
@@ -55,7 +64,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Document, Label, Seizure, Source
+from app.db.models import Document, Event, GridLabel, Label, Seizure, Source, UxsLabel
 from app.db.session import session_factory
 from app.enrich import extract
 from app.enrich.llm.client import Gateway, Provenance
@@ -67,6 +76,14 @@ TARGET_DOCUMENTS = 100
 SWEEP = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
 RECORD_TABLES = ("events", "seizures")
 SCOPE_FIELDS = frozenset({"out_of_aoi"})  # priority judgments, not extraction errors
+# Phase 3 (ADR 0009, ADR 0013). The priority sample size is a working default: enough for a
+# 95% interval about +/-10 points wide at 85% precision. Adjust here if the owner decides.
+TARGET_PRIORITY_RECORDS = 50
+PRIORITY_FIELDS = frozenset({"uxs", "energy_theft"})
+# Person-label fields that record a hard-rule-3 violation rather than an accuracy error.
+SAFEGUARD_FIELDS = frozenset(
+    {"excluded_category", "contact_detail", "us_nexus_missed", "unsupported"}
+)
 
 
 def wilson(successes: float, n: float, z: float = 1.96) -> tuple[float, float]:
@@ -174,7 +191,173 @@ def record_precision(session: Session, prompt_version: str) -> RecordReport:
     )
 
 
-# --------------------------------------------------------------------------- relevance
+# --------------------------------------------------------------------------- Phase 3
+
+
+@dataclass
+class TopicReport:
+    """Topic labels (grid, ADR 0014; UxS, ADR 0009 amendment 1): whole-verdict precision by
+    source, and per item.
+
+    Per item (each kind or indicator; each activity, platform, mission or payload): a judgment
+    is right unless the label is "wrong" or names that item as wrong. Stale labels (the event
+    was reclassified after labeling) are left out and counted.
+    """
+
+    by_source: dict[str, Precision] = field(default_factory=dict)
+    items: dict[str, Precision] = field(default_factory=dict)
+    versions: Counter[str] = field(default_factory=Counter)
+    stale: int = 0
+
+
+@dataclass
+class Phase3Report:
+    uxs: Precision  # UxS sample: UxS labels plus record labels on UxS events
+    uxs_errors: Counter[str]
+    energy: Precision  # energy sample: grid labels plus record labels on theft events
+    energy_errors: Counter[str]
+    persons: Precision
+    person_errors: Counter[str]
+    violations: list[tuple[int, int, list[str]]]  # (document, person, safeguard fields)
+    grid: TopicReport = field(default_factory=TopicReport)
+    uxs_labels: TopicReport = field(default_factory=TopicReport)
+
+
+# A topic label's judged items: (the name a partly wrong label uses, the name reported).
+ItemsOf = Callable[[Any], list[tuple[str, str]]]
+
+
+def _grid_items(lab: GridLabel) -> list[tuple[str, str]]:
+    judged = [("kind", lab.judged_kind)] if lab.judged_kind else []
+    return judged + [(i, i) for i in lab.judged_indicators or []]
+
+
+def _uxs_items(lab: UxsLabel) -> list[tuple[str, str]]:
+    return [
+        ("activity", f"activity: {lab.judged_activity}"),
+        ("platform", f"platform: {lab.judged_platform}"),
+        *((m, f"mission: {m}") for m in lab.judged_missions or []),
+        *((p, f"payload: {p}") for p in lab.judged_payloads or []),
+        *((c, f"capability: {c}") for c in lab.judged_capabilities or []),
+    ]
+
+
+def topic_report(
+    session: Session, model: type[GridLabel] | type[UxsLabel], items_of: ItemsOf
+) -> tuple[TopicReport, dict[int, str]]:
+    """Topic-label precision, plus the verdict each labeled event counts with."""
+    out = TopicReport()
+    verdicts: dict[int, str] = {}
+    rows = session.execute(
+        select(model, Event, Source.slug)
+        .join(Event, Event.id == model.event_id)
+        .join(Source, Source.id == Event.source_id)
+    ).all()
+    for row in rows:
+        lab = cast("GridLabel | UxsLabel", row[0])
+        ev, slug = row[1], row[2]
+        if lab.is_stale(ev):
+            out.stale += 1
+            continue
+        source = "acled" if slug == "acled" else "news"
+        out.by_source.setdefault(source, Precision()).add(lab.verdict)
+        out.versions[lab.prompt_version or "unknown"] += 1
+        verdicts[ev.id] = lab.verdict
+        wrong = set(lab.wrong or [])
+        for item, name in items_of(lab):
+            right = lab.verdict != "incorrect" and item not in wrong
+            out.items.setdefault(name, Precision()).add("correct" if right else "incorrect")
+    return out, verdicts
+
+
+def grid_report(session: Session) -> tuple[TopicReport, dict[int, str]]:
+    return topic_report(session, GridLabel, _grid_items)
+
+
+def uxs_report(session: Session) -> tuple[TopicReport, dict[int, str]]:
+    return topic_report(session, UxsLabel, _uxs_items)
+
+
+def _latest(labels: Iterable[Label]) -> dict[tuple[int, str, int], Label]:
+    latest: dict[tuple[int, str, int], Label] = {}
+    for lab in labels:
+        key = (lab.document_id, lab.target_table, lab.target_id)
+        if key not in latest or lab.updated_at > latest[key].updated_at:
+            latest[key] = lab
+    return latest
+
+
+def phase3(session: Session, prompt_version: str) -> Phase3Report:
+    """Precision on the UxS and energy samples and on persons, and safeguard violations.
+
+    Each sample is its topic labels (ACLED or news) plus record labels on ``prompt_version``
+    for events carrying the topic's fields; an event with a topic label counts once, with it.
+    See the module docstring for how a partly wrong record label counts.
+    """
+    grid, grid_verdicts = grid_report(session)
+    uxs, uxs_verdicts = uxs_report(session)
+    out = Phase3Report(
+        Precision(), Counter(), Precision(), Counter(), Precision(), Counter(), [], grid, uxs
+    )
+    for verdict in uxs_verdicts.values():
+        out.uxs.add(verdict)
+    for verdict in grid_verdicts.values():
+        out.energy.add(verdict)
+    uxs_ids = set(session.scalars(select(Event.id).where(Event.uxs_activity.is_not(None))))
+    energy_ids = set(session.scalars(select(Event.id).where(Event.energy_method.is_not(None))))
+    samples = (
+        (uxs_ids, uxs_verdicts, "uxs", out.uxs, out.uxs_errors),
+        (energy_ids, grid_verdicts, "energy_theft", out.energy, out.energy_errors),
+    )
+    labels = session.scalars(
+        select(Label).where(
+            Label.target_table.in_(("events", "persons")), Label.prompt_version == prompt_version
+        )
+    )
+    for (doc_id, table, target), lab in sorted(_latest(labels).items()):
+        named = {f for f in lab.field.split(",") if f}
+        errors = named - SCOPE_FIELDS
+        if table == "events":
+            for ids, topic_labeled, topic_field, sample, sample_errors in samples:
+                if target not in ids or target in topic_labeled:
+                    continue
+                v = lab.verdict
+                if v == "partial" and topic_field not in errors:
+                    v = "correct"  # wrong elsewhere; this topic's fields were right
+                sample.add(v)
+                if v == "partial":
+                    sample_errors.update(errors)
+            continue
+        safeguards = sorted(errors & SAFEGUARD_FIELDS)
+        accuracy = errors - SAFEGUARD_FIELDS
+        v = lab.verdict
+        if v == "partial" and not accuracy and not safeguards:
+            v = "correct"
+        out.persons.add(v)
+        out.person_errors.update(accuracy)
+        if safeguards:
+            out.violations.append((doc_id, target, safeguards))
+    return out
+
+
+def phase3_verdict(r: Phase3Report) -> str:
+    if r.violations:
+        return f"**FAIL**: {len(r.violations)} labeled person-safeguard violation(s)."
+    samples = (("UxS", r.uxs), ("energy", r.energy))
+    short = [f"{name} {p.n} of {TARGET_PRIORITY_RECORDS}" for name, p in samples
+             if p.n < TARGET_PRIORITY_RECORDS]  # fmt: skip
+    if short:
+        return (
+            f"**INSUFFICIENT SAMPLE**: {', '.join(short)} records labeled; no safeguard "
+            "violations so far."
+        )
+    below = [name for name, p in samples if (p.strict or 0.0) < TARGET_PRECISION]
+    precision = "; ".join(f"{name} {_pct(p.strict)}" for name, p in samples)
+    status = "FAIL" if below else "PASS"
+    return (
+        f"**{status}**: strict precision {precision} (target {TARGET_PRECISION:.0%} each); "
+        "no safeguard violations."
+    )
 
 
 @dataclass
@@ -313,7 +496,7 @@ def haiku_relevance(
     out = HaikuRelevance(prompt_version=extract.PROMPT_VERSION)
     for d in sorted(docs, key=lambda x: x.document_id):
         doc = session.get_one(Document, d.document_id)
-        source = session.get_one(Source, doc.source_id).name
+        source = session.get_one(Source, doc.source_id)
         result = gateway.call(
             stage="extract", model=HAIKU, prompt_version=extract.PROMPT_VERSION,
             system=system, user=extract.build_user(doc, source),
@@ -359,6 +542,64 @@ def verdict(rec: RecordReport) -> str:
     return f"**{status}**: strict precision {_pct(strict)} (target {TARGET_PRECISION:.0%})."
 
 
+def _render_topic_items(title: str, header: str, t: TopicReport) -> list[str]:
+    if not (t.items or t.stale):
+        return []
+    lines = [
+        "",
+        f"{title} by item (a judgment is right unless the label is wrong or names the item):",
+        "",
+        f"| {header} | Judged | Right | Precision | 95% CI |",
+        "|---|---:|---:|---:|---|",
+    ]
+    for name, p in sorted(t.items.items()):
+        lines.append(f"| {name} | {p.n} | {p.correct} | {_pct(p.strict)} | {_ci(p)} |")
+    versions = ", ".join(f"{v} {n}" for v, n in sorted(t.versions.items()))
+    return [
+        *lines,
+        "",
+        f"Prompt versions judged: {versions or 'none'}. Stale labels (event reclassified "
+        f"since labeling; left out): {t.stale}.",
+    ]
+
+
+def _render_phase3(r: Phase3Report) -> list[str]:
+    lines = [
+        "## Phase 3: priority topics and persons",
+        "",
+        f"Gates (ADR 0009 amendment 1): UxS and energy each need {TARGET_PRIORITY_RECORDS} "
+        f"labeled records at {TARGET_PRECISION:.0%} strict precision.",
+        "",
+        "| Records | Labeled | Correct | Partly wrong | Wrong | Strict | 95% CI |",
+        "|---|---:|---:|---:|---:|---:|---|",
+    ]
+    rows = [("**UxS sample**", r.uxs)]
+    rows += [(f"UxS labels, {k}", p) for k, p in sorted(r.uxs_labels.by_source.items())]
+    rows.append(("**Energy sample**", r.energy))
+    rows += [(f"grid labels, {k}", p) for k, p in sorted(r.grid.by_source.items())]
+    rows.append(("persons", r.persons))
+    for name, p in rows:
+        lines.append(
+            f"| {name} | {p.n} | {p.correct} | {p.partial} | {p.incorrect} | "
+            f"{_pct(p.strict)} | {_ci(p)} |"
+        )
+    lines += _render_topic_items("UxS labels", "Activity, platform, mission or payload",
+                                 r.uxs_labels)  # fmt: skip
+    lines += _render_topic_items("Grid labels (ADR 0014)", "Kind or indicator", r.grid)
+    errors = r.uxs_errors + r.energy_errors + r.person_errors
+    lines += [
+        "",
+        "Field errors: " + (", ".join(f"{f} {n}" for f, n in errors.most_common()) or "none") + ".",
+    ]
+    lines += [
+        "",
+        f"**Person safeguards (hard rule 3, ADR 0013):** {len(r.violations)} violation(s).",
+    ]
+    for doc_id, person_id, fields in r.violations:
+        lines.append(f"- document {doc_id}, person {person_id}: {', '.join(fields)}")
+    return [*lines, ""]
+
+
 def render(
     prompt_version: str,
     rec: RecordReport,
@@ -367,6 +608,7 @@ def render(
     today: dt.date,
     *,
     haiku: HaikuRelevance | None = None,
+    p3: Phase3Report | None = None,
 ) -> str:
     lines = [
         f"# Extraction evaluation: {prompt_version}",
@@ -376,6 +618,11 @@ def render(
         f"- **Documents with record labels:** {rec.documents}; "
         f"**with relevance labels:** {len(docs)}",
         f"- **Exit criterion (Phase 2):** {verdict(rec)}",
+        *(
+            [f"- **Exit criteria (Phase 3, new fields and persons):** {phase3_verdict(p3)}"]
+            if p3
+            else []
+        ),
         "",
         "Generated by `python -m app.enrich.evaluate` from the owner's hand labels. "
         "Labels, notes and article text stay local; this report holds counts and record ids "
@@ -409,6 +656,7 @@ def render(
         "(small drug amounts or contraband; docs/framework/seizure-priority.md). Priority is "
         "set by code, not the model; label these on extraction accuracy alone.",
         "",
+        *(_render_phase3(p3) if p3 else []),
         "## Relevance filter",
         "",
         "Recall and pass rate are weighted by filter stratum (see module docstring).",
@@ -480,7 +728,7 @@ def run(
 ) -> Path:
     """Write the report. ``haiku_gateway`` enables the paid Haiku relevance dry run."""
     settings = get_settings()
-    version = prompt_version or extract.PROMPT_VERSION
+    version = prompt_version or extract.LABELED_VERSION
     threshold = settings.relevance_threshold
     with session_factory()() as session:
         rec = record_precision(session, version)
@@ -494,17 +742,19 @@ def run(
             m.seconds_per_doc = per_doc
             filters.append(m)
         haiku = haiku_relevance(session, docs, haiku_gateway) if haiku_gateway else None
+        p3 = phase3(session, version)
     today = today or dt.datetime.now().astimezone().date()  # the owner's local date
     out_dir = out_dir or settings.repo_root / "docs" / "evaluations"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{today.isoformat()}-extraction-{version}.md"
-    path.write_text(render(version, rec, docs, filters, today, haiku=haiku), encoding="utf-8")
+    report = render(version, rec, docs, filters, today, haiku=haiku, p3=p3)
+    path.write_text(report, encoding="utf-8")
     return path
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.enrich.evaluate")
-    parser.add_argument("--prompt-version", help=f"default: {extract.PROMPT_VERSION}")
+    parser.add_argument("--prompt-version", help=f"default: {extract.LABELED_VERSION}")
     parser.add_argument(
         "--compare-models",
         help="comma-separated Ollama models to re-score the labeled documents with",

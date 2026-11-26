@@ -11,9 +11,11 @@ Guards (ADR 0003, ADR 0004, ADR 0006):
 2. **Budget.** Month-to-date spend (``llm_usage``) is checked before every call. At
    ``llm_budget_alert_fraction`` of ``llm_monthly_budget_usd`` the API stages pause
    (``BudgetPausedError``) and one ``alerts`` row is written for the month.
-3. **Validation.** Output is requested as strict JSON (``output_config.format``) and validated
-   by the pydantic model. Invalid output is retried once, then quarantined; refusals and
-   truncated output go straight to quarantine. Nothing unvalidated reaches core tables.
+3. **Validation.** Output is requested as strict JSON (``output_config.format``) or, for an
+   output model too large for the API's structured-output grammar (``uses_tool``), as the
+   input of one forced, non-strict tool; either way the pydantic model validates it. Invalid
+   output is retried once, then quarantined; refusals and truncated output go straight to
+   quarantine. Nothing unvalidated reaches core tables.
 4. **Ledger.** Every API attempt writes an ``llm_usage`` row (model, prompt_version, tokens,
    cost, request id, status), successful or not.
 """
@@ -21,6 +23,7 @@ Guards (ADR 0003, ADR 0004, ADR 0006):
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -31,6 +34,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core import outbound
 from app.core.config import get_settings
 from app.core.secrets import require_secret
 from app.db.models import Alert, Document, Event, LLMQuarantine, LLMUsage, Source, event_documents
@@ -47,6 +51,7 @@ def blocked_sources() -> frozenset[str]:
 
 
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+OUTPUT_TOOL = "record_output"
 API_BASE_URL = "https://api.anthropic.com"
 
 
@@ -82,10 +87,28 @@ class Assessed[T: BaseModel]:
     parsed: T | None
 
 
+def uses_tool(output_model: type[BaseModel]) -> bool:
+    """True if ``output_model`` is requested as a forced tool call instead of strict JSON.
+
+    Structured outputs compile the schema into a grammar with a size limit; a model whose
+    schema exceeds it sets ``llm_transport = "tool"`` (ADR 0004, 2026-11-21 amendment). The
+    tool is not strict, so the pydantic model is the only schema check.
+    """
+    return getattr(output_model, "llm_transport", "format") == "tool"
+
+
+def _raw_output(resp: Any) -> str | None:
+    """The response's JSON: the forced tool's input if there is one, else the text block."""
+    for block in resp.content:
+        if getattr(block, "type", "") == "tool_use" and getattr(block, "name", "") == OUTPUT_TOOL:
+            return json.dumps(block.input, ensure_ascii=False)
+    return next((b.text for b in resp.content if getattr(b, "type", "") == "text"), None)
+
+
 def assess[T: BaseModel](resp: Any, output_model: type[T]) -> Assessed[T]:
     """Classify a Messages API response and validate its JSON against ``output_model``."""
     stop = getattr(resp, "stop_reason", None)
-    raw = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), None)
+    raw = _raw_output(resp)
     if stop == "refusal":
         details = getattr(resp, "stop_details", None)
         return Assessed(
@@ -105,19 +128,32 @@ def request_params(
     effort: str | None,
 ) -> dict[str, Any]:  # fmt: skip
     """Messages API parameters shared by real-time calls and batch requests."""
-    output_config: dict[str, Any] = {
-        "format": {"type": "json_schema", "schema": strict_schema(output_model)}
-    }
+    schema = strict_schema(output_model)
+    output_config: dict[str, Any] = {}
+    if not uses_tool(output_model):
+        output_config["format"] = {"type": "json_schema", "schema": schema}
     if effort:
         output_config["effort"] = effort
-    return {
+    params: dict[str, Any] = {
         "model": model,
         "max_tokens": max_tokens,
-        # Stable instruction block first, cached (ADR 0004); per-document text after it.
+        # Stable instruction block first, cached (ADR 0004); per-document text after it. The
+        # cache breakpoint on the system block also covers the output tool, which precedes it.
         "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         "messages": [{"role": "user", "content": user}],
-        "output_config": output_config,
     }
+    if uses_tool(output_model):
+        params["tools"] = [
+            {
+                "name": OUTPUT_TOOL,
+                "description": "Record the output. Its input is the whole answer.",
+                "input_schema": schema,
+            }
+        ]
+        params["tool_choice"] = {"type": "tool", "name": OUTPUT_TOOL}
+    if output_config:
+        params["output_config"] = output_config
+    return params
 
 
 @dataclass
@@ -240,6 +276,7 @@ class Gateway:
             # Pin the official endpoint: never inherit ANTHROPIC_BASE_URL (or any proxy) from
             # the environment, so the key and article text only ever go to the Claude API
             # (CLAUDE.md: no outbound calls beyond source pulls and the Claude API).
+            outbound.check(API_BASE_URL)
             self._client = anthropic.Anthropic(
                 api_key=require_secret("ANTHROPIC_API_KEY").get_secret_value(),
                 base_url=API_BASE_URL,

@@ -5,8 +5,8 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { api } from './client'
-import type { LabelInput } from './types'
+import { api, type LabelTopic } from './client'
+import type { LabelInput, TopicLabelInput, TopicReview, TopicReviewItem } from './types'
 
 export const useHealth = () =>
   useQuery({
@@ -203,4 +203,105 @@ export function useLabelMutations(documentId: number) {
     onSuccess: refresh,
   })
   return { save, remove }
+}
+
+/**
+ * Topic label reviews: grid (ADR 0014 step 6) and UxS (ADR 0009 amendment 1). ACLED and news
+ * events carrying the topic's fields.
+ */
+export const useTopicReview = <T extends TopicReviewItem>(
+  topic: LabelTopic,
+  source: 'all' | 'acled' | 'news',
+) =>
+  useQuery({
+    queryKey: [topic, 'review', source],
+    queryFn: ({ signal }) =>
+      api.topicReview(topic, { source }, { signal }) as Promise<TopicReview<T>>,
+  })
+
+export function useTopicLabelMutations(topic: LabelTopic) {
+  const qc = useQueryClient()
+  const refresh = () => qc.invalidateQueries({ queryKey: [topic, 'review'] })
+  const save = useMutation({
+    mutationFn: (body: TopicLabelInput) => api.putTopicLabel(topic, body),
+    onSuccess: refresh,
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => api.deleteTopicLabel(topic, id),
+    onSuccess: refresh,
+  })
+  return { save, remove }
+}
+
+/** Priority panels (ADR 0009). */
+export const usePriorityUxs = (params: Record<string, unknown>) =>
+  useQuery({
+    queryKey: ['priority', 'uxs', params],
+    queryFn: ({ signal }) => api.priorityUxs(params, { signal }),
+    placeholderData: keepPreviousData,
+  })
+
+export const usePriorityEnergy = (params: Record<string, unknown>) =>
+  useQuery({
+    queryKey: ['priority', 'energy', params],
+    queryFn: ({ signal }) => api.priorityEnergy(params, { signal }),
+    placeholderData: keepPreviousData,
+  })
+
+export const useEventList = (params: Record<string, unknown>, enabled = true) =>
+  useQuery({
+    queryKey: ['events', 'list', params],
+    queryFn: ({ signal }) => api.events(params, { signal }),
+    placeholderData: keepPreviousData,
+    enabled,
+  })
+
+/** Person records (ADR 0013). U.S. persons stay hidden unless includeUs is set. */
+export const usePersons = (params: Record<string, unknown>) =>
+  useQuery({
+    queryKey: ['persons', 'list', params],
+    queryFn: ({ signal }) => api.persons(params, { signal }),
+    placeholderData: keepPreviousData,
+  })
+
+export const usePerson = (id: number | null, includeUs = false) =>
+  useQuery({
+    queryKey: ['persons', 'detail', id, includeUs],
+    queryFn: ({ signal }) =>
+      api.person(id as number, { include_us_persons: includeUs || undefined }, { signal }),
+    enabled: id !== null,
+    retry: false,
+  })
+
+export const useMergeSuggestions = (includeUs: boolean) =>
+  useQuery({
+    queryKey: ['persons', 'suggestions', includeUs],
+    queryFn: ({ signal }) =>
+      api.mergeSuggestions({ include_us_persons: includeUs || undefined }, { signal }),
+  })
+
+export function usePersonMutations() {
+  const qc = useQueryClient()
+  const refresh = () => qc.invalidateQueries({ queryKey: ['persons'] })
+  return {
+    dispute: useMutation({
+      mutationFn: (v: { id: number; disputed: boolean; note?: string | null }) =>
+        api.disputePerson(v.id, { disputed: v.disputed, note: v.note }),
+      onSuccess: refresh,
+    }),
+    merge: useMutation({
+      mutationFn: (v: { person_ids: number[]; primary_id: number }) => api.mergePersons(v),
+      onSuccess: refresh,
+    }),
+    undo: useMutation({ mutationFn: (id: number) => api.undoMerge(id), onSuccess: refresh }),
+    distinct: useMutation({
+      mutationFn: (v: { person_id: number; other_ids: number[] }) => api.markDistinct(v),
+      onSuccess: refresh,
+    }),
+    clearDistinct: useMutation({
+      mutationFn: (id: number) => api.clearDistinct(id),
+      onSuccess: refresh,
+    }),
+    remove: useMutation({ mutationFn: (id: number) => api.deletePerson(id), onSuccess: refresh }),
+  }
 }

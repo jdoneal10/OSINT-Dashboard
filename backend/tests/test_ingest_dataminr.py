@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Alert, Document, IngestRun, Source
@@ -167,9 +167,13 @@ def test_explicit_file_is_left_in_place(seeded: Session, tmp_path: Path) -> None
 def test_stalled_digests_raise_one_alert(seeded: Session, raw_dir: Path) -> None:
     _inbox(raw_dir, SECOND)
     dataminr.run_inbox()  # may itself raise the alert, depending on today's clock
+    seeded.execute(delete(Alert).where(Alert.rule == "feed_stalled"))
+    seeded.commit()
     newest = dt.datetime(2026, 11, 17, 6, tzinfo=UTC)
-    # Twice-daily delivery: the next file lands ~12 h 45 min after a window ends; no alert yet.
-    assert dataminr._check_stalled(now=newest + dt.timedelta(hours=12, minutes=50)) is False
+    # Daily 10:00 HST check: on time the newest window ended ~4 h earlier; one missing or late
+    # digest leaves it ~16 h behind (gap detection's job); neither raises a stall alert.
+    assert dataminr._check_stalled(now=newest + dt.timedelta(hours=4)) is False
+    assert dataminr._check_stalled(now=newest + dt.timedelta(hours=16)) is False
     late = newest + dt.timedelta(hours=dataminr.STALL_HOURS)
     dataminr._check_stalled(now=late)
     dataminr._check_stalled(now=late + dt.timedelta(hours=1))
