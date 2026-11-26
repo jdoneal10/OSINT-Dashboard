@@ -287,6 +287,33 @@ def test_invented_citation_is_quarantined(seeded: Session) -> None:
     assert "999999" in (q.error or "")
 
 
+def test_a_valid_retry_resolves_the_clusters_quarantine(seeded: Session) -> None:
+    _, docs = _conflicted_cluster(seeded)
+    analyze.run_analyze(gateway=Gateway(_sonnet(_assessment([999_999]))))
+    out = analyze.run_analyze(gateway=Gateway(_sonnet(_assessment(docs))))
+    assert out == {"assessed": 1, "quarantined": 0}
+    seeded.expire_all()
+    q = seeded.scalars(select(LLMQuarantine).where(LLMQuarantine.stage == "analyze")).one()
+    assert q.resolved
+
+
+def test_a_cluster_quarantined_three_times_waits_for_the_owner(seeded: Session) -> None:
+    _conflicted_cluster(seeded)
+    bad = _sonnet(_assessment([999_999]))
+    for _ in range(analyze.MAX_QUARANTINES):
+        assert analyze.run_analyze(gateway=Gateway(bad)) == {"assessed": 0, "quarantined": 1}
+    calls = len(bad.requests)
+    assert analyze.run_analyze(gateway=Gateway(bad)) == {"assessed": 0, "quarantined": 0}
+    assert len(bad.requests) == calls  # no further Sonnet call
+    # The owner resolving an entry lets the cluster run again.
+    seeded.expire_all()
+    first = seeded.scalars(select(LLMQuarantine).order_by(LLMQuarantine.id)).first()
+    assert first is not None
+    first.resolved = True
+    seeded.commit()
+    assert analyze.run_analyze(gateway=Gateway(bad)) == {"assessed": 0, "quarantined": 1}
+
+
 # --------------------------------------------------------------------------- pipeline
 
 
